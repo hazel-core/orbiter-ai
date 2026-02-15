@@ -255,3 +255,19 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - The AgentHandler from handlers.py already has workflow mode — Swarm is a higher-level API that wraps the same call_runner() directly without going through AgentHandler. Future handoff/team modes (US-018, US-019) may leverage AgentHandler's existing implementations
   - 620 tests total across full suite (20 new swarm tests)
 ---
+
+## 2026-02-15 - US-018
+- What was implemented: Swarm handoff mode (`mode='handoff'`) with dynamic agent-to-agent delegation. Added `_run_handoff()` (handoff chain execution with conversation history transfer), `_detect_handoff()` (output-based handoff detection matching agent's declared handoff targets), and `max_handoffs` parameter for loop detection.
+- Files changed: `packages/orbiter-core/src/orbiter/swarm.py` (added ~70 lines for handoff mode), `packages/orbiter-core/tests/test_swarm.py` (added 15 tests in 4 new test classes)
+- Key implementation details:
+  - `_run_handoff()` starts with the first agent in flow_order, runs it via `call_runner()`, checks output against handoff targets
+  - `_detect_handoff()` matches `result.output.strip()` against agent's `handoffs` dict keys, also requires target exists in `swarm.agents`
+  - `max_handoffs` uses `>` semantics (default 10): allows exactly `max_handoffs` transitions before raising `SwarmError`
+  - Conversation history from each agent's run (`result.messages`) is passed to the next agent as `all_messages`
+  - Handoff target not in swarm's agents dict → no handoff (agent output returned as-is)
+- **Learnings for future iterations:**
+  - `max_handoffs` boundary: use `>` not `>=` so that `max_handoffs=N` allows exactly N handoffs. The AgentHandler in handlers.py uses `>=` which is slightly different semantics
+  - `call_runner` builds messages internally per agent — the `result.messages` from RunState are minimal (system + user + assistant). Passing them as `all_messages` to the next call_runner allows conversation history transfer, but each agent still builds its own message list
+  - Ruff RUF043: regex metacharacters in `pytest.raises(match=...)` require raw strings (e.g., `match=r"Max handoffs.*3.*exceeded"`)
+  - 635 tests total across full suite (15 new handoff tests)
+---
