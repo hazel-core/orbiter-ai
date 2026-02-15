@@ -1367,3 +1367,13 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - Benchmark runner pattern: dataclass for problems, JSONL loader, dual-agent loop, CLI entry point
   - All passing: ruff/pyright/pytest (2848 tests)
 ---
+
+## 2026-02-16 - US-096
+- What was implemented: OSWorld benchmark runner — desktop OS interaction benchmark with mock tools for screenshot, click, type_text, hotkey, shell_command, and wait. Follows established benchmark runner pattern (dataclass for tasks, JSON/JSONL loader, Agent + run(), CLI entry point).
+- Files changed: `examples/benchmarks/osworld/__init__.py` (new), `examples/benchmarks/osworld/run.py` (new, ~150 lines)
+- **Learnings for future iterations:**
+  - OSWorld is a desktop OS interaction benchmark — tools are screen-level (click, type, screenshot) rather than API-level
+  - Benchmark pattern is well established: ~150 lines, dataclass for dataset items, loader supporting both JSON and JSONL, domain filtering, BenchmarkResult with completion_rate, CLI with argparse
+  - ruff format may reformat long function signatures — run `uv run ruff format` before committing
+  - 2848 tests pass, excluding sqlite/postgres collection errors (pre-existing)
+---
