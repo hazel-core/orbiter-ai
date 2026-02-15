@@ -624,8 +624,8 @@
         "Typecheck passes"
       ],
       "priority": 33,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Already fully implemented in US-031 (KnowledgeStore with chunking + keyword search in _internal/knowledge.py). 41 tests already covering add/search/get/get_range/chunking. All acceptance criteria verified."
     },
     {
       "id": "US-034",

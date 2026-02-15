@@ -482,3 +482,12 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - Forked child's `snapshot()` captures `to_dict()` which includes inherited parent values — so restoring captures the full merged view, not just local state
   - 1089 tests total across full suite (35 new checkpoint tests)
 ---
+
+## 2026-02-15 - US-033
+- What was implemented: US-033 acceptance criteria were already fully satisfied by US-031's implementation. Verified: `_internal/__init__.py` exists, `_internal/knowledge.py` has complete KnowledgeStore (234 lines) with `add`, `search`, `get`, `get_range`, `remove`, `artifact_names`, `total_chunks`. Basic chunking via `chunk_text()` with overlap support. TF-IDF keyword search serving as the in-memory search for testing. 41 existing tests cover all criteria.
+- Files: No changes needed — all code already in place from US-031
+- Quality checks: ruff check ✓, ruff format ✓, pyright 0 errors ✓, pytest 1089 passed ✓
+- **Learnings for future iterations:**
+  - US-031 (workspace-retriever integration) already implemented the full KnowledgeStore that US-033 was supposed to create — check for pre-existing implementations before coding
+  - When a PRD story's acceptance criteria are already met by prior work, verify quality checks and mark as passing rather than duplicating code
+---
