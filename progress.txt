@@ -934,3 +934,14 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - 2085 tests total across full suite (40 new scorer tests), excluding sqlite/postgres collection errors
 ---
 
+## 2026-02-15 - US-063
+- What was implemented: Reflection framework with LLM-powered analysis. `ReflectionType` enum (SUCCESS, FAILURE, OPTIMIZATION, PATTERN, INSIGHT). `ReflectionLevel` enum (SHALLOW, MEDIUM, DEEP, META). `ReflectionResult` frozen dataclass (summary, key_findings, root_causes, insights, suggestions, metadata). `ReflectionHistory` mutable tracker with add(), get_recent(), get_by_type(), summarize(). `Reflector` ABC with three-step template: analyze() → insight() → suggest() orchestrated by reflect(). `GeneralReflector` LLM-powered implementation with configurable judge callable, prompt builder, and JSON response parser with fallback.
+- Files changed: `packages/orbiter-eval/src/orbiter/eval/reflection.py` (new, ~130 lines of core logic), `packages/orbiter-eval/tests/test_reflection.py` (new, 30 tests in 10 classes)
+- Test coverage: ReflectionType (2), ReflectionLevel (2), ReflectionResult (3: creation, frozen, all fields), ReflectionHistory (5: empty, counters, get_recent, get_by_type, summarize), ReflectorABC (4: cannot instantiate, concrete subclass, pipeline, defaults), GeneralReflectorInit (2), GeneralReflectorNoJudge (1), GeneralReflectorWithJudge (5: full, error context, prompt content, malformed JSON, partial JSON), ParseResponse (4: valid, no JSON, empty, nested), Integration (2: reflect+history, multiple types)
+- **Learnings for future iterations:**
+  - The three-step template (analyze → insight → suggest) passes analysis dict to both insight() AND suggest() — suggest() needs the full analysis, not just the insight output, because suggestions come from analyze() in the LLM response
+  - `GeneralReflector._parse_response` reuses the same brace-counting JSON extraction as `llm_scorer.extract_json()` — could be shared in a future refactor
+  - ReflectionHistory uses simple counters for success/failure but get_by_type() iterates all entries — sufficient for typical reflection history sizes
+  - 2115 tests total across full suite (30 new reflection tests), excluding sqlite/postgres collection errors
+---
+
