@@ -2,7 +2,8 @@
 Started: Sun Feb 15 04:58:56 PM IST 2026
 
 ## Codebase Patterns
-- UV workspace monorepo: 12 packages under `packages/`, root pyproject.toml has NO build-system
+- UV workspace monorepo: 13 packages under `packages/` (including orbiter-context), root pyproject.toml has NO build-system
+- New namespace package setup: create `packages/orbiter-<name>/` dir, add to root pyproject.toml workspace members + dev deps + uv.sources, then `uv sync`
 - Namespace packages: `orbiter-core/__init__.py` uses `pkgutil.extend_path()` so other packages add to the `orbiter` namespace
 - Meta-package at `packages/orbiter/` uses `_orbiter_meta` dummy package for hatchling compatibility
 - Quality checks: `uv run ruff check packages/`, `uv run ruff format --check packages/`, `uv run pyright packages/orbiter-core/`, `uv run pytest`
@@ -337,4 +338,23 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - The `_make_provider` mock must account for ALL LLM calls across ALL agents in a swarm (e.g., 3-agent pipeline = 3 responses, team with delegation = lead + worker + lead = 3 responses)
   - `__init__.py` imports must be sorted alphabetically by module path for ruff I001 compliance
   - 710 tests total across full suite (21 new swarm integration tests)
+---
+
+## 2026-02-15 - US-023
+- What was implemented: Created `orbiter-context` package from scratch — added workspace registration, pyproject.toml, directory structure. Implemented `ContextConfig` (Pydantic v2 frozen model with `AutomationMode` enum: pilot/copilot/navigator, history_rounds, summary_threshold, offload_threshold, enable_retrieval, neuron_names tuple, extra dict, threshold validation) and `make_config()` factory with preset defaults per automation level. Implemented `ContextState` (hierarchical key-value store with parent chain lookup, write isolation, get/set/update/delete/pop/clear/to_dict/local_dict/keys).
+- Files changed:
+  - `pyproject.toml` (root — added orbiter-context to workspace members, dev deps, uv.sources)
+  - `packages/orbiter-context/pyproject.toml` (new package config)
+  - `packages/orbiter-context/src/orbiter/context/__init__.py` (new)
+  - `packages/orbiter-context/src/orbiter/context/config.py` (~120 lines — AutomationMode, ContextConfig, make_config)
+  - `packages/orbiter-context/src/orbiter/context/state.py` (~130 lines — ContextState)
+  - `packages/orbiter-context/tests/test_context_config.py` (22 tests: defaults, frozen, validation, neuron coercion, serialization, factory)
+  - `packages/orbiter-context/tests/test_context_state.py` (35 tests: read/write, delete/pop/clear, update, parent inheritance, introspection, bool, repr)
+- **Learnings for future iterations:**
+  - Creating a new namespace package requires adding it to 3 places in root pyproject.toml: `[tool.uv.workspace] members`, `[dependency-groups] dev`, and `[tool.uv.sources]`
+  - Same pyright `reportMissingImports` issue applies to orbiter-context test files — use `# pyright: ignore[reportMissingImports]` on import lines
+  - `ContextState` uses `__slots__` for memory efficiency — all instance attributes (`_data`, `_parent`) must be declared there
+  - Pydantic v2 frozen models: use `model_validator(mode="after")` for cross-field validation (e.g., summary_threshold <= offload_threshold)
+  - Use `tuple[str, ...]` (not `list`) for frozen model fields that should be immutable; accept `list` via `model_validator(mode="before")` coercion
+  - 767 tests total across full suite (57 new context tests)
 ---
