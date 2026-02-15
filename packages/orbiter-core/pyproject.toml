@@ -5,6 +5,7 @@ description = "Core agent framework: Agent, Tool, Runner, Config, Events, Hooks,
 requires-python = ">=3.11"
 dependencies = [
     "pydantic>=2.0",
+    "pyyaml>=6.0",
 ]
 
 [build-system]
