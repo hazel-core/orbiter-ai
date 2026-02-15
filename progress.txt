@@ -1129,3 +1129,21 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - 2604 tests total across full suite (29 new session tests), excluding sqlite/postgres collection errors
 ---
 
+## 2026-02-16 - US-078
+- What was implemented: Agent management and workspace API routes — listing registered agents, getting agent details, listing workspace files, and reading workspace file content.
+- Files changed: `packages/orbiter-server/src/orbiter_server/agents.py` (new, ~163 lines), `packages/orbiter-server/src/orbiter_server/app.py` (added agent_router import + include_router), `packages/orbiter-server/tests/test_server_agents.py` (new, 24 tests)
+- Key implementation details:
+  - `agent_router` with prefix `/agents` registered in `create_app()`
+  - `GET /agents` — lists all registered agents with name, model, tools, handoffs, default status
+  - `GET /agents/{name}` — agent detail with 404 on missing
+  - `GET /agents/{name}/workspace` — lists workspace artifacts (returns empty list if no workspace)
+  - `GET /agents/{name}/workspace/{file_name}` — reads artifact content with proper 404 handling
+  - `_get_workspace(agent)` navigates `agent.context.workspace` with None-safe attribute access
+  - `_agent_info(agent)` builds AgentInfo from duck-typed agent attributes (tools/handoffs as dict keys)
+- **Learnings for future iterations:**
+  - Agent's workspace is at `agent.context.workspace` — two levels of attribute access, both may be None
+  - Use `{file_name:path}` in FastAPI route params to allow slashes in filenames
+  - Reuse `_AGENTS_KEY` / `_DEFAULT_AGENT_KEY` constants from app.py — duplicated in agents.py for module independence (could be factored to shared constants)
+  - When testing workspace routes, mock both workspace.list() and workspace.get() — list returns artifacts, get takes a name and returns single artifact or None
+  - 1745 tests pass across core/models/server/cli/context/trace packages (24 new agent route tests)
+---

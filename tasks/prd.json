@@ -1408,8 +1408,8 @@
         "Typecheck passes"
       ],
       "priority": 78,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Agent listing, workspace file listing/reading. 24 tests, 163 lines source."
     },
     {
       "id": "US-079",
