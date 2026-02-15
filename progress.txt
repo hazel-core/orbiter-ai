@@ -859,3 +859,14 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - The `create_*()` pattern (factory functions) gives callers flexibility while `record_*()` functions handle the common case internally
   - 1832 tests total across full suite (36 new instrumentation tests), excluding sqlite/postgres collection errors
 ---
+
+## 2026-02-15 - US-057
+- What was implemented: W3C Baggage propagation and span consumer plugin system in `packages/orbiter-trace/src/orbiter/trace/propagation.py` (~180 lines). Carrier protocol + DictCarrier for header abstraction. ContextVar-backed baggage storage (get/set/clear). BaggagePropagator with extract (parses comma-separated URL-encoded pairs with size limits) and inject (encodes and writes to carrier). SpanConsumer ABC with registry: register_span_consumer (direct + decorator), get_span_consumer, list_span_consumers, dispatch_spans, clear_span_consumers.
+- Files changed: `packages/orbiter-trace/src/orbiter/trace/propagation.py` (new, ~180 lines), `packages/orbiter-trace/tests/test_trace_propagation.py` (new, 52 tests in 10 classes)
+- Test coverage: DictCarrier (6: creation, headers, get/set, protocol, repr), BaggageContext (7: empty, set/get, missing, multiple, overwrite, clear, copy), Extract (11: single, multiple, url-encoded, empty, no-header, whitespace, oversized-header, oversized-pair, no-equals, max-pairs, stores-in-context), Inject (7: single, multiple, url-encoded, empty, from-context, oversized-pair, none-uses-context), Roundtrip (3: basic, special-chars, repr), SpanConsumerABC (3: concrete, consume, abstract enforcement), Registration-direct (5: register, list, get-missing, clear, overwrite), Registration-decorator (2: decorator-on-class, still-usable), Dispatch (4: single, multiple, empty, no-consumers), Constants (4: header, max-lengths, max-pairs)
+- **Learnings for future iterations:**
+  - Ruff B039 disallows mutable default for ContextVar — use `default=None` with `ContextVar[T | None]` and handle None in accessor functions
+  - BaggagePropagator is stateless — extract/inject work on any Carrier instance, baggage state is in the ContextVar
+  - `register_span_consumer` supports both direct instance registration and bare `@register_span_consumer` decorator on classes (class is instantiated with no args)
+  - 1884 tests total across full suite (52 new propagation tests), excluding sqlite/postgres collection errors
+---
