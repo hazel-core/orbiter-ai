@@ -114,3 +114,20 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - `RunNode` uses mutable Pydantic model (no `frozen=True`) since state transitions mutate fields — this is the right pattern for stateful objects vs. value objects
   - 430 tests total across full suite (29 new)
 ---
+
+## 2026-02-15 - US-009
+- What was implemented: Core call runner (`call_runner()`) that orchestrates Agent.run() with RunState tracking, node lifecycle management, usage accumulation, and endless loop detection via tool-call signature comparison.
+- Files changed: `packages/orbiter-core/src/orbiter/_internal/call_runner.py` (~145 lines), `packages/orbiter-core/tests/test_call_runner.py` (15 tests in 6 classes)
+- Key implementation details:
+  - `call_runner(agent, input, *, state, messages, provider, max_retries, loop_threshold)` — wraps Agent.run() in RunState lifecycle
+  - Creates RunNode per call, tracks INIT → RUNNING → SUCCESS/FAILED transitions
+  - Loop detection: `_tool_call_signature()` creates deterministic string from sorted tool name:args pairs; `_check_loop()` counts consecutive matching signatures in node metadata
+  - Errors from Agent.run() wrapped in `CallRunnerError`, state/node marked FAILED
+  - Agent.instructions resolved via callable check + str() for pyright compatibility (agent param typed as Any)
+  - Returns `RunResult` with output text, accumulated messages, total usage, step count
+- **Learnings for future iterations:**
+  - Since `agent` is typed as `Any` in call_runner, accessing `agent.instructions` returns `object | Any` — must use `str()` cast or explicit type narrowing, not direct assignment to `str` variable
+  - Loop detection works across consecutive `call_runner()` invocations with shared state by storing tool signatures in `RunNode.metadata`
+  - The call_runner delegates the actual LLM→tool→LLM loop entirely to Agent.run() — it's a thin orchestration layer for state tracking, not a replacement for Agent's internal loop
+  - 445 tests total across full suite (15 new)
+---

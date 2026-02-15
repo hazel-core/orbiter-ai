@@ -182,8 +182,8 @@
         "Typecheck passes"
       ],
       "priority": 9,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "CallRunnerError, call_runner() with RunState tracking, loop detection via tool-call signatures, node lifecycle management. 15 tests (445 total)."
     },
     {
       "id": "US-010",
