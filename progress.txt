@@ -561,3 +561,15 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - `_filter_incomplete_pairs` walks backwards in a `while` loop, popping trailing items that violate integrity — this handles both dangling AI tool calls and orphan tool results
   - 1223 tests total across full suite (32 new short-term memory tests)
 ---
+
+## 2026-02-15 - US-038
+- What was implemented: Summary trigger logic and multi-template summary generation. `SummaryTemplate` (StrEnum: conversation/facts/profiles) with default prompt templates. `SummaryConfig` (frozen dataclass: message_threshold, token_threshold, templates, prompts, keep_recent, token_estimate_ratio) with `get_prompt()` fallback. `check_trigger()` detects when message count or estimated token count exceeds thresholds. `Summarizer` runtime_checkable Protocol for pluggable LLM backends. `generate_summary()` splits items into compress-vs-keep-recent, formats conversation text, runs each configured template through the summarizer. `SummaryResult` with summaries dict, compressed_items, original_count. Helper: `_estimate_tokens()` (char/ratio), `_format_items()` (role-tagged lines).
+- Files changed: `packages/orbiter-memory/src/orbiter/memory/summary.py` (new, ~130 lines), `packages/orbiter-memory/tests/test_summary.py` (new, 33 tests in 10 classes)
+- Test coverage: SummaryTemplate values + default prompts (2), SummaryConfig defaults/custom/frozen/get_prompt (6), _estimate_tokens empty/single/multiple/custom-ratio (4), TriggerResult creation (1), check_trigger below/message/token/exact/empty/priority (6), _format_items empty/single/multi-type (3), generate_summary empty/single/multi-template/keep-recent/larger-than/custom-prompt/formatted-items (7), SummaryResult creation/defaults (2), Summarizer protocol conformance (2)
+- **Learnings for future iterations:**
+  - `Sequence` import: ruff UP035 requires `from collections.abc import Sequence` instead of `from typing import Sequence`
+  - `SummaryConfig` uses frozen dataclass (not Pydantic) since it's a simple value object with no validation beyond defaults — consistent with `TokenStep` and `Checkpoint` patterns
+  - The `Summarizer` protocol is intentionally minimal (single `async summarize(prompt) -> str` method) — callers wrap their LLM provider in this interface, keeping the summary module decoupled from any specific provider
+  - `generate_summary` always generates summaries for all configured templates, even when `keep_recent >= len(items)` — this is by design since the summaries capture information from the conversation regardless of compression
+  - 1256 tests total across full suite (33 new summary tests)
+---
