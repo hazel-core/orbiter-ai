@@ -1397,3 +1397,13 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - `frozenset` for valid category names enables `--category` argparse choices validation
   - 2848 tests pass, excluding sqlite/postgres collection errors (pre-existing)
 ---
+
+## 2026-02-16 - US-099
+- What was implemented: BFCL (Berkeley Function Calling Leaderboard) benchmark runner evaluating function calling accuracy. Tools: execute_function mock. Scoring compares agent tool calls against expected calls (order-insensitive via sorted normalization). Per-category accuracy breakdown. Dataset supports BFCL JSONL format with "function"/"ground_truth" fields.
+- Files changed: `examples/benchmarks/bfcl/__init__.py` (new), `examples/benchmarks/bfcl/run.py` (new, ~120 lines)
+- **Learnings for future iterations:**
+  - BFCL focuses on function call correctness (name + arguments) rather than answer text — scoring compares normalized (name, sorted_args_json) tuples
+  - Ruff SIM105 requires `contextlib.suppress()` instead of `try/except/pass` — import `contextlib` and use `with contextlib.suppress(json.JSONDecodeError):`
+  - BFCL categories: simple, multiple, parallel, parallel_multiple, irrelevance, java, javascript, rest
+  - 2848 tests pass, excluding sqlite/postgres collection errors (pre-existing)
+---
