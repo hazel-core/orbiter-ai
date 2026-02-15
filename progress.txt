@@ -1205,3 +1205,20 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - The old AWorld `DataSynthesisRunner` was tightly coupled to Swarm/Task/Runner — Orbiter version is decoupled, operating on plain dicts
   - 2765 tests total across full suite (54 new synthesis tests), excluding sqlite/postgres collection errors
 ---
+
+## 2026-02-16 - US-083
+- What was implemented: Agent evolution module with EvolutionError, EvolutionPhase, EvolutionState, EvolutionConfig, EpochResult, EvolutionResult, EvolutionStrategy ABC, and EvolutionPipeline. Multi-epoch pipeline runs synthesis → training → evaluation with configurable phases, early stopping, and reset.
+- Files changed: `packages/orbiter-train/src/orbiter/train/evolution.py` (~200 lines), `packages/orbiter-train/tests/test_evolution.py` (32 tests)
+- Key implementation details:
+  - Inspired by AWorld's `EvolutionRunner` but decoupled from Task/Swarm/Runner — operates on plain `Any` agent and `Sequence[dict]` data
+  - `EvolutionStrategy` ABC with 3 abstract methods: `synthesise()`, `train()`, `evaluate()` — plug in any backend
+  - `EvolutionPipeline` has IDLE→RUNNING→COMPLETED/FAILED state machine with `reset()` to re-run
+  - Early stopping: compares eval accuracy against threshold after each epoch
+  - `EvolutionResult.best_epoch` property finds the epoch with highest eval accuracy
+  - `EvolutionConfig` is frozen dataclass with validation in `__post_init__`
+- **Learnings for future iterations:**
+  - Follow the frozen-dataclass pattern for config types (EvolutionConfig, SynthesisConfig) and mutable dataclass for result types (EpochResult, EvolutionResult, TrainMetrics)
+  - Pipeline state machine pattern: IDLE → RUNNING → COMPLETED/FAILED with explicit reset() — prevents accidental re-runs
+  - Strategy ABC with `__slots__ = ()` — keeps subclasses lightweight
+  - 2797 tests total across full suite (32 new evolution tests), excluding sqlite/postgres collection errors (pre-existing: missing optional deps asyncpg/aiosqlite)
+---
