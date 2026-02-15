@@ -644,8 +644,8 @@
         "Typecheck passes"
       ],
       "priority": 34,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "_ContextTool subclass with bind(ctx) pattern, planning tools (add_todo, complete_todo, get_todo), knowledge tools (get_knowledge, grep_knowledge, search_knowledge), file tool (read_file with path traversal protection). 38 new tests (1127 total)."
     },
     {
       "id": "US-035",

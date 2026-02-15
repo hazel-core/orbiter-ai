@@ -491,3 +491,23 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - US-031 (workspace-retriever integration) already implemented the full KnowledgeStore that US-033 was supposed to create — check for pre-existing implementations before coding
   - When a PRD story's acceptance criteria are already met by prior work, verify quality checks and mark as passing rather than duplicating code
 ---
+
+## 2026-02-15 - US-034
+- What was implemented: Context tools — planning, knowledge, and file tools for agent self-management. `_ContextTool` subclass of `Tool` with `bind(ctx)` pattern to inject context at execution time while hiding `ctx` from JSON schema. Planning tools (`add_todo`, `complete_todo`, `get_todo`) for task checklist management via `ctx.state`. Knowledge tools (`get_knowledge`, `grep_knowledge`, `search_knowledge`) for artifact retrieval via workspace and knowledge store. File tool (`read_file`) with path traversal protection via `resolve()` + prefix check.
+- Files changed:
+  - `packages/orbiter-context/src/orbiter/context/tools.py` (new, ~255 lines — _ContextTool, 7 tools, 4 factory functions)
+  - `packages/orbiter-context/tests/test_context_tools.py` (new, 38 tests in 11 classes)
+- Key implementation details:
+  - `_ContextTool` extends `Tool` ABC with `bind(ctx)` method — context injected at runtime, stripped from JSON schema via post-processing of `_generate_schema()` output
+  - Planning tools store todos as `list[dict]` in `ctx.state["todos"]` with `{item, done}` shape
+  - Knowledge tools read from `ctx.state["workspace"]` (Workspace) and `ctx.state["knowledge_store"]` (KnowledgeStore)
+  - `grep_knowledge` uses `re.compile(pattern, re.IGNORECASE)` with invalid regex error handling
+  - `read_file` prevents path traversal via `Path.resolve()` + `str.startswith()` prefix check against working directory
+  - Factory functions: `get_planning_tools()`, `get_knowledge_tools()`, `get_file_tools()`, `get_context_tools()` (all 7)
+- **Learnings for future iterations:**
+  - orbiter-context depends on orbiter-core, so `@tool` decorator and `Tool` ABC can be imported directly — no need for cross-package workarounds
+  - `_ContextTool` pattern: custom Tool subclass that strips `ctx` from schema and injects it via `bind()` — this avoids exposing internal context to the LLM while keeping tools testable
+  - Module-level tool singletons (e.g., `planning_tool_add`) are mutable via `bind()` — tests must call `bind(ctx)` before each test to set the right context
+  - ruff auto-fix may move `# pyright: ignore[reportMissingImports]` from the `from` line to individual import names inside parenthesized imports — the ignore must stay on the `from` line for pyright to see it
+  - 1127 tests total across full suite (38 new context tools tests)
+---
