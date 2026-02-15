@@ -288,3 +288,19 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - Using `finally` block to restore tools ensures cleanup even on errors (important for tool-loop exceptions propagating up)
   - 648 tests total across full suite (13 new team mode tests)
 ---
+
+## 2026-02-15 - US-020
+- What was implemented: ParallelGroup (concurrent agent execution via `asyncio.TaskGroup` with configurable result aggregation) and SerialGroup (sequential output→input chaining) in `packages/orbiter-core/src/orbiter/_internal/agent_group.py`. Both integrate as nodes in Swarm workflow via `is_group` marker attribute. Swarm's `_run_workflow()` updated to detect groups and delegate to their `run()` method.
+- Files changed: `packages/orbiter-core/src/orbiter/_internal/agent_group.py` (new, ~236 lines), `packages/orbiter-core/tests/test_agent_group.py` (new, 27 tests in 7 classes), `packages/orbiter-core/src/orbiter/swarm.py` (updated `_run_workflow` for group detection)
+- Key implementation details:
+  - `ParallelGroup` — concurrent execution via `asyncio.TaskGroup`, default join with `\n\n` separator, optional custom `aggregate_fn(list[RunResult]) -> str`, usage/steps summed across all agents
+  - `SerialGroup` — sequential execution with output→input chaining, accumulated usage/steps, final agent's output is the group output
+  - Both have `is_group = True` marker, `name` attribute, `run()` method matching Agent/Swarm interface, and `describe()`/`__repr__()` for introspection
+  - Swarm detects groups via `getattr(agent, "is_group", False)` in `_run_workflow()` — similar duck-typing pattern as Swarm detection in `runner.py`
+  - Groups can be used standalone (without Swarm) or as nodes in Swarm flow DSL
+- **Learnings for future iterations:**
+  - Groups need the same interface as agents from Swarm's perspective: `name` attribute and `run(input, *, messages, provider, max_retries)` method
+  - Duck-typing via `is_group` marker is cleaner than isinstance checks since it avoids circular imports
+  - The existing `GroupHandler` in `handlers.py` has similar parallel/serial logic but operates at the handler layer — `ParallelGroup`/`SerialGroup` are the public-facing API while `GroupHandler` is the internal handler abstraction
+  - 675 tests total across full suite (27 new agent group tests)
+---

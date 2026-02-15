@@ -380,8 +380,8 @@
         "Typecheck passes"
       ],
       "priority": 20,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "ParallelGroup (concurrent via asyncio.TaskGroup, custom aggregation) and SerialGroup (output→input chaining) in agent_group.py. Both integrate as Swarm workflow nodes via is_group marker. 27 new tests (675 total)."
     },
     {
       "id": "US-021",
