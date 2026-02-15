@@ -817,8 +817,8 @@
         "Typecheck passes"
       ],
       "priority": 44,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "MCPClientError, MCPTransport (StrEnum), MCPServerConfig (validated), MCPServerConnection (connect/list_tools/call_tool/cleanup with async context manager, tool caching), MCPClient (multi-server manager with caching/reuse, auto-connect). Three transport backends: stdio, SSE, streamable-http. 45 new tests (1475 total)."
     },
     {
       "id": "US-045",

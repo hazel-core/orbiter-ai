@@ -19,6 +19,8 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
 - pyright ignore comments: put `# pyright: ignore[reportMissingImports]` on the import line itself (not a separate comment line) to avoid ruff I001 import sorting issues
 - Within-package namespace imports also need `# pyright: ignore[reportMissingImports]` — e.g., `context.py` importing `config.py` in the same `orbiter.context` package
 - Ruff RUF023: `__slots__` entries must be sorted alphabetically — run `uv run ruff check --fix` to auto-sort
+- `__slots__` makes instance attributes read-only for `patch.object(instance, "method")` — use `patch.object(ClassName, "method")` instead
+- `@asynccontextmanager` returns single-use CMs — when mocking, use `side_effect=lambda: factory()` not `return_value=cm` for multi-call scenarios
 ---
 
 ## 2026-02-15 - US-001
@@ -652,4 +654,18 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - Agent.memory was already wired as `Any` from US-003 — no additional code changes needed in agent.py. The memory param accepts any MemoryStore or MemoryEventEmitter
   - The `events.py` module imports `EventBus` from orbiter-core (which orbiter-memory depends on) — no additional workspace deps needed
   - 1430 tests total across full suite (25 new integration tests)
+---
+
+## 2026-02-15 - US-044
+- What was implemented: MCP client with multiple transport support (stdio, SSE, streamable-http) and server instance caching/reuse. `MCPClientError` exception, `MCPTransport` (StrEnum: stdio/sse/streamable_http), `MCPServerConfig` (validated config with transport-specific fields), `MCPServerConnection` (live connection with connect/list_tools/call_tool/cleanup, async context manager, tool caching with invalidation), `MCPClient` (high-level multi-server manager with auto-connect, caching/reuse, connect_all/disconnect_all).
+- Files changed:
+  - `packages/orbiter-mcp/src/orbiter/mcp/client.py` (new, ~280 lines — MCPClientError, MCPTransport, MCPServerConfig, MCPServerConnection, MCPClient)
+  - `packages/orbiter-mcp/tests/test_mcp_client.py` (new, 45 tests in 14 classes)
+- Test coverage: MCPTransport (2), MCPServerConfig (9: creation, validation, defaults, custom, repr), MCPServerConnectionInit (2), MCPServerConnectionConnect (4: success, idempotent, failure, validation), MCPServerConnectionListTools (4: list, not-connected, cached, invalidate), MCPServerConnectionCallTool (2: call, not-connected), MCPServerConnectionCleanup (2: cleanup, async-ctx), MCPServerConnectionTransports (3: stdio, sse, streamable-http), MCPClientInit (6: creation, add, multiple, remove, remove-nonexistent, validates), MCPClientConnect (4: single, unknown, cached, connect-all), MCPClientDisconnect (2: single, disconnect-all), MCPClientToolOperations (3: list, call, auto-connect), MCPClientContextManager (2: async-ctx, repr)
+- **Learnings for future iterations:**
+  - `__slots__` makes attributes read-only at instance level — `patch.object(instance, "method")` fails. Use `patch.object(ClassName, "method")` instead to patch at class level
+  - `@asynccontextmanager` functions return single-use context managers — when mocking a method that returns an async context manager and the method is called multiple times, use `side_effect=lambda: factory()` instead of `return_value=single_cm` so each call gets a fresh context manager
+  - MCP SDK `mcp>=1.0` provides `stdio_client`, `sse_client`, `streamablehttp_client` — all return async context managers yielding `(read_stream, write_stream)` or `(read_stream, write_stream, get_session_id)` for streamable-http
+  - `ClientSession` is itself an async context manager — enter it after entering the transport to get initialize → session lifecycle management
+  - 1475 tests total across full suite (45 new MCP client tests)
 ---
