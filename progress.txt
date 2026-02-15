@@ -1039,3 +1039,15 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - 2365 tests total across full suite (33 new CLI tests), excluding sqlite/postgres collection errors
 ---
 
+## 2026-02-15 - US-071
+- What was implemented: Agent discovery and loading module for orbiter-cli. `AgentLoadError` exception. `_parse_front_matter()` for markdown YAML front-matter extraction. Three file-type loaders: `load_python_agent()` (dynamic import via `importlib.util`, expects `create_agent()` factory returning Agent or dict), `load_yaml_agents()` (delegates to `orbiter.loader.load_agents`), `load_markdown_agent()` (front-matter fields: name, model, instructions, temperature, max_tokens, max_steps; body as fallback instructions). `discover_agent_files()` scans directory for `.py`, `.yaml`, `.md` files (sorted, non-recursive). `validate_agent()` checks for `name` and `run` attributes. `scan_directory()` orchestrates: discover → load → validate → merge with duplicate detection.
+- Files changed: `packages/orbiter-cli/src/orbiter_cli/loader.py` (new, ~170 lines), `packages/orbiter-cli/tests/test_cli_loader.py` (new, 45 tests in 9 classes)
+- Test coverage: AgentLoadError (2), _parse_front_matter (7: basic, no front matter, unclosed, empty body, multiline, lowercase keys, no-colon skip), load_markdown_agent (11: basic, name defaults to stem, explicit instructions, model, temperature, max_tokens, max_steps, invalid temp/tokens/steps, no front matter), load_python_agent (6: basic, dict return, no factory, module error, factory error, name attr), load_yaml_agents (3: basic, missing section, missing file), discover_agent_files (5: types, sorted, empty, not-a-dir, skips subdirs), validate_agent (3: valid, missing name, missing run), scan_directory (8: markdown, python, yaml, empty, duplicate, validate off/on, mixed types)
+- **Learnings for future iterations:**
+  - Python agent files use `create_agent()` convention (not `@agent` decorator) — simpler for the Orbiter ecosystem where agents are plain `Agent` instances, not decorated swarm factories like old AWorld
+  - `importlib.util.spec_from_file_location()` + `exec_module()` is the clean pattern for dynamic loading — remember to register/unregister from `sys.modules`
+  - Markdown agent body becomes `instructions` (not `system_prompt`) — Orbiter Agent uses `instructions` parameter
+  - ruff I001 import sorting: `from orbiter.agent import Agent` must come before `from orbiter_cli.loader import ...` (third-party before first-party)
+  - 2410 tests total across full suite (45 new loader tests), excluding sqlite/postgres collection errors
+---
+
