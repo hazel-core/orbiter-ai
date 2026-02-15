@@ -1051,3 +1051,15 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - 2410 tests total across full suite (45 new loader tests), excluding sqlite/postgres collection errors
 ---
 
+## 2026-02-15 - US-072
+- What was implemented: Interactive REPL console for chatting with agents. `StreamEvent` protocol for streaming events. `parse_command()` for slash-command parsing. `format_agents_table()` for Rich table display. `InteractiveConsole` class with: agent registry, current agent selection, command handlers (/help, /exit, /quit, /agents, /switch, /info, /clear), streaming and non-streaming execution modes, async readline via `asyncio.to_thread(sys.stdin.readline)`, Rich-formatted output.
+- Files changed: `packages/orbiter-cli/src/orbiter_cli/console.py` (new, ~130 lines), `packages/orbiter-cli/tests/test_cli_console.py` (new, 39 tests in 7 classes)
+- Test coverage: ParseCommand (7: slash, slash+arg, non-command, empty, whitespace, case-insensitive, multi-word arg), FormatAgentsTable (4: empty, single, multiple, no describe), ConsoleInit (4: requires agents, defaults, streaming without/with stream_fn), ConsoleCommands (7: help, agents, switch success/unknown/empty, info, clear), ConsoleExecution (4: normal, error, streaming, no output attr), ConsoleLoop (11: exit, quit, eof, empty skip, unknown cmd, help+exit, agents+exit, switch+exit, info+exit, clear+exit, user message executes), Properties (2: current agent, agents copy)
+- **Learnings for future iterations:**
+  - SLF001 (private member access) ruff rule is NOT enabled — `# noqa: SLF001` triggers RUF100 (unused noqa). Same for BLE001 and D102.
+  - `RichConsole(file=MagicMock(), no_color=True)` is the pattern for creating a silent Rich console in tests
+  - `patch.object(InteractiveConsole, "_read_input", side_effect=[...])` is the pattern for testing the REPL loop — each list item is one readline return value
+  - `sys.stdin.readline` returns "" on EOF (not None) — check `if not line` for EOF detection
+  - 2449 tests total across full suite (39 new console tests), excluding sqlite/postgres collection errors
+---
+
