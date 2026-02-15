@@ -956,3 +956,21 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - 2156 tests total across full suite (41 new ralph config tests), excluding sqlite/postgres collection errors
 ---
 
+## 2026-02-15 - US-065
+- What was implemented: Ralph loop stop detectors — `StopDetector` ABC, `StopDecision` frozen dataclass, five built-in detectors (`MaxIterationDetector`, `TimeoutDetector`, `CostLimitDetector`, `ConsecutiveFailureDetector`, `ScoreThresholdDetector`), and `CompositeDetector` for aggregating multiple detectors with first-match-wins semantics.
+- Files changed: `packages/orbiter-eval/src/orbiter/eval/ralph/detectors.py` (new, ~100 lines of core logic), `packages/orbiter-eval/tests/test_ralph_detectors.py` (new, 41 tests in 8 classes)
+- Key implementation details:
+  - `StopDecision` is a frozen dataclass with `__bool__` returning `should_stop` — enables `if decision:` pattern
+  - Shared `_CONTINUE` singleton for the common no-stop case (avoids allocating new StopDecision per check)
+  - Each detector takes `(state: LoopState, config: StopConditionConfig)` — reads thresholds from config, current values from state
+  - Disabled detectors: `timeout=0.0`, `max_cost=0.0`, `score_threshold=0.0`, `max_consecutive_failures=0` all return `_CONTINUE` immediately
+  - `ScoreThresholdDetector` uses mean of all scorer values in the latest score snapshot for threshold comparison
+  - `CompositeDetector` supports `add()` chaining, `__len__`, `__repr__`, and is itself a `StopDetector` subclass
+- Test coverage: StopDecision (4: falsy, truthy, metadata, frozen), ABC (2: cannot instantiate, concrete subclass), MaxIteration (4: below/at/above limit, metadata), Timeout (4: disabled, within, exceeded, metadata), CostLimit (5: disabled, below/at/above, metadata), ConsecutiveFailure (5: disabled, below/at/above threshold, metadata), ScoreThreshold (9: disabled, no scores, below/at/above, multi-scorer mean, below mean, uses latest only, metadata), Composite (8: empty, first match, second triggers, none triggers, add chaining, len, repr, all-five integration)
+- **Learnings for future iterations:**
+  - Ralph subpackage `ralph/` is already set up under `orbiter-eval` — just add new `.py` files, no package registration needed
+  - `StopDetector.check()` is async for consistency with the old AWorld `should_stop()` pattern and to allow future detectors that need I/O (e.g., user interrupt via file check)
+  - Shared `_CONTINUE` singleton is safe because `StopDecision` is frozen — no mutation risk
+  - 2197 tests total across full suite (41 new detector tests), excluding sqlite/postgres collection errors
+---
+
