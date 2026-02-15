@@ -212,3 +212,13 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - Unused imports (ruff F401) must be removed even from type-only usage — `RunNode` was imported but only `RunNodeStatus` and `RunState` were needed
   - 547 tests total across full suite (28 new background handler tests)
 ---
+
+## 2026-02-15 - US-015
+- What was implemented: Runner integration tests covering end-to-end Agent + @tool + run() flows, handler pipelines (workflow, handoff, team), ToolHandler/GroupHandler integration, and background task scenarios (hot-merge, wake-up-merge, error handling, callbacks). Updated `packages/orbiter-core/src/orbiter/__init__.py` with public API exports (Agent, run, tool, Tool, FunctionTool).
+- Files changed: `packages/orbiter-core/src/orbiter/__init__.py` (added imports + __all__), `packages/orbiter-core/tests/test_runner_integration.py` (22 new tests in 8 test classes)
+- **Learnings for future iterations:**
+  - `run.sync()` uses `asyncio.run()` which can't be called from within an async test function (already has a running event loop) — make sync tests use `def test_...` (not `async def`)
+  - Ruff N817 flags `import X as A` when `A` is a CamelCase name used as an acronym — use longer aliases like `AgentImport` instead of `A`
+  - The `__init__.py` for orbiter-core already uses `pkgutil.extend_path()` for namespace packages — imports of `Agent`, `run`, `tool`, `Tool` go after that line
+  - 569 tests total across full suite (22 new integration tests)
+---

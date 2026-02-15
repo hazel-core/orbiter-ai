@@ -288,8 +288,8 @@
         "Typecheck passes"
       ],
       "priority": 15,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "22 integration tests: 6 end-to-end (Agent+@tool+run), 4 public API imports, 3 handler pipeline, 2 ToolHandler, 2 GroupHandler, 5 background task scenarios. Updated __init__.py with Agent, run, tool, Tool, FunctionTool exports. 569 total tests."
     },
     {
       "id": "US-016",
