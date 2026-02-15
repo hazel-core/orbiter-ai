@@ -439,3 +439,15 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - ToolResultOffloader mutates the `payload` dict in-place to replace tool results — this is by design since the caller needs to see the modified payload
   - 973 tests total across full suite (39 new processor tests)
 ---
+
+## 2026-02-15 - US-030
+- What was implemented: Workspace + artifact system — persistent artifact storage with versioning and observer notifications. `WorkspaceError`, `ArtifactType` (StrEnum: TEXT, CODE, MARKDOWN, JSON, CSV, IMAGE), `ArtifactVersion` (immutable snapshot with content + timestamp), `Artifact` (named artifact with type, content, version history), `ObserverCallback` type alias, `Workspace` (workspace_id, storage_path, write/read/get/list/delete, version_history/revert_to_version, observer on/notify, filesystem persistence).
+- Files changed: `packages/orbiter-context/src/orbiter/context/workspace.py` (new, ~210 lines), `packages/orbiter-context/tests/test_workspace.py` (new, 40 tests in 8 classes)
+- Test coverage: ArtifactType (2: values, StrEnum), ArtifactVersion (3: creation, auto-timestamp, repr), Artifact (4: creation, default type, add version, repr), Workspace init (4: creation, empty id, storage path, repr), CRUD (10: write/read, read missing, get, get missing, empty name, list all, list by type, delete, delete missing, overwrite), Versioning (6: history, missing history, revert, revert missing, invalid version, negative version), Observers (6: on_create, on_update, on_delete, multiple, chaining, no observer), Filesystem (5: write persists, delete removes, overwrite updates, no storage path, revert persists)
+- **Learnings for future iterations:**
+  - `shutil.rmtree()` is the clean way to recursively delete artifact directories on delete
+  - Observer pattern uses `dict[str, list[ObserverCallback]]` — simple and extensible for custom event names beyond on_create/on_update/on_delete
+  - `Workspace.on()` returns `self` for chaining — consistent with ProcessorPipeline.register() pattern
+  - Artifact versioning uses append-only `_versions` list — revert creates a NEW version with old content rather than truncating history
+  - 1013 tests total across full suite (40 new workspace tests)
+---
