@@ -125,9 +125,15 @@ class Workspace:
         Root directory for artifact files.  Created on first write if needed.
     """
 
-    __slots__ = ("_artifacts", "_observers", "_storage_path", "_workspace_id")
+    __slots__ = ("_artifacts", "_knowledge_store", "_observers", "_storage_path", "_workspace_id")
 
-    def __init__(self, workspace_id: str, *, storage_path: str | Path | None = None) -> None:
+    def __init__(
+        self,
+        workspace_id: str,
+        *,
+        storage_path: str | Path | None = None,
+        knowledge_store: Any | None = None,
+    ) -> None:
         if not workspace_id:
             msg = "workspace_id is required and must be non-empty"
             raise WorkspaceError(msg)
@@ -135,6 +141,7 @@ class Workspace:
         self._storage_path = Path(storage_path) if storage_path else None
         self._artifacts: dict[str, Artifact] = {}
         self._observers: dict[str, list[ObserverCallback]] = {}
+        self._knowledge_store = knowledge_store
 
     # ── Properties ────────────────────────────────────────────────────
 
@@ -145,6 +152,11 @@ class Workspace:
     @property
     def storage_path(self) -> Path | None:
         return self._storage_path
+
+    @property
+    def knowledge_store(self) -> Any | None:
+        """Attached :class:`KnowledgeStore` for auto-indexing, or ``None``."""
+        return self._knowledge_store
 
     # ── Observer management ───────────────────────────────────────────
 
@@ -183,12 +195,14 @@ class Workspace:
         if existing is not None:
             existing._add_version(content)
             self._persist(existing)
+            self._index_artifact(existing)
             await self._notify("on_update", existing)
             return existing
 
         artifact = Artifact(name, content, artifact_type)
         self._artifacts[name] = artifact
         self._persist(artifact)
+        self._index_artifact(artifact)
         await self._notify("on_create", artifact)
         return artifact
 
@@ -214,6 +228,7 @@ class Workspace:
         if artifact is None:
             return False
         self._remove_persisted(artifact)
+        self._deindex_artifact(artifact)
         await self._notify("on_delete", artifact)
         return True
 
@@ -241,6 +256,18 @@ class Workspace:
         artifact._add_version(old_content)
         self._persist(artifact)
         return artifact
+
+    # ── Knowledge store integration ────────────────────────────────
+
+    def _index_artifact(self, artifact: Artifact) -> None:
+        """Auto-index artifact content in the knowledge store if attached."""
+        if self._knowledge_store is not None:
+            self._knowledge_store.add(artifact.name, artifact.content)
+
+    def _deindex_artifact(self, artifact: Artifact) -> None:
+        """Remove artifact from the knowledge store index if attached."""
+        if self._knowledge_store is not None:
+            self._knowledge_store.remove(artifact.name)
 
     # ── Filesystem persistence ───────────────────────────────────────
 
