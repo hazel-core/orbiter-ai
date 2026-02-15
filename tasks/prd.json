@@ -835,8 +835,8 @@
         "Typecheck passes"
       ],
       "priority": 45,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "MCPToolError, MCPToolFilter (include/exclude), namespace_tool_name/parse_namespaced_name, extract_schema, MCPToolWrapper (Tool subclass with call_fn delegation), convert_mcp_tools, load_tools_from_connection, load_tools_from_client. 44 new tests (1519 total)."
     },
     {
       "id": "US-046",

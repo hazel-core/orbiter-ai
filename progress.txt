@@ -669,3 +669,17 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - `ClientSession` is itself an async context manager — enter it after entering the transport to get initialize → session lifecycle management
   - 1475 tests total across full suite (45 new MCP client tests)
 ---
+
+## 2026-02-15 - US-045
+- What was implemented: MCP tool schema extraction, conversion to Orbiter Tool format, namespace mapping, and filtering. `MCPToolError` exception. `MCPToolFilter` with include/exclude whitelist/blacklist (exclude takes priority). `namespace_tool_name()` creates `{ns}__{server}__{tool}` names with special char sanitization. `parse_namespaced_name()` for reverse parsing. `extract_schema()` extracts JSON Schema from MCPTool inputSchema. `MCPToolWrapper` (Tool subclass) wraps MCP tools for Orbiter agent use — delegates `execute()` to a `call_fn(tool_name, arguments)` async callable, handles error results and multi-content responses. `convert_mcp_tools()` batch conversion with optional filtering. `load_tools_from_connection()` and `load_tools_from_client()` high-level loaders.
+- Files changed:
+  - `packages/orbiter-mcp/src/orbiter/mcp/tools.py` (new, ~240 lines — MCPToolError, MCPToolFilter, namespace functions, extract_schema, MCPToolWrapper, convert/load functions)
+  - `packages/orbiter-mcp/tests/test_mcp_tools.py` (new, 44 tests in 10 classes)
+- Test coverage: MCPToolFilterInit (5: defaults, include-only, exclude-only, exclude-priority, repr), MCPToolFilterApply (3: empty, include, exclude), NamespaceToolName (4: basic, custom-ns, sanitize-special, preserve-underscores), ParseNamespacedName (5: basic, roundtrip, nested-underscores, invalid-format, invalid-one-separator), ExtractSchema (3: basic, empty, returns-copy), MCPToolWrapperInit (5: creation, custom-ns, default-desc, schema-extraction, to_schema), MCPToolWrapperExecute (5: success, empty-args, error-result, call-fn-exception, multi-content), ConvertMCPTools (5: basic, with-filter, custom-ns, empty, all-filtered), LoadFromConnection (5: basic, filter, error, custom-ns, execution-wired), LoadFromClient (4: single, multiple, filter, empty)
+- **Learnings for future iterations:**
+  - `CallToolResult.content` is a union of `TextContent | ImageContent | AudioContent | ResourceLink | EmbeddedResource` — pyright errors on `hasattr(item, "text")` since some union members lack `.text`. Use `getattr(item, "text", None)` instead
+  - `MCPToolWrapper.execute()` passes `kwargs or None` to the call_fn — when kwargs is empty `{}`, MCP `call_tool` expects `None` (not `{}`) for no-argument tools
+  - `MCPToolFilter` uses sets internally for O(1) lookup — simple and fast for typical tool counts
+  - Namespace format `mcp__server__tool` uses double underscore as separator with `split("__", 2)` to handle tool names that may contain `__`
+  - 1519 tests total across full suite (44 new MCP tools tests)
+---
