@@ -800,8 +800,8 @@
         "Typecheck passes"
       ],
       "priority": 43,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Updated __init__.py with 28 public exports (base types, short-term, long-term, summary, events). Created MemoryEventEmitter wrapping MemoryStore + EventBus for async memory:added/searched/cleared events. 25 integration tests (public API imports, event emitter CRUD, Agent wiring, E2E pipelines). 1430 total tests."
     },
     {
       "id": "US-044",

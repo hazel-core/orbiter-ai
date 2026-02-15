@@ -638,3 +638,18 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - VectorMemoryStore is in-memory only — production use would integrate with chromadb (already in optional deps as `orbiter-memory[vector]`). The in-memory implementation serves as the base pattern and test interface
   - 1405 tests total across full suite (35 new vector store tests)
 ---
+
+## 2026-02-15 - US-043
+- What was implemented: Memory package public API (`__init__.py` with 28 exports and `__all__`) and `MemoryEventEmitter` for event-driven memory integration. Updated `__init__.py` to export all memory types, stores, summary utilities, and event constants. Created `events.py` with `MemoryEventEmitter` wrapping any MemoryStore + EventBus to emit `memory:added`, `memory:searched`, `memory:cleared` events on operations. Agent already accepts `memory` param from US-003 — integration tests verify wiring.
+- Files changed:
+  - `packages/orbiter-memory/src/orbiter/memory/__init__.py` (rewritten — 28 public exports: base types, short-term, long-term, summary, events)
+  - `packages/orbiter-memory/src/orbiter/memory/events.py` (new, ~85 lines — MEMORY_ADDED/SEARCHED/CLEARED constants, MemoryEventEmitter)
+  - `packages/orbiter-memory/tests/test_memory_integration.py` (new, 25 tests in 10 classes)
+- Test coverage: PublicAPIImports (6: base types, subtypes, short-term, long-term, summary, events), EventEmitterInit (3: defaults, custom bus, repr), EventEmitterAdd (2: emits event, persists to store), EventEmitterGet (2: delegates, missing), EventEmitterSearch (2: emits event, filters), EventEmitterClear (2: emits event, metadata filter), AgentMemoryWiring (3: store, emitter, default none), EndToEnd (5: short→summary pipeline, short→long extraction, event-driven pipeline, protocol conformance, multi-handler)
+- **Learnings for future iterations:**
+  - RUF022 requires `__all__` to be sorted alphabetically (isort-style) — ruff `--unsafe-fixes` auto-sorts but moves comment groups around. Best to just sort alphabetically from the start and skip grouping comments.
+  - `MemoryEventEmitter` follows a decorator/wrapper pattern rather than subclassing MemoryStore — this avoids Protocol subclassing issues while still satisfying the protocol interface duck-typing
+  - Agent.memory was already wired as `Any` from US-003 — no additional code changes needed in agent.py. The memory param accepts any MemoryStore or MemoryEventEmitter
+  - The `events.py` module imports `EventBus` from orbiter-core (which orbiter-memory depends on) — no additional workspace deps needed
+  - 1430 tests total across full suite (25 new integration tests)
+---
