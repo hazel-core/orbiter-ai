@@ -1259,3 +1259,16 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - `orbiter.mcp.client.MCPClient` + `orbiter.mcp.tools.load_tools_from_client()` is the high-level MCP integration path
   - All 2848 tests pass (no new tests — examples are not unit-tested)
 ---
+
+## 2026-02-16 - US-087
+- What was implemented: Three swarm examples showing multi-agent orchestration patterns:
+  - `examples/quickstart/workflow.py` — sequential pipeline using `Swarm(mode="workflow")` with flow DSL (`"researcher >> drafter >> reviewer"`)
+  - `examples/quickstart/handoff.py` — dynamic agent delegation using `Swarm(mode="handoff")` with a triage agent and specialist agents
+  - `examples/quickstart/hybrid_swarm.py` — advanced patterns combining `ParallelGroup`, `SerialGroup`, and `SwarmNode` for nested swarm composition
+- Files changed: `examples/quickstart/workflow.py`, `examples/quickstart/handoff.py`, `examples/quickstart/hybrid_swarm.py`
+- **Learnings for future iterations:**
+  - `Swarm`, `ParallelGroup`, `SerialGroup`, and `SwarmNode` are all exported from `orbiter.__init__` — import directly from `orbiter`
+  - Handoff mode requires agent's output to exactly match a handoff target name — the triage agent instructions must tell it to respond with the exact agent name
+  - `SwarmNode` wraps a `Swarm` to act as a node in another swarm's flow DSL — enables nested multi-level orchestration
+  - orbiter-memory tests have a pre-existing collection error (missing `asyncpg` module) — not related to examples, 791 core/models tests all pass
+---
