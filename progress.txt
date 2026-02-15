@@ -1387,3 +1387,13 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - Benchmark file pattern: consistent structure across all benchmark examples (tools → prompt → dataset loading → scoring → runner → CLI)
   - 2848 tests pass, excluding sqlite/postgres collection errors (pre-existing)
 ---
+
+## 2026-02-16 - US-098
+- What was implemented: XBench cross-domain benchmark runner with multi-category evaluation (coding, math, web, knowledge, general). Tools: web_search, python_exec, read_file, write_file. Per-category accuracy breakdown in results. Dataset loading supports both JSON and JSONL formats with category filtering.
+- Files changed: `examples/benchmarks/xbench/__init__.py` (new), `examples/benchmarks/xbench/run.py` (new, ~150 lines)
+- **Learnings for future iterations:**
+  - XBench adds per-category breakdown via `_update_category_stats()` — differentiates it from GAIA (flat accuracy) and OSWorld (completion rate)
+  - Benchmark runner pattern is well established: ~150 lines, dataclass for tasks, JSON/JSONL loader, scoring, async runner, CLI with argparse
+  - `frozenset` for valid category names enables `--category` argparse choices validation
+  - 2848 tests pass, excluding sqlite/postgres collection errors (pre-existing)
+---
