@@ -1174,3 +1174,21 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - TrajectoryStrategy ABC is intentionally minimal (build_item + validate) — more complex strategies (filtered, memory-based) can be added in future without changing the interface
   - 2687 tests total across full suite (38 new trajectory tests), excluding sqlite/postgres collection errors
 ---
+
+## 2026-02-16 - US-081
+- What was implemented: Base Trainer ABC with multi-phase lifecycle for agent fine-tuning
+- Files changed: `packages/orbiter-train/src/orbiter/train/trainer.py` (171 lines), `packages/orbiter-train/tests/test_trainer.py` (24 tests)
+- Key implementation details:
+  - `Trainer` ABC with 4 abstract validation methods: check_agent, check_dataset, check_reward, check_config
+  - State machine: CREATED → VALIDATED → TRAINING → COMPLETED/FAILED (TrainerState StrEnum)
+  - `mark_validated()` transitions state; `_require_validated()` guard prevents premature training
+  - `train()` and `evaluate()` are async abstract methods returning `TrainMetrics`
+  - `TrainConfig` dataclass: epochs, batch_size, learning_rate, output_dir, extra dict
+  - `TrainMetrics` dataclass: loss, accuracy, steps, extra dict
+  - `TrainerError` exception class for all training-specific failures
+- **Learnings for future iterations:**
+  - Trainer follows the same pattern as old AWorld's TrainerProcessor but modernised: StrEnum states, async methods, dataclass configs
+  - Agent/dataset params typed as `Any` since orbiter-core types aren't available at orbiter-train level
+  - `__slots__` on ABC works fine — subclasses add their own slots or use `__dict__` as needed
+  - 2711 tests total across full suite (24 new trainer tests)
+---
