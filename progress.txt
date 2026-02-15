@@ -608,3 +608,19 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - ruff S608 (SQL injection) is not enabled in this project — no need for `# noqa: S608` comments
   - 1337 tests total across full suite (34 new SQLite backend tests)
 ---
+
+## 2026-02-15 - US-041
+- What was implemented: PostgresMemoryStore — asyncpg-backed persistent memory store implementing the MemoryStore protocol. Uses `asyncpg.create_pool()` for connection pooling, JSONB columns for metadata (with expression indexes), soft deletes, upsert with version bumping via `ON CONFLICT`, `$N` positional parameter binding, ILIKE for case-insensitive text search, and full MemoryItem subtype reconstruction on read.
+- Files changed:
+  - `packages/orbiter-memory/src/orbiter/memory/backends/postgres.py` (new, ~230 lines — PostgresMemoryStore, _parse_rowcount, _extra_fields, _row_to_item, SQL schema with JSONB indexes)
+  - `packages/orbiter-memory/tests/test_postgres.py` (new, 39 tests — 33 unit + 6 integration)
+- Test coverage: ProtocolConformance (1), Lifecycle (5: init/close, double init, context manager, pre-init RuntimeError, repr), AddGet (2: add+get, get nonexistent), Search (6: all, query/ILIKE, memory_type, status, metadata/JSONB, limit), Clear (2: all, with metadata filter), Count (3: empty, active, includes deleted), Helpers (7: _parse_rowcount x4, _extra_fields x3), RowToItem (7: human, system, ai+tool_calls, tool, unknown type, metadata from dict, metadata from JSON string), Integration (6: skipped — add+get, search, clear+count, upsert, metadata search, subtype reconstruction)
+- **Learnings for future iterations:**
+  - asyncpg `Pool.acquire()` returns a synchronous context manager (not a coroutine) — mock it with `MagicMock()` (not `AsyncMock()`) for `acquire`, but use `AsyncMock` for `__aenter__`/`__aexit__`
+  - asyncpg uses `$N` positional parameters (not `?` like SQLite) — build parameter index counter (`idx`) when constructing dynamic WHERE clauses
+  - asyncpg `conn.execute()` for UPDATE returns a status string like `"UPDATE 3"` — parse with `_parse_rowcount()` to get affected row count
+  - asyncpg JSONB columns return Python dicts directly (not JSON strings) — `_row_to_item` handles both `str` and `dict` for metadata/extra_json via `isinstance` check
+  - PostgreSQL uses `ILIKE` for case-insensitive LIKE (vs SQLite's case-insensitive `LIKE` by default)
+  - `_mock_pool()` returns `(pool, conn)` tuple — pool uses `MagicMock` (sync `.acquire()`), conn uses `AsyncMock` (async `.execute()`, `.fetchrow()`, etc.)
+  - 1370 tests total across full suite (33 new unit tests, 6 skipped integration tests)
+---
