@@ -759,3 +759,18 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - `__slots__` entries must be sorted alphabetically (ruff RUF023 enforced) — pre-sorted to avoid fix cycle
   - 1623 tests pass (27 new), excluding sqlite/postgres collection errors
 ---
+
+## 2026-02-15 - US-051
+- What was implemented: Built-in sandbox tools — `FilesystemTool` (sandboxed filesystem access with allowed-directory restrictions) and `TerminalTool` (command execution with dangerous command blacklist, platform detection, and timeout).
+- Files changed: `packages/orbiter-sandbox/src/orbiter/sandbox/tools.py` (new, ~130 lines), `packages/orbiter-sandbox/tests/test_sandbox_tools.py` (new, 31 tests in 11 classes)
+- Key implementation details:
+  - `FilesystemTool` — read/write/list actions with `_validate_path()` checking `Path.resolve().relative_to()` against allowed directories. Path traversal (`..`) blocked by resolving before validation. Write auto-creates parent directories. List returns sorted entries with name/type.
+  - `TerminalTool` — `_check_command()` extracts base executable (strips path prefix via `rsplit`), case-insensitive match against blacklist. Execution via `asyncio.create_subprocess_shell` with `asyncio.wait_for` timeout. Returns exit_code, stdout, stderr, platform.
+  - `_DANGEROUS_COMMANDS` frozenset: rm, rmdir, mkfs, dd, shutdown, reboot, halt, poweroff, kill, killall, pkill, format, del, erase, rd
+  - Both tools follow the `Tool` ABC pattern with manually defined JSON schemas (same as `HumanInputTool` and `_DelegateTool`)
+- **Learnings for future iterations:**
+  - orbiter-sandbox depends on orbiter-core, so `Tool` and `ToolError` can be imported directly (with pyright ignore for namespace package resolution)
+  - B904 ruff rule: all `raise` in `except` blocks need `from exc` or `from None` — even for `FileNotFoundError` / `NotADirectoryError` re-wrapping
+  - Unused variable detection (F841) — be careful with placeholder variables like `shell = True`
+  - 1654 tests total across full suite (31 new sandbox tool tests), excluding sqlite/postgres collection errors
+---
