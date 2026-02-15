@@ -27,6 +27,7 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
 - OTel metrics instruments created at module level bind to the no-op provider — use `metrics.get_meter().create_*()` inside recording functions so instruments always use the current MeterProvider
 - OTel SDK may not ship `InMemorySpanExporter` — create a simple `_MemoryExporter(SpanExporter)` subclass that collects spans in a list
 - SLF001 (private member access) ruff rule is NOT enabled — `# noqa: SLF001` is unnecessary and triggers RUF100
+- Ruff B039: `ContextVar` default cannot be mutable (e.g., `default={}`) — use `default=None` with `T | None` type and handle None in accessor functions
 ---
 
 ## 2026-02-15 - US-001
@@ -870,3 +871,16 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - `register_span_consumer` supports both direct instance registration and bare `@register_span_consumer` decorator on classes (class is instantiated with no args)
   - 1884 tests total across full suite (52 new propagation tests), excluding sqlite/postgres collection errors
 ---
+## 2026-02-15 - US-058
+- What was implemented: Structured LLM execution logger with token breakdown by role, context window usage analysis, and multi-modal content support. `estimate_tokens()` (chars/ratio heuristic), `TokenBreakdown` (frozen dataclass: system/user/assistant/tool/other with total property and percentages method), `compute_token_breakdown()` (handles plain strings, multi-modal content lists with text/image_url/tool_use items, tool_calls in assistant messages), `_content_tokens()` and `_tool_calls_tokens()` helpers. `ExecutionLogEntry` (mutable dataclass with format_summary() producing human-readable multi-line output with k-based token display and percentage breakdown). `PromptLogger` class with configurable logger and ratio, `log_execution()` method that computes breakdown, creates entry, logs structured output, and returns the entry.
+- Files changed: `packages/orbiter-trace/src/orbiter/trace/prompt_logger.py` (new, ~130 lines), `packages/orbiter-trace/tests/test_trace_prompt_logger.py` (new, 35 tests in 7 classes)
+- Test coverage: estimate_tokens (4: empty, short, long, custom ratio), TokenBreakdown (5: defaults, total, percentages, zero window, frozen), compute_token_breakdown (8: empty, system, multiple roles, tool, unknown role, tool_calls, None content, custom ratio), MultiModal (4: text item, image_url, tool_use, mixed), ExecutionLogEntry (4: defaults, with context window, without context window, no tools), PromptLogger (7: init default, custom, returns entry, emits log, custom level, with tools, empty), Integration (3: full flow, multimodal, percentages sum)
+- **Learnings for future iterations:**
+  - No new packages or dependencies needed — prompt_logger.py only imports stdlib (logging, dataclasses, collections.abc, typing)
+  - The old AWorld `PromptLogger` was tightly coupled to `BaseAgent`, `ApplicationContext`, and `ModelUtils` — the Orbiter version is decoupled, accepting plain message dicts and returning structured data
+  - `dataclass(frozen=True, slots=True)` for `TokenBreakdown` is the right pattern for immutable value objects — consistent with `TokenStep`, `Checkpoint`
+  - Multi-modal content detection uses `isinstance(content, list)` and dispatches on `item.get("type")` — handles text, image_url, and tool_use content items
+  - Image tokens use a fixed estimate (85) since base64 payload sizes vary wildly — matching industry practice for vision token estimation
+  - 1919 tests total across full suite (35 new prompt logger tests), excluding sqlite/postgres collection errors
+---
+
