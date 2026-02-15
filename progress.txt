@@ -624,3 +624,17 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - `_mock_pool()` returns `(pool, conn)` tuple — pool uses `MagicMock` (sync `.acquire()`), conn uses `AsyncMock` (async `.execute()`, `.fetchrow()`, etc.)
   - 1370 tests total across full suite (33 new unit tests, 6 skipped integration tests)
 ---
+
+## 2026-02-15 - US-042
+- What was implemented: Embeddings ABC + VectorMemoryStore for semantic memory retrieval. `Embeddings` ABC with `embed()` (sync), `aembed()` (async), and `dimension` property. `OpenAIEmbeddings` (OpenAI-compatible provider with lazy import, dimension support, `asyncio.to_thread()` for async). `_cosine_similarity()` for vector comparison. `VectorMemoryStore` implementing MemoryStore protocol with in-memory vector storage, cosine similarity ranking, and post-filtering by metadata/memory_type/status.
+- Files changed:
+  - `packages/orbiter-memory/src/orbiter/memory/backends/vector.py` (new, ~195 lines — Embeddings ABC, OpenAIEmbeddings, VectorMemoryStore, _cosine_similarity, _matches_metadata)
+  - `packages/orbiter-memory/tests/test_vector.py` (new, 35 tests in 9 classes)
+- Test coverage: EmbeddingsABC (5: instantiation, implements, sync/async, empty text), OpenAIEmbeddings (2: subclass, dimension), CosineSimilarity (5: identical, opposite, orthogonal, zero, known value), VectorProtocol (1: isinstance MemoryStore), VectorLifecycle (2: init, repr), VectorAddGet (5: add+get, nonexistent, computes embedding, multiple, upsert), VectorSearch (8: semantic ranking, no-query newest, limit, empty, memory_type, status, metadata, combined filters), VectorClear (4: all, metadata, removes vectors, empty), EmbeddingCalls (3: add calls embed, search calls for query, no query no embed)
+- **Learnings for future iterations:**
+  - `zip()` requires `strict=` parameter — ruff B905 enforces this. Use `strict=False` for embedding cosine similarity where vectors should be same length but we don't want to crash on mismatch
+  - ruff SIM103 requires inlining final `if X: return False; return True` as `return not X` — cleaner for metadata matching
+  - MockEmbeddings pattern for tests: deterministic vectors from char-code hashing, plus FixedEmbeddings with pre-set lookup table for precise similarity testing
+  - VectorMemoryStore is in-memory only — production use would integrate with chromadb (already in optional deps as `orbiter-memory[vector]`). The in-memory implementation serves as the base pattern and test interface
+  - 1405 tests total across full suite (35 new vector store tests)
+---

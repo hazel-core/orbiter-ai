@@ -784,8 +784,8 @@
         "Typecheck passes"
       ],
       "priority": 42,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Embeddings ABC (sync embed + async aembed + dimension property), OpenAIEmbeddings (lazy openai import, dimension support, asyncio.to_thread for async), VectorMemoryStore (in-memory cosine similarity search, post-filter by metadata/type/status, semantic ranking). 35 new tests (1405 total)."
     },
     {
       "id": "US-043",
