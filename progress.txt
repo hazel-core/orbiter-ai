@@ -1075,3 +1075,19 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - 2477 tests total across full suite (28 new executor tests), excluding sqlite/postgres collection errors
 ---
 
+## 2026-02-15 - US-074
+- What was implemented: Plugin system for extending Orbiter CLI functionality. `PluginManager` discovers/loads plugins from entry points (`orbiter.plugins` group) and directories, manages lifecycle hooks (startup, shutdown, pre_run, post_run). `PluginSpec` describes a plugin with name, version, description, and async hook functions. `PluginHook` StrEnum defines the 4 lifecycle hook points.
+- Files changed: `packages/orbiter-cli/src/orbiter_cli/plugins.py` (new, ~270 lines), `packages/orbiter-cli/tests/test_cli_plugins.py` (new, 37 tests)
+- Key implementation details:
+  - `PluginManager.load_entrypoints()` discovers via `importlib.metadata.entry_points()` with `.select(group=...)` for Python 3.12+ compat
+  - `PluginManager.load_directory()` scans `.py` files (skipping `_`-prefixed), imports them, and extracts `plugin` attribute
+  - `_load_plugin_file()` helper uses `importlib.util.spec_from_file_location` (same pattern as loader.py's `load_python_agent`)
+  - Duplicate plugin names rejected with `PluginError`
+  - Hook execution is sequential in registration order, errors propagate immediately
+- **Learnings for future iterations:**
+  - `StrEnum` for `PluginHook` (not `str, Enum`) — ruff UP042 enforces this
+  - Entry point callable factory pattern: `obj() if callable(obj) and not isinstance(obj, PluginSpec) else obj` handles both direct PluginSpec and factory functions
+  - `importlib.metadata.entry_points().select(group=...)` is the modern API; older Python used dict-like `.get(group, [])`
+  - 2514 tests total across full suite (37 new plugin tests), excluding sqlite/postgres collection errors
+---
+
