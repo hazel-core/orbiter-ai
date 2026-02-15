@@ -1297,3 +1297,13 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - `Swarm(mode="team")` auto-generates `delegate_to_{name}` tools for worker agents — the lead agent just needs appropriate instructions
   - 145 lines total across 4 files, all passing ruff/pyright/pytest (2848 tests)
 ---
+
+## 2026-02-16 - US-090
+- What was implemented: Config-driven + CLI examples — `agents.yaml` (YAML agent/swarm config with variable substitution), `config_driven.py` (programmatic YAML loading via `load_agents`/`load_swarm`), `cli_usage.py` (CLI reference with `subprocess` help invocation)
+- Files changed: `examples/quickstart/agents.yaml`, `examples/quickstart/config_driven.py`, `examples/quickstart/cli_usage.py`
+- **Learnings for future iterations:**
+  - `Swarm.agents` is a `dict[str, Any]` (name→agent), NOT a list — iterating gives keys (strings), use `.keys()` or `.values()` accordingly
+  - `orbiter.loader` exports `load_agents()`, `load_swarm()`, `load_yaml()` — not re-exported from `orbiter.__init__`
+  - CLI entry point is `orbiter_cli.main:app` (typer), installed as `orbiter` console script
+  - 116 lines total across 3 files, all passing ruff/pyright/pytest (2848 tests)
+---
