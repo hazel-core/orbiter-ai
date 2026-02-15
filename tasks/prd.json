@@ -697,8 +697,8 @@
         "Typecheck passes"
       ],
       "priority": 37,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "ShortTermMemory implementing MemoryStore with scope-based filtering (user/session/task), configurable windowing (max_rounds), and tool call/response integrity filtering. 32 new tests (1223 total)."
     },
     {
       "id": "US-038",

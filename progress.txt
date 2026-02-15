@@ -544,3 +544,20 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - Status transitions use an explicit transition map dict rather than methods per status — cleaner and more maintainable
   - 1191 tests total across full suite (38 new memory tests)
 ---
+
+## 2026-02-15 - US-037
+- What was implemented: ShortTermMemory — in-memory conversation store implementing MemoryStore protocol with scope-based filtering, configurable windowing, and tool call/response integrity filtering.
+- Files changed: `packages/orbiter-memory/src/orbiter/memory/short_term.py` (new, ~130 lines), `packages/orbiter-memory/tests/test_short_term.py` (new, 32 tests in 8 classes)
+- Key implementation details:
+  - `ShortTermMemory(scope, max_rounds)` — scope: "user"|"session"|"task" (default "task"), max_rounds: 0 = unlimited
+  - `_matches_metadata()` — scope-aware metadata matching: user scope ignores session/task, session scope ignores task, task scope checks all
+  - `_window()` — finds human message positions, cuts at Nth-from-last, always preserves system messages before the cut
+  - `_filter_incomplete_pairs()` — walks backwards removing trailing AI messages with unmatched tool_calls and orphan ToolMemory without matching AI call
+  - All MemoryStore protocol methods implemented: add, get, search, clear
+- Test coverage: init (5), add/get (3), basic search (5), scope filtering (4), windowing (4), tool call integrity (5), clear (3), integration (3)
+- **Learnings for future iterations:**
+  - Test helper functions with `**kw: str` conflict with other keyword args (e.g., `tool_calls: list`) when called with `**dict` — pyright treats the dict as potentially containing any string key. Fix: use explicit `meta` parameter instead of `**kw` pattern
+  - Windowing by counting rounds from the end: use forward scan to find human message positions, then slice at `positions[-max_rounds]` — much simpler than backward counting which gets the boundary wrong
+  - `_filter_incomplete_pairs` walks backwards in a `while` loop, popping trailing items that violate integrity — this handles both dangling AI tool calls and orphan tool results
+  - 1223 tests total across full suite (32 new short-term memory tests)
+---
