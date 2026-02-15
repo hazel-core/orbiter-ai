@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from typing import Any
 
 import pytest
@@ -355,7 +356,7 @@ class TestTracedGenerator:
 class TestTracedAsyncGenerator:
     async def test_async_generator(self, exporter: _MemoryExporter) -> None:
         @traced()
-        async def async_gen(n: int) -> Any:
+        async def async_gen(n: int) -> AsyncIterator[int]:
             for i in range(n):
                 yield i
 
@@ -367,7 +368,7 @@ class TestTracedAsyncGenerator:
 
     async def test_async_generator_exception(self, exporter: _MemoryExporter) -> None:
         @traced()
-        async def async_gen_fail() -> Any:
+        async def async_gen_fail() -> AsyncIterator[int]:
             yield 1
             raise RuntimeError("agen fail")
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -26,7 +27,7 @@ from orbiter.mcp.execution import (  # pyright: ignore[reportMissingImports]
 
 def _mock_client(
     results: list[Any] | None = None,
-    errors: list[Exception | None] | None = None,
+    errors: Sequence[Exception | None] | None = None,
 ) -> AsyncMock:
     """Create a mock MCPClient.
 

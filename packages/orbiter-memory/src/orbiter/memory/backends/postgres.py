@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-import asyncpg
+import asyncpg  # pyright: ignore[reportMissingImports]
 
 from orbiter.memory.base import (  # pyright: ignore[reportMissingImports]
     MemoryItem,
@@ -60,7 +60,9 @@ class PostgresMemoryStore:
         if self._pool is not None:
             return
         self._pool = await asyncpg.create_pool(self.dsn)
-        async with self._pool.acquire() as conn:
+        pool = self._pool
+        assert pool is not None
+        async with pool.acquire() as conn:
             await conn.execute(_CREATE_TABLE)
             for idx_sql in _CREATE_INDEXES:
                 await conn.execute(idx_sql)

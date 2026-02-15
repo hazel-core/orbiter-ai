@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import logging
 
+import pytest
+
 from orbiter.trace.prompt_logger import (  # pyright: ignore[reportMissingImports]
     DEFAULT_CHAR_TOKEN_RATIO,
     ExecutionLogEntry,
@@ -261,17 +263,17 @@ class TestPromptLogger:
         assert entry.breakdown.system > 0
         assert entry.breakdown.user > 0
 
-    def test_log_execution_emits_log(self, caplog: logging.LogRecord) -> None:
+    def test_log_execution_emits_log(self, caplog: pytest.LogCaptureFixture) -> None:
         pl = PromptLogger()
         msgs = [{"role": "user", "content": "test"}]
-        with caplog.at_level(logging.INFO, logger="orbiter.trace.prompt"):  # type: ignore[attr-defined]
+        with caplog.at_level(logging.INFO, logger="orbiter.trace.prompt"):
             pl.log_execution(msgs, agent_name="a")
         assert "LLM Execution" in caplog.text
 
-    def test_log_execution_custom_level(self, caplog: logging.LogRecord) -> None:
+    def test_log_execution_custom_level(self, caplog: pytest.LogCaptureFixture) -> None:
         pl = PromptLogger()
         msgs = [{"role": "user", "content": "test"}]
-        with caplog.at_level(logging.DEBUG, logger="orbiter.trace.prompt"):  # type: ignore[attr-defined]
+        with caplog.at_level(logging.DEBUG, logger="orbiter.trace.prompt"):
             pl.log_execution(msgs, agent_name="a", level=logging.DEBUG)
         assert "LLM Execution" in caplog.text
 

@@ -6,10 +6,12 @@ from pathlib import Path
 
 import pytest
 
-from orbiter.memory.backends.sqlite import (  # pyright: ignore[reportMissingImports]
+aiosqlite = pytest.importorskip("aiosqlite")
+
+from orbiter.memory.backends.sqlite import (  # noqa: E402  # pyright: ignore[reportMissingImports]
     SQLiteMemoryStore,
 )
-from orbiter.memory.base import (  # pyright: ignore[reportMissingImports]
+from orbiter.memory.base import (  # noqa: E402  # pyright: ignore[reportMissingImports]
     AIMemory,
     HumanMemory,
     MemoryItem,

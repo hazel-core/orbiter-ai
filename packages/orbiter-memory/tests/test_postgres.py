@@ -14,13 +14,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from orbiter.memory.backends.postgres import (  # pyright: ignore[reportMissingImports]
+asyncpg = pytest.importorskip("asyncpg")
+
+from orbiter.memory.backends.postgres import (  # noqa: E402  # pyright: ignore[reportMissingImports]
     PostgresMemoryStore,
     _extra_fields,
     _parse_rowcount,
     _row_to_item,
 )
-from orbiter.memory.base import (  # pyright: ignore[reportMissingImports]
+from orbiter.memory.base import (  # noqa: E402  # pyright: ignore[reportMissingImports]
     AIMemory,
     HumanMemory,
     MemoryItem,

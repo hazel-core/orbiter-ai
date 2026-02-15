@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-import aiosqlite
+import aiosqlite  # pyright: ignore[reportMissingImports]
 
 from orbiter.memory.base import (  # pyright: ignore[reportMissingImports]
     MemoryItem,
@@ -58,11 +58,13 @@ class SQLiteMemoryStore:
         if self._db is not None:
             return
         self._db = await aiosqlite.connect(self.db_path)
-        self._db.row_factory = aiosqlite.Row
-        await self._db.execute(_CREATE_TABLE)
+        db = self._db
+        assert db is not None  # always set after connect()
+        db.row_factory = aiosqlite.Row
+        await db.execute(_CREATE_TABLE)
         for idx_sql in _CREATE_INDEXES:
-            await self._db.execute(idx_sql)
-        await self._db.commit()
+            await db.execute(idx_sql)
+        await db.commit()
         self._initialized = True
 
     async def close(self) -> None:
