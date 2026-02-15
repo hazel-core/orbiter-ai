@@ -452,8 +452,8 @@
         "Typecheck passes"
       ],
       "priority": 24,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Context class with fork/merge, ContextError, token snapshot for net-delta merge. 35 new tests (802 total)."
     },
     {
       "id": "US-025",

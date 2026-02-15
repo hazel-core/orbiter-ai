@@ -17,6 +17,8 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
 - Cross-package error handling: since orbiter-core can't import ModelError from orbiter-models, check error attributes (e.g., `.code`) via `getattr()` on caught exceptions
 - Mock provider responses MUST include valid `Usage` objects (not `None`) — `parse_response(usage=None)` causes Pydantic validation failure, silently consumed by retry logic
 - pyright ignore comments: put `# pyright: ignore[reportMissingImports]` on the import line itself (not a separate comment line) to avoid ruff I001 import sorting issues
+- Within-package namespace imports also need `# pyright: ignore[reportMissingImports]` — e.g., `context.py` importing `config.py` in the same `orbiter.context` package
+- Ruff RUF023: `__slots__` entries must be sorted alphabetically — run `uv run ruff check --fix` to auto-sort
 ---
 
 ## 2026-02-15 - US-001
@@ -357,4 +359,19 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - Pydantic v2 frozen models: use `model_validator(mode="after")` for cross-field validation (e.g., summary_threshold <= offload_threshold)
   - Use `tuple[str, ...]` (not `list`) for frozen model fields that should be immutable; accept `list` via `model_validator(mode="before")` coercion
   - 767 tests total across full suite (57 new context tests)
+---
+
+## 2026-02-15 - US-024
+- What was implemented: Context class with fork/merge for hierarchical task decomposition. `ContextError` exception. `Context.__init__` accepts task_id (required), config, parent, state. Properties: task_id, config, parent, state, children, token_usage. `add_tokens()` for token tracking. `fork(task_id)` creates child context with state inheritance and token snapshot. `merge(child)` consolidates child local state and net token deltas back into parent.
+- Files changed: `packages/orbiter-context/src/orbiter/context/context.py` (new, ~160 lines), `packages/orbiter-context/tests/test_context.py` (new, 35 tests in 8 classes), `packages/orbiter-context/tests/test_context_config.py` (import sorting fix from ruff)
+- Key implementation details:
+  - `_token_snapshot` stores parent's usage at fork time (immutable copy), separate from `_token_usage` which tracks current usage. Merge computes net = current - snapshot
+  - `fork()` auto-sets child's config from parent (shared immutable reference), creates ContextState with parent chain, copies token usage as starting point
+  - `merge()` validates child.parent identity, merges child's `local_dict()` state, adds net-positive token deltas
+  - `__slots__` for memory efficiency, sorted alphabetically per ruff RUF023
+- **Learnings for future iterations:**
+  - Within-package imports (e.g., `context.py` importing from `config.py` in the same `orbiter.context` namespace package) also need `# pyright: ignore[reportMissingImports]` due to `.pth`-based editable installs
+  - Ruff RUF023 requires `__slots__` entries to be sorted alphabetically — use `--fix` to auto-sort
+  - For net token merge calculation, storing a separate `_token_snapshot` at fork time is essential — the `_token_usage` dict gets mutated by `add_tokens()` and can't serve as its own baseline
+  - 802 tests total across full suite (35 new context tests)
 ---
