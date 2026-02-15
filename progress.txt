@@ -695,3 +695,16 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - The `_register_methods` helper uses default argument capture (`_m=method`) to avoid closure variable binding issues in for-loops — same pattern as old AWorld's `create_tool_wrapper(method_to_call)`
   - 1551 tests total across full suite (32 new MCP server tests)
 ---
+
+## 2026-02-15 - US-047
+- What was implemented: MCP execution utilities — retry logic with configurable timeout, env var substitution for mcp.json config files, config file loading, and integration tests. `MCPExecutionError` (subclass of `MCPClientError`). `call_tool_with_retry()` with exponential backoff (`backoff_base * 2^attempt`), per-attempt timeout via `asyncio.wait_for()`, non-retryable `MCPClientError` pass-through, and client vs connection dispatch via duck-typing. `substitute_env_vars()` with `${VAR}` regex pattern, `_substitute_recursive()` for nested dicts/lists. `load_mcp_config()` parses mcp.json format (`mcpServers` key), applies env var substitution to all string values, creates `MCPServerConfig` instances. `load_mcp_client()` convenience wrapper.
+- Files changed: `packages/orbiter-mcp/src/orbiter/mcp/execution.py` (new, ~180 lines), `packages/orbiter-mcp/tests/test_mcp_execution.py` (new, 31 tests in 9 classes)
+- Test coverage: RetrySuccess (4: first try, arguments, retry, connection dispatch), RetryFailure (3: exhausted, no retries, MCPClientError not retried), RetryTimeout (2: triggers retry, exhausts retries), RetryBackoff (1: custom base), SubstituteEnvVars (6: simple, multiple, unset, no vars, empty, nested braces), SubstituteRecursive (3: dict, list, passthrough), LoadMCPConfig (8: stdio, multiple, nested env, missing file, invalid json, invalid type, empty, defaults), LoadMCPClient (1: creates client), Integration (3: retry E2E, config E2E, error hierarchy)
+- **Learnings for future iterations:**
+  - `MCPExecutionError` extends `MCPClientError` so callers can catch both specific and general MCP errors with a single except clause
+  - `call_tool_with_retry` distinguishes MCPClient (has `server_names`) from MCPServerConnection (no `server_names`) via `hasattr` — MCPClient.call_tool takes `(server_name, tool_name, args)` while connection takes `(tool_name, args)`
+  - mcp.json format uses `"mcpServers"` key (matching VS Code / Claude Code convention) — each value is a server config dict with transport/command/args/env/url/headers fields
+  - `asyncio.wait_for()` wraps each individual attempt, not the total retry sequence — this prevents a single slow attempt from blocking all retries
+  - Within-package imports in orbiter-mcp source also need `# pyright: ignore[reportMissingImports]` (same namespace package issue as orbiter-core/orbiter-models)
+  - 1582 tests total across full suite (31 new execution tests)
+---

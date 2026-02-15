@@ -868,8 +868,8 @@
         "Typecheck passes"
       ],
       "priority": 47,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "MCPExecutionError, call_tool_with_retry (exponential backoff, per-attempt timeout, non-retryable MCPClientError), substitute_env_vars (${VAR} pattern), load_mcp_config/load_mcp_client (mcp.json loader with env var substitution). 31 new tests (1582 total)."
     },
     {
       "id": "US-048",
