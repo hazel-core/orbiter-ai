@@ -1192,3 +1192,16 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - `__slots__` on ABC works fine — subclasses add their own slots or use `__dict__` as needed
   - 2711 tests total across full suite (24 new trainer tests)
 ---
+
+## 2026-02-16 - US-082
+- What was implemented: Data synthesis utilities for generating training data from trajectories. `SynthesisError` exception. `SynthesisStrategy` (StrEnum: llm/template/augment). `SynthesisConfig` (frozen dataclass: strategy, num_samples, train_ratio, min_score, seed, extra; with validation for num_samples >= 1 and train_ratio in (0, 1]). `SynthesisResult` (frozen dataclass: items/train_items/test_items as tuples, metadata; total/train_count/test_count properties, to_json()). Utility functions: `filter_by_score()` (threshold filtering with custom score key), `split_dataset()` (shuffled train/test split with seed), `deduplicate()` (key-based dedup preserving order). Augmentation transforms: `augment_swap_io()` (creates reverse Q&A pair), `augment_add_noise()` (applies noise function to input). `DataSynthesiser` ABC with `synthesise()`. `TemplateSynthesiser` (applies random transforms from source items). `SynthesisPipeline` (orchestrates filter → dedup → synthesise → split with metadata tracking).
+- Files changed: `packages/orbiter-train/src/orbiter/train/synthesis.py` (new, ~210 lines), `packages/orbiter-train/tests/test_synthesis.py` (new, 54 tests in 14 classes)
+- Test coverage: SynthesisError (1), SynthesisStrategy (2: values, StrEnum), SynthesisConfig (7: defaults, custom, frozen, invalid num_samples, invalid ratio low/high, ratio one), SynthesisResult (4: defaults, with items, frozen, to_json), FilterByScore (5: below threshold, at threshold, None excluded, missing excluded, custom key), SplitDataset (5: basic, deterministic, ratio one, invalid ratio, single item), Deduplicate (5: removes dupes, order preserved, custom key, missing key, empty), AugmentSwapIO (2: swaps, missing fields), AugmentAddNoise (3: default, custom fn, missing input), TemplateSynthesiser (4: generates, empty source, custom transforms, deterministic), DataSynthesiserABC (2: cannot instantiate, concrete subclass), SynthesisPipelineInit (4: defaults, custom config, custom synthesiser, repr), SynthesisPipelineRun (8: basic, empty, score filter, dedup, train/test split, all filtered, metadata strategy, template synthesiser), Integration (2: full pipeline, custom synthesiser)
+- **Learnings for future iterations:**
+  - Augmentation transforms generate new UUIDs for `id` field — test determinism by comparing content fields (input/output) not id
+  - `random.Random(seed)` creates an isolated RNG instance — use this instead of `random.seed()` to avoid affecting global state
+  - B905 ruff rule enforces `strict=` parameter on `zip()` — always add `strict=True` when lists should be same length
+  - SIM108 ruff rule enforces ternary operator over simple if/else blocks — use `x = a if condition else b` pattern
+  - The old AWorld `DataSynthesisRunner` was tightly coupled to Swarm/Task/Runner — Orbiter version is decoupled, operating on plain dicts
+  - 2765 tests total across full suite (54 new synthesis tests), excluding sqlite/postgres collection errors
+---
