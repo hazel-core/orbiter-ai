@@ -362,8 +362,8 @@
         "Typecheck passes"
       ],
       "priority": 19,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Team mode with _DelegateTool (auto-generated worker delegation tools), lead agent runs with workers as callable tools, tools restored after run. 13 new tests (648 total)."
     },
     {
       "id": "US-020",

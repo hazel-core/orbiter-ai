@@ -14,6 +14,7 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
 - Import sorting: ruff enforces I001 import block sorting — use `uv run ruff check --fix` to auto-sort
 - Forward-compatible params: use `Any` type with `None` default for params whose concrete types come from future packages
 - Cross-package error handling: since orbiter-core can't import ModelError from orbiter-models, check error attributes (e.g., `.code`) via `getattr()` on caught exceptions
+- Mock provider responses MUST include valid `Usage` objects (not `None`) — `parse_response(usage=None)` causes Pydantic validation failure, silently consumed by retry logic
 - pyright ignore comments: put `# pyright: ignore[reportMissingImports]` on the import line itself (not a separate comment line) to avoid ruff I001 import sorting issues
 ---
 
@@ -270,4 +271,20 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - `call_runner` builds messages internally per agent — the `result.messages` from RunState are minimal (system + user + assistant). Passing them as `all_messages` to the next call_runner allows conversation history transfer, but each agent still builds its own message list
   - Ruff RUF043: regex metacharacters in `pytest.raises(match=...)` require raw strings (e.g., `match=r"Max handoffs.*3.*exceeded"`)
   - 635 tests total across full suite (15 new handoff tests)
+---
+
+## 2026-02-15 - US-019
+- What was implemented: Swarm team mode (`mode='team'`) with lead-worker delegation pattern. Lead agent gets auto-generated `_DelegateTool` instances (`delegate_to_{worker_name}`) that invoke worker agents when called. Workers run via `call_runner()` and return their output as tool results. Lead synthesizes final output after receiving worker results.
+- Files changed: `packages/orbiter-core/src/orbiter/swarm.py` (added `_run_team()` ~50 lines, `_DelegateTool` class ~50 lines), `packages/orbiter-core/tests/test_swarm.py` (added 13 tests in 4 new test classes)
+- Key implementation details:
+  - `_DelegateTool` is a `Tool` subclass with manually defined JSON schema (task parameter), calls `call_runner()` on the worker
+  - `_run_team()` temporarily adds delegate tools to lead's `self.tools`, runs `call_runner(lead, ...)`, then restores original tools in a `finally` block
+  - Team mode requires at least 2 agents (lead + at least one worker)
+  - Workers receive the lead's tool-call argument `task` as their input, not the original user input
+- **Learnings for future iterations:**
+  - Mock providers for team mode need `Usage` objects (not `None`) in dict-form responses — `parse_response(usage=None)` causes `AgentOutput` Pydantic validation to fail, which gets caught by `_call_llm`'s retry loop, consuming the next response instead
+  - The provider `complete()` call count is shared across lead + worker agents since the mock is a single closure — responses must be ordered accounting for worker calls interleaved with lead calls
+  - `_DelegateTool` follows the same pattern as `HumanInputTool` — custom `Tool` subclass with manually defined JSON schema rather than `_generate_schema()` from a function
+  - Using `finally` block to restore tools ensures cleanup even on errors (important for tool-loop exceptions propagating up)
+  - 648 tests total across full suite (13 new team mode tests)
 ---
