@@ -193,3 +193,22 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - To test "missing agent" in serial mode, either override `_resolve_order()` in a subclass or manipulate the agents dict after construction (since `_resolve_order` only includes keys from `self.agents`)
   - 519 tests total across full suite (23 new handler tests)
 ---
+
+## 2026-02-15 - US-014
+- What was implemented: BackgroundTaskHandler with hot-merge and wake-up-merge patterns. BackgroundTask lifecycle (INIT→RUNNING→SUCCESS/FAILED), PendingQueue for async result queuing, merge callbacks, state node integration.
+- Files changed: `packages/orbiter-core/src/orbiter/_internal/background.py` (~230 lines), `packages/orbiter-core/tests/test_background.py` (28 tests in 8 classes)
+- Key implementation details:
+  - `BackgroundTask` — tracks task_id, parent_task_id, payload, result, error, status, merge_mode
+  - `PendingQueue` — async-aware queue with `push()`, `pop_all()`, `wait(timeout)` using `asyncio.Event`
+  - `BackgroundTaskHandler` — `submit()` registers tasks, `handle_result()` routes to hot or wake-up merge, `handle_error()` for failures, `drain_pending()` async iterator for wake-up pattern
+  - Hot-merge: fires registered callbacks when main task is still running
+  - Wake-up-merge: queues to PendingQueue when main task completed; drain via `drain_pending()`
+  - State integration: creates RunNode with `bg:{task_id}` agent name, marks SUCCESS/FAILED on completion
+  - `on_merge(callback)` for registering async merge callbacks
+  - `list_tasks(status=...)` for filtered task listing
+- **Learnings for future iterations:**
+  - BackgroundTaskHandler is NOT a Handler[IN, OUT] subclass — it's a standalone manager rather than a pipeline handler, since background tasks have their own lifecycle separate from the main execution flow
+  - `asyncio.TimeoutError` is deprecated in favor of builtin `TimeoutError` (ruff UP041) — just catch `TimeoutError`
+  - Unused imports (ruff F401) must be removed even from type-only usage — `RunNode` was imported but only `RunNodeStatus` and `RunState` were needed
+  - 547 tests total across full suite (28 new background handler tests)
+---

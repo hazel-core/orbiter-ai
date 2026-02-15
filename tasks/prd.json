@@ -271,8 +271,8 @@
         "Typecheck passes"
       ],
       "priority": 14,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "BackgroundTaskHandler with hot-merge and wake-up-merge patterns, PendingQueue, BackgroundTask lifecycle, merge callbacks. 28 new tests (547 total)."
     },
     {
       "id": "US-015",
