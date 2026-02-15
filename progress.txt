@@ -1355,3 +1355,15 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - S102 (exec usage) ruff rule is NOT enabled — `# noqa: S102` triggers RUF100
   - All passing: ruff/pyright/pytest (2848 tests)
 ---
+
+## 2026-02-16 - US-095
+- What was implemented: IMO benchmark runner with solver + reviewer guard loop. Uses two agents: an IMO solver agent with python_exec tool and a reviewer agent that validates solutions. Iterates up to max_rounds with reviewer feedback.
+- Files changed: `examples/benchmarks/imo/__init__.py` (new, empty), `examples/benchmarks/imo/run.py` (new, ~230 lines)
+- Key components: IMOProblem dataclass, load_dataset (metadata.jsonl), extract_answer (<answer> tag extraction), solver/reviewer dual-agent loop, BenchmarkResult with completion_rate and acceptance_rate, CLI with argparse
+- Differences from GAIA: no ground-truth scoring (IMO proofs are open-ended), uses a reviewer agent for validation instead of string matching, tracks "accepted" vs "completed" rather than "correct"
+- **Learnings for future iterations:**
+  - IMO benchmark is proof-based so can't do simple answer matching — used reviewer agent pattern instead
+  - Must initialize variables used in later iterations of a loop before the loop (e.g., `review_text = ""`) — ruff F821 catches undefined names
+  - Benchmark runner pattern: dataclass for problems, JSONL loader, dual-agent loop, CLI entry point
+  - All passing: ruff/pyright/pytest (2848 tests)
+---
