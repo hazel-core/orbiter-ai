@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 from unittest.mock import AsyncMock
 
@@ -9,8 +10,8 @@ import pytest
 
 from orbiter.agent import Agent
 from orbiter.runner import run
-from orbiter.swarm import Swarm, SwarmError
-from orbiter.types import AgentOutput, RunResult, Usage
+from orbiter.swarm import Swarm, SwarmError, _DelegateTool
+from orbiter.types import AgentOutput, RunResult, ToolCall, Usage
 
 # ---------------------------------------------------------------------------
 # Fixtures: mock provider
@@ -627,3 +628,325 @@ class TestSwarmHandoffViaRun:
         result = run.sync(swarm, "test", provider=provider)
 
         assert result.output == "sync handoff"
+
+
+# ---------------------------------------------------------------------------
+# Team mode — construction
+# ---------------------------------------------------------------------------
+
+
+class TestSwarmTeamConstruction:
+    def test_team_mode_creation(self) -> None:
+        """Swarm can be created in team mode."""
+        lead = Agent(name="lead")
+        worker = Agent(name="worker")
+        swarm = Swarm(agents=[lead, worker], mode="team")
+
+        assert swarm.mode == "team"
+        assert swarm.flow_order == ["lead", "worker"]
+
+    async def test_team_mode_single_agent_raises(self) -> None:
+        """Team mode with only one agent raises SwarmError."""
+        a = Agent(name="a")
+        swarm = Swarm(agents=[a], mode="team")
+
+        provider = _make_provider([AgentOutput(text="ok")])
+
+        with pytest.raises(SwarmError, match="at least two agents"):
+            await swarm.run("test", provider=provider)
+
+
+# ---------------------------------------------------------------------------
+# Team mode — execution
+# ---------------------------------------------------------------------------
+
+
+_DEFAULT_USAGE = Usage(input_tokens=10, output_tokens=5, total_tokens=15)
+
+
+def _make_team_provider(responses: list[Any]) -> Any:
+    """Create a mock provider for team mode tests.
+
+    Responses can be AgentOutput (text-only) or dicts with 'tool_calls'.
+    Each response is consumed in order across all agents.
+    """
+    call_count = 0
+
+    async def complete(messages: Any, **kwargs: Any) -> Any:
+        nonlocal call_count
+        resp = responses[min(call_count, len(responses) - 1)]
+        call_count += 1
+
+        if isinstance(resp, AgentOutput):
+
+            class FakeResponse:
+                content = resp.text
+                tool_calls = resp.tool_calls
+                usage = resp.usage
+
+            return FakeResponse()
+
+        # Dict form for tool call responses
+        class FakeToolCallResponse:
+            content = resp.get("content", "")
+            tool_calls = resp.get("tool_calls", [])
+            usage = resp.get("usage", _DEFAULT_USAGE)
+
+        return FakeToolCallResponse()
+
+    mock = AsyncMock()
+    mock.complete = complete
+    return mock
+
+
+class TestSwarmTeam:
+    async def test_lead_delegates_to_worker(self) -> None:
+        """Lead agent delegates to worker, then synthesizes result."""
+        lead = Agent(name="lead", instructions="You are the lead.")
+        worker = Agent(name="worker", instructions="You are a worker.")
+        swarm = Swarm(agents=[lead, worker], mode="team")
+
+        # Response 1 (lead): call delegate_to_worker tool
+        tc = ToolCall(
+            id="tc-1",
+            name="delegate_to_worker",
+            arguments=json.dumps({"task": "research topic X"}),
+        )
+        # Response 2 (worker): worker's output
+        # Response 3 (lead): lead synthesizes final answer
+        provider = _make_team_provider(
+            [
+                {"content": "", "tool_calls": [tc]},
+                AgentOutput(text="worker found: topic X details"),
+                AgentOutput(text="Based on research: final synthesis"),
+            ]
+        )
+
+        result = await swarm.run("Summarize topic X", provider=provider)
+
+        assert result.output == "Based on research: final synthesis"
+
+    async def test_lead_delegates_to_multiple_workers(self) -> None:
+        """Lead can delegate to different workers."""
+        lead = Agent(name="lead")
+        researcher = Agent(name="researcher")
+        writer = Agent(name="writer")
+        swarm = Swarm(agents=[lead, researcher, writer], mode="team")
+
+        # Lead calls delegate_to_researcher, then delegate_to_writer, then returns
+        tc1 = ToolCall(
+            id="tc-1",
+            name="delegate_to_researcher",
+            arguments=json.dumps({"task": "research"}),
+        )
+        tc2 = ToolCall(
+            id="tc-2",
+            name="delegate_to_writer",
+            arguments=json.dumps({"task": "write report"}),
+        )
+        provider = _make_team_provider(
+            [
+                {"content": "", "tool_calls": [tc1]},  # lead calls researcher
+                AgentOutput(text="research results"),  # researcher responds
+                {"content": "", "tool_calls": [tc2]},  # lead calls writer
+                AgentOutput(text="written report"),  # writer responds
+                AgentOutput(text="All done: final output"),  # lead final
+            ]
+        )
+
+        result = await swarm.run("Do research and write", provider=provider)
+
+        assert result.output == "All done: final output"
+
+    async def test_lead_no_delegation_returns_directly(self) -> None:
+        """Lead can return without delegating to any worker."""
+        lead = Agent(name="lead")
+        worker = Agent(name="worker")
+        swarm = Swarm(agents=[lead, worker], mode="team")
+
+        # Lead responds directly without calling any delegate tool
+        provider = _make_team_provider([AgentOutput(text="I can handle this myself")])
+
+        result = await swarm.run("Simple question", provider=provider)
+
+        assert result.output == "I can handle this myself"
+
+    async def test_worker_result_visible_to_lead(self) -> None:
+        """Worker output is returned to lead as tool result."""
+        received_messages: list[list[Any]] = []
+        call_count = 0
+
+        async def tracked_complete(messages: Any, **kwargs: Any) -> Any:
+            nonlocal call_count
+            received_messages.append(list(messages))
+
+            tc = ToolCall(
+                id="tc-1",
+                name="delegate_to_worker",
+                arguments=json.dumps({"task": "do work"}),
+            )
+            responses: list[Any] = [
+                {"content": "", "tool_calls": [tc]},  # lead delegates
+                AgentOutput(text="worker result 42"),  # worker responds
+                AgentOutput(text="synthesized"),  # lead final
+            ]
+            resp = responses[min(call_count, len(responses) - 1)]
+            call_count += 1
+
+            if isinstance(resp, AgentOutput):
+
+                class FR:
+                    content = resp.text
+                    tool_calls = resp.tool_calls
+                    usage = resp.usage
+
+                return FR()
+
+            class FTR:
+                content = resp.get("content", "")
+                tool_calls = resp.get("tool_calls", [])
+                usage = resp.get("usage", _DEFAULT_USAGE)
+
+            return FTR()
+
+        provider = AsyncMock()
+        provider.complete = tracked_complete
+
+        lead = Agent(name="lead")
+        worker = Agent(name="worker")
+        swarm = Swarm(agents=[lead, worker], mode="team")
+
+        result = await swarm.run("test", provider=provider)
+
+        assert result.output == "synthesized"
+        # At least 3 calls: lead (delegate), worker, lead (synthesize)
+        assert len(received_messages) >= 3
+        # The third call (lead's second) should contain the tool result
+        # with the worker's output
+        lead_second_call_msgs = received_messages[2]
+        tool_results = [m for m in lead_second_call_msgs if getattr(m, "role", None) == "tool"]
+        assert len(tool_results) > 0
+        assert "worker result 42" in tool_results[0].content
+
+    async def test_team_tools_restored_after_run(self) -> None:
+        """Lead's original tools are restored after team execution."""
+        from orbiter.tool import FunctionTool
+
+        def my_tool(x: str) -> str:
+            """A custom tool."""
+            return x
+
+        original_tool = FunctionTool(my_tool, name="my_tool")
+        lead = Agent(name="lead", tools=[original_tool])
+        worker = Agent(name="worker")
+        swarm = Swarm(agents=[lead, worker], mode="team")
+
+        provider = _make_team_provider([AgentOutput(text="no delegation")])
+
+        await swarm.run("test", provider=provider)
+
+        # Lead should have only its original tool, not delegate tools
+        assert "my_tool" in lead.tools
+        assert "delegate_to_worker" not in lead.tools
+        assert len(lead.tools) == 1
+
+    async def test_team_tools_restored_on_error(self) -> None:
+        """Lead's tools are restored even if run() raises."""
+        from orbiter._internal.call_runner import CallRunnerError
+
+        lead = Agent(name="lead")
+        worker = Agent(name="worker")
+        swarm = Swarm(agents=[lead, worker], mode="team")
+
+        # Provider that always raises
+        async def failing_complete(messages: Any, **kwargs: Any) -> Any:
+            raise RuntimeError("LLM down")
+
+        provider = AsyncMock()
+        provider.complete = failing_complete
+
+        with pytest.raises(CallRunnerError):
+            await swarm.run("test", provider=provider)
+
+        # Delegate tools should NOT remain on the lead
+        assert "delegate_to_worker" not in lead.tools
+
+
+# ---------------------------------------------------------------------------
+# Team mode — via run() public API
+# ---------------------------------------------------------------------------
+
+
+class TestSwarmTeamViaRun:
+    async def test_run_team_swarm(self) -> None:
+        """run(team_swarm, ...) works correctly."""
+        lead = Agent(name="lead")
+        worker = Agent(name="worker")
+        swarm = Swarm(agents=[lead, worker], mode="team")
+
+        tc = ToolCall(
+            id="tc-1",
+            name="delegate_to_worker",
+            arguments=json.dumps({"task": "work"}),
+        )
+        provider = _make_team_provider(
+            [
+                {"content": "", "tool_calls": [tc]},
+                AgentOutput(text="worker done"),
+                AgentOutput(text="via run()"),
+            ]
+        )
+
+        result = await run(swarm, "test", provider=provider)
+
+        assert isinstance(result, RunResult)
+        assert result.output == "via run()"
+
+    def test_run_sync_team_swarm(self) -> None:
+        """run.sync(team_swarm, ...) works for synchronous execution."""
+        lead = Agent(name="lead")
+        worker = Agent(name="worker")
+        swarm = Swarm(agents=[lead, worker], mode="team")
+
+        provider = _make_team_provider([AgentOutput(text="sync team")])
+
+        result = run.sync(swarm, "test", provider=provider)
+
+        assert result.output == "sync team"
+
+
+# ---------------------------------------------------------------------------
+# _DelegateTool unit tests
+# ---------------------------------------------------------------------------
+
+
+class TestDelegateTool:
+    def test_delegate_tool_name(self) -> None:
+        """DelegateTool has correct name and schema."""
+        worker = Agent(name="researcher")
+        dtool = _DelegateTool(worker=worker)
+
+        assert dtool.name == "delegate_to_researcher"
+        assert "task" in dtool.parameters["properties"]
+        assert dtool.parameters["required"] == ["task"]
+
+    def test_delegate_tool_schema(self) -> None:
+        """DelegateTool generates valid OpenAI function-calling schema."""
+        worker = Agent(name="writer")
+        dtool = _DelegateTool(worker=worker)
+
+        schema = dtool.to_schema()
+
+        assert schema["type"] == "function"
+        assert schema["function"]["name"] == "delegate_to_writer"
+        assert "writer" in schema["function"]["description"]
+
+    async def test_delegate_tool_execute(self) -> None:
+        """DelegateTool executes the worker agent and returns output."""
+        worker = Agent(name="worker")
+        provider = _make_provider([AgentOutput(text="worker output")])
+        dtool = _DelegateTool(worker=worker, provider=provider)
+
+        result = await dtool.execute(task="do something")
+
+        assert result == "worker output"

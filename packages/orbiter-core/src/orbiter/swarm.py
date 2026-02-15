@@ -2,8 +2,9 @@
 
 A ``Swarm`` groups multiple agents and defines their execution
 topology using a simple DSL (``"a >> b >> c"``).  Supports
-``mode='workflow'`` (sequential pipeline) and ``mode='handoff'``
-(agent-driven delegation).
+``mode='workflow'`` (sequential pipeline), ``mode='handoff'``
+(agent-driven delegation), and ``mode='team'`` (lead-worker
+delegation).
 
 Usage::
 
@@ -21,6 +22,7 @@ from typing import Any
 
 from orbiter._internal.call_runner import call_runner
 from orbiter._internal.graph import GraphError, parse_flow_dsl, topological_sort
+from orbiter.tool import Tool
 from orbiter.types import Message, OrbiterError, RunResult
 
 
@@ -34,13 +36,15 @@ class Swarm:
     Groups agents and defines their execution topology via a flow DSL.
     In workflow mode, agents run sequentially with output→input chaining.
     In handoff mode, agents delegate dynamically via handoff targets.
+    In team mode, the first agent is the lead and others are workers;
+    the lead can delegate to workers via auto-generated tools.
 
     Args:
         agents: List of ``Agent`` instances to include in the swarm.
         flow: Flow DSL string defining execution order
             (e.g., ``"a >> b >> c"``).  If not provided, agents
             run in the order they are given.
-        mode: Execution mode — ``"workflow"`` or ``"handoff"``.
+        mode: Execution mode — ``"workflow"``, ``"handoff"``, or ``"team"``.
         max_handoffs: Maximum number of handoff transitions before
             raising an error (handoff mode only).
     """
@@ -124,6 +128,10 @@ class Swarm:
             )
         if self.mode == "handoff":
             return await self._run_handoff(
+                input, messages=messages, provider=provider, max_retries=max_retries
+            )
+        if self.mode == "team":
+            return await self._run_team(
                 input, messages=messages, provider=provider, max_retries=max_retries
             )
         raise SwarmError(f"Unsupported swarm mode: {self.mode!r}")
@@ -226,6 +234,61 @@ class Swarm:
 
         return None
 
+    async def _run_team(
+        self,
+        input: str,
+        *,
+        messages: Sequence[Message] | None = None,
+        provider: Any = None,
+        max_retries: int = 3,
+    ) -> RunResult:
+        """Execute team mode: lead delegates to workers via tools.
+
+        The first agent in flow_order is the lead.  Other agents are
+        workers.  The lead receives auto-generated ``delegate_to_{name}``
+        tools that invoke worker agents.  When the lead calls a delegate
+        tool, the worker runs and its output is returned as the tool
+        result.  The lead then synthesizes the final output.
+
+        Returns the ``RunResult`` from the lead agent.
+        """
+        if len(self.agents) < 2:
+            raise SwarmError("Team mode requires at least two agents (lead + workers)")
+
+        lead_name = self.flow_order[0]
+        lead = self.agents[lead_name]
+        worker_names = [n for n in self.flow_order if n != lead_name]
+
+        # Create delegate tools for each worker and add to lead
+        delegate_tools: list[Tool] = []
+        for worker_name in worker_names:
+            worker = self.agents[worker_name]
+            dtool = _DelegateTool(
+                worker=worker,
+                provider=provider,
+                max_retries=max_retries,
+            )
+            delegate_tools.append(dtool)
+
+        # Temporarily add delegate tools to the lead agent
+        original_tools = dict(lead.tools)
+        for dtool in delegate_tools:
+            lead.tools[dtool.name] = dtool
+
+        try:
+            result = await call_runner(
+                lead,
+                input,
+                messages=messages,
+                provider=provider,
+                max_retries=max_retries,
+            )
+        finally:
+            # Restore original tools
+            lead.tools = original_tools
+
+        return result
+
     def describe(self) -> dict[str, Any]:
         """Return a summary of the swarm's configuration.
 
@@ -241,3 +304,54 @@ class Swarm:
 
     def __repr__(self) -> str:
         return f"Swarm(mode={self.mode!r}, agents={list(self.agents.keys())}, flow={self.flow!r})"
+
+
+class _DelegateTool(Tool):
+    """Auto-generated tool that delegates work to a worker agent.
+
+    When the lead agent calls this tool, the worker agent runs with
+    the provided task description and its output is returned as the
+    tool result.
+    """
+
+    def __init__(
+        self,
+        *,
+        worker: Any,
+        provider: Any = None,
+        max_retries: int = 3,
+    ) -> None:
+        worker_name: str = worker.name
+        self.name = f"delegate_to_{worker_name}"
+        self.description = f"Delegate a task to the '{worker_name}' worker agent."
+        self.parameters = {
+            "type": "object",
+            "properties": {
+                "task": {
+                    "type": "string",
+                    "description": f"The task description to send to '{worker_name}'.",
+                },
+            },
+            "required": ["task"],
+        }
+        self._worker = worker
+        self._provider = provider
+        self._max_retries = max_retries
+
+    async def execute(self, **kwargs: Any) -> str:
+        """Run the worker agent with the given task.
+
+        Args:
+            **kwargs: Must include ``task`` (str).
+
+        Returns:
+            The worker agent's output text.
+        """
+        task: str = kwargs.get("task", "")
+        result = await call_runner(
+            self._worker,
+            task,
+            provider=self._provider,
+            max_retries=self._max_retries,
+        )
+        return result.output
