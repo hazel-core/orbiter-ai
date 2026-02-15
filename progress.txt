@@ -22,6 +22,9 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
 - `__slots__` makes instance attributes read-only for `patch.object(instance, "method")` — use `patch.object(ClassName, "method")` instead
 - `@asynccontextmanager` returns single-use CMs — when mocking, use `side_effect=lambda: factory()` not `return_value=cm` for multi-call scenarios
 - BLE001 (broad exception) ruff rule is NOT enabled — don't add `# noqa: BLE001` comments (triggers RUF100 unused noqa)
+- OTel `trace.set_tracer_provider()` can only be called once — in tests, reset `trace._TRACER_PROVIDER_SET_ONCE._done = False` and `trace._TRACER_PROVIDER = None` before each test
+- OTel SDK may not ship `InMemorySpanExporter` — create a simple `_MemoryExporter(SpanExporter)` subclass that collects spans in a list
+- SLF001 (private member access) ruff rule is NOT enabled — `# noqa: SLF001` is unnecessary and triggers RUF100
 ---
 
 ## 2026-02-15 - US-001
@@ -821,4 +824,24 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - TraceConfig follows the same Pydantic frozen model pattern as ContextConfig (context/config.py) — use `model_validator(mode="after")` for cross-field validation
   - The `gen_ai.*` constants follow OpenTelemetry's GenAI semantic conventions directly (no namespace prefix) — these are industry-standard attribute names
   - 1759 tests total across full suite (55 new trace config tests), excluding sqlite/postgres collection errors
+---
+
+## 2026-02-15 - US-055
+- What was implemented: `@traced` decorator with full function type support (sync, async, generators, async generators), `extract_metadata()` for function introspection, `is_user_code()` + `get_user_frame()` for stack frame analysis with user-code filtering, and `span_sync()`/`span_async()` context managers for manual span creation.
+- Files changed: `packages/orbiter-trace/src/orbiter/trace/decorator.py` (new, ~120 lines), `packages/orbiter-trace/tests/test_trace_decorator.py` (new, 37 tests in 10 classes)
+- Key implementation details:
+  - `@traced(name=, attributes=, extract_args=)` decorator detects function type via `inspect.isasyncgenfunction()` → `inspect.isgeneratorfunction()` → `asyncio.iscoroutinefunction()` → sync fallback
+  - Each wrapper creates span via `tracer.start_as_current_span()`, records exceptions via `span.record_exception()`, and re-raises
+  - `extract_metadata()` extracts `code.function` (qualname), `code.module`, `code.lineno`, `code.filepath` (relative to CWD), `code.parameters` (excluding self)
+  - `_build_attrs()` merges metadata + extra attributes + extracted args (if enabled), flattens list values to strings for OTel attribute compatibility
+  - `is_user_code()` filters out trace module paths and dynamic code (`<string>`, `<module>`)
+  - `get_user_frame()` walks `sys._getframe()` chain to find first user-code frame
+  - Custom `_MemoryExporter(SpanExporter)` in tests since OTel SDK version may not ship InMemorySpanExporter
+- Test coverage: IsUserCode (4: normal, dynamic, eval, trace-module), GetUserFrame (3: returns frame, positive lineno, function name), ExtractMetadata (8: qualname, module, lineno, filepath, parameters, method self exclusion, lambda, builtin), SpanSync (3: creates, attributes, exception), SpanAsync (2: creates, exception), TracedSync (7: basic, custom name, extra attributes, extract args, metadata, exception, preserves functools metadata), TracedAsync (3: basic, exception, extract args), TracedGenerator (2: sync gen, gen exception), TracedAsyncGenerator (2: async gen, async gen exception), EdgeCases (3: nested, list flattened, async with custom name+attrs)
+- **Learnings for future iterations:**
+  - OTel `trace.set_tracer_provider()` is a one-shot global — tests must reset `trace._TRACER_PROVIDER_SET_ONCE._done = False` and `trace._TRACER_PROVIDER = None` before each test fixture to get a clean provider
+  - OTel SDK installed in this project does NOT have `InMemorySpanExporter` — use a custom `_MemoryExporter(SpanExporter)` that collects spans in a list
+  - `inspect.signature(len)` returns `(obj, /)` in Python 3.11+ — builtins DO have signatures now, so don't assume empty parameters for builtins
+  - SLF001 (private member access like `sys._getframe`) ruff rule is NOT enabled — no need for `# noqa: SLF001`
+  - 1796 tests total across full suite (37 new decorator tests), excluding sqlite/postgres collection errors
 ---
