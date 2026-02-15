@@ -1246,3 +1246,16 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - Examples directory is at `examples/quickstart/` — ruff and pyright check it cleanly
   - 2848 tests pass (no new tests — examples are not unit-tested)
 ---
+
+## 2026-02-16 - US-086
+- What was implemented: Tool examples — `local_tool.py` (3 tool patterns: @tool decorator, FunctionTool wrapper, Tool ABC subclass) and `mcp_tool.py` (MCPClient + MCPServerConfig + load_tools_from_client).
+- Files changed:
+  - `examples/quickstart/local_tool.py` (new, ~80 lines)
+  - `examples/quickstart/mcp_tool.py` (new, ~50 lines)
+- **Learnings for future iterations:**
+  - `ClassVar[dict[str, Any]]` is required for mutable class-level attributes (RUF012) — applies to `Tool` subclass `parameters` field
+  - Ruff S307 (use of `eval()`) is NOT enabled in this project — `# noqa: S307` triggers RUF100 (unused noqa)
+  - MCP tool imports need `# pyright: ignore[reportMissingImports]` — same cross-namespace pattern as `orbiter.models`
+  - `orbiter.mcp.client.MCPClient` + `orbiter.mcp.tools.load_tools_from_client()` is the high-level MCP integration path
+  - All 2848 tests pass (no new tests — examples are not unit-tested)
+---
