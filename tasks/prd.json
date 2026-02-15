@@ -472,8 +472,8 @@
         "Typecheck passes"
       ],
       "priority": 25,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "TokenStep (frozen dataclass), TokenUsageSummary, TokenTracker with add_step/get_trajectory/total_usage/agent_usage. 24 new tests (826 total)."
     },
     {
       "id": "US-026",

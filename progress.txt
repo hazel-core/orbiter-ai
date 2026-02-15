@@ -375,3 +375,14 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - For net token merge calculation, storing a separate `_token_snapshot` at fork time is essential — the `_token_usage` dict gets mutated by `add_tokens()` and can't serve as its own baseline
   - 802 tests total across full suite (35 new context tests)
 ---
+
+## 2026-02-15 - US-025
+- What was implemented: TokenTracker — per-agent, per-step token tracking for cost analysis and budget enforcement. `TokenStep` (frozen dataclass with agent_id, step index, prompt/output tokens, total_tokens property). `TokenUsageSummary` (frozen dataclass for aggregated usage). `TokenTracker` (add_step with auto step indexing, get_trajectory, total_usage, agent_usage, agent_ids, steps, len/repr).
+- Files changed: `packages/orbiter-context/src/orbiter/context/token_tracker.py` (new, ~130 lines), `packages/orbiter-context/tests/test_token_tracker.py` (new, 24 tests in 7 classes)
+- **Learnings for future iterations:**
+  - TokenTracker is standalone (no dependencies on Context/ContextState) — it can be used independently or composed into Context
+  - `dataclass(frozen=True, slots=True)` is the right pattern for immutable value objects like TokenStep/TokenUsageSummary
+  - Step index is per-agent (computed by counting existing steps for the agent), not global — this makes trajectories self-contained
+  - The `field` import from dataclasses wasn't needed (no mutable defaults) — ruff F401 catches unused imports
+  - 826 tests total across full suite (24 new token tracker tests)
+---
