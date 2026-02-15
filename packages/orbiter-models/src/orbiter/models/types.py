@@ -24,10 +24,13 @@ class ModelError(OrbiterError):
     Args:
         message: Human-readable error description.
         model: The model identifier that caused the error.
+        code: Optional error code for classification (e.g. ``"context_length"``
+            for context-window overflow, ``"rate_limit"`` for throttling).
     """
 
-    def __init__(self, message: str, *, model: str = "") -> None:
+    def __init__(self, message: str, *, model: str = "", code: str = "") -> None:
         self.model = model
+        self.code = code
         full = f"[{model}] {message}" if model else message
         super().__init__(full)
 

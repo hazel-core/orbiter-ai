@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import asyncio
+from collections.abc import Callable, Sequence
 from typing import Any
 
 from pydantic import BaseModel
 
+from orbiter._internal.message_builder import build_messages
+from orbiter._internal.output_parser import parse_response
 from orbiter.config import parse_model_string
 from orbiter.hooks import Hook, HookManager, HookPoint
 from orbiter.tool import Tool
-from orbiter.types import OrbiterError
+from orbiter.types import AgentOutput, Message, OrbiterError, UserMessage
 
 
 class AgentError(OrbiterError):
@@ -140,6 +143,101 @@ class Agent:
             "output_type": (self.output_type.__name__ if self.output_type else None),
         }
 
+    async def run(
+        self,
+        input: str,
+        *,
+        messages: Sequence[Message] | None = None,
+        provider: Any = None,
+        max_retries: int = 3,
+    ) -> AgentOutput:
+        """Execute a single-turn LLM call with retry logic.
+
+        Builds the message list from instructions + history + user input,
+        calls the LLM provider, fires PRE/POST hooks, and returns parsed
+        output. Transient errors are retried with exponential backoff;
+        context-length errors fail immediately.
+
+        Args:
+            input: User query string for this turn.
+            messages: Prior conversation history.
+            provider: An object with an ``async complete()`` method
+                (e.g. a ``ModelProvider`` instance).
+            max_retries: Maximum retry attempts for transient errors.
+
+        Returns:
+            Parsed ``AgentOutput`` from the LLM response.
+
+        Raises:
+            AgentError: If no provider is supplied or all retries are exhausted.
+        """
+        if provider is None:
+            raise AgentError(f"Agent '{self.name}' requires a provider for run()")
+
+        # Resolve instructions
+        instructions = self.instructions
+        if callable(instructions):
+            instructions = instructions(self.name)
+
+        # Build message list
+        history: list[Message] = list(messages) if messages else []
+        history.append(UserMessage(content=input))
+        msg_list = build_messages(instructions, history)
+
+        # Tool schemas
+        tool_schemas = self.get_tool_schemas() or None
+
+        # Retry loop
+        last_error: Exception | None = None
+        for attempt in range(max_retries):
+            try:
+                # PRE_LLM_CALL hook
+                await self.hook_manager.run(
+                    HookPoint.PRE_LLM_CALL,
+                    agent=self,
+                    messages=msg_list,
+                )
+
+                # LLM call
+                response = await provider.complete(
+                    msg_list,
+                    tools=tool_schemas,
+                    temperature=self.temperature,
+                    max_tokens=self.max_tokens,
+                )
+
+                # POST_LLM_CALL hook
+                await self.hook_manager.run(
+                    HookPoint.POST_LLM_CALL,
+                    agent=self,
+                    response=response,
+                )
+
+                # Parse and return
+                return parse_response(
+                    content=response.content,
+                    tool_calls=response.tool_calls,
+                    usage=response.usage,
+                )
+
+            except Exception as exc:
+                # Context-length errors fail immediately, no retry
+                if _is_context_length_error(exc):
+                    raise AgentError(
+                        f"Context length exceeded on agent '{self.name}': {exc}"
+                    ) from exc
+
+                last_error = exc
+
+                # Don't sleep after the final attempt
+                if attempt < max_retries - 1:
+                    delay = 2**attempt  # 1s, 2s, 4s ...
+                    await asyncio.sleep(delay)
+
+        raise AgentError(
+            f"Agent '{self.name}' failed after {max_retries} retries: {last_error}"
+        ) from last_error
+
     def __repr__(self) -> str:
         parts = [f"name={self.name!r}", f"model={self.model!r}"]
         if self.tools:
@@ -147,3 +245,16 @@ class Agent:
         if self.handoffs:
             parts.append(f"handoffs={list(self.handoffs.keys())}")
         return f"Agent({', '.join(parts)})"
+
+
+def _is_context_length_error(exc: Exception) -> bool:
+    """Check if an exception represents a context-length overflow.
+
+    Detects errors with a ``code`` attribute of ``"context_length"``
+    (set by ``ModelError``) or common provider error messages.
+    """
+    code = getattr(exc, "code", "")
+    if code == "context_length":
+        return True
+    msg = str(exc).lower()
+    return "context_length" in msg or "context length" in msg
