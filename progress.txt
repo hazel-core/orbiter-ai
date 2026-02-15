@@ -428,3 +428,14 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - Template variable resolution happens AFTER joining all neuron fragments — this means variables can span across neuron outputs but resolution applies to the final composed string
   - 934 tests total across full suite (30 new prompt builder tests)
 ---
+
+## 2026-02-15 - US-029
+- What was implemented: ContextProcessor pipeline — event-driven context processing system. `ContextProcessor` ABC with `event` (str) and `async process(ctx, payload)`. `ProcessorPipeline` with `register()` (chaining), `unregister()`, `fire(event, ctx, payload)`, `has_processors()`, `list_processors()`, `clear()`, `__len__`, `__repr__`. Two built-in processors: `SummarizeProcessor` (`pre_llm_call` — marks context for summarization when history exceeds `ctx.config.summary_threshold`, stores excess messages as `summary_candidates`), `ToolResultOffloader` (`post_tool_call` — offloads large tool results exceeding `max_size` to `offloaded_results` in state, replaces payload with truncated reference).
+- Files changed: `packages/orbiter-context/src/orbiter/context/processor.py` (new, ~190 lines), `packages/orbiter-context/tests/test_context_processor.py` (new, 39 tests in 7 classes)
+- Test coverage: ABC tests (5: create, name, empty event error, repr, abstract enforcement), Pipeline registration (10: register, multiple same event, different events, unregister, unregister-not-registered, chaining, clear, list-all, list-filtered, repr), Pipeline fire (7: calls processor, no-match, default payload, sequential order, state mutation, error propagation, stops on first error), SummarizeProcessor (5: defaults, no history, below threshold, at threshold, exceeds threshold + pipeline), ToolResultOffloader (7: defaults, custom max_size, no result, small result, large result offload, multiple accumulate, default tool name + pipeline), Integration (3: multiple events, chain mutation, full lifecycle)
+- **Learnings for future iterations:**
+  - Ruff SIM105 requires `contextlib.suppress(ValueError)` instead of try/except/pass — already consistent with HookManager pattern in hooks.py
+  - ProcessorPipeline follows similar patterns to HookManager (sequential execution, error propagation) but uses string event types instead of enum values, which is more flexible for user-defined events
+  - ToolResultOffloader mutates the `payload` dict in-place to replace tool results — this is by design since the caller needs to see the modified payload
+  - 973 tests total across full suite (39 new processor tests)
+---
