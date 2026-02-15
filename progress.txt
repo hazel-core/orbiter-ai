@@ -1161,3 +1161,16 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - The existing `_sse_stream()` in app.py and the new `_sse_iter()` in streaming.py share the same event generation logic via `_iter_events()`
   - 2649 tests passing across all packages (21 new streaming tests)
 ---
+
+## 2026-02-16 - US-080
+- What was implemented: Trajectory dataset module in `packages/orbiter-train/src/orbiter/train/trajectory.py` (~130 lines). `TrajectoryError` exception. `TrajectoryItem` (frozen dataclass with SAR pattern: id, task_id, agent_id, step, timestamp, input/messages/context for State, output/tool_calls for Action, score/status for Reward, metadata; `to_dict()` and `from_dict()` serialization). `TrajectoryStrategy` ABC with `build_item()` and `validate()`. `DefaultStrategy` extracts input/output/tool_calls from message dicts. `TrajectoryDataset` with: `append_trajectory()` for pre-built items, `from_messages()` using strategy with per-agent step counting, `save_task_trajectory()` for bulk append, `get_task_trajectory()` for task filtering, `validate()` delegation, `to_json()` export, `to_csv()` export with JSON-encoded complex fields, `clear()`.
+- Files changed: `packages/orbiter-train/src/orbiter/train/trajectory.py` (new, ~130 lines), `packages/orbiter-train/tests/test_trajectory.py` (new, 38 tests)
+- Test coverage: TrajectoryItem creation/defaults/frozen/messages (4), serialization to_dict/from_dict/roundtrip/defaults (4), DefaultStrategy build/tool_calls/empty/validate (4), custom strategy (2), dataset init/custom_strategy/repr (3), capture append/from_messages/step_counter/separate_agents/save/get/get_empty/validate/clear (9), JSON export empty/single/multiple/complex_fields (4), CSV export empty/single/complex_fields/multiple (4), error (1), integration full_lifecycle/custom_strategy/save_then_export (3)
+- **Learnings for future iterations:**
+  - orbiter-train already had a package stub (pyproject.toml, __init__.py, tests/__init__.py) — just needed trajectory.py
+  - `dataclass(frozen=True, slots=True)` is the right pattern for immutable trajectory items — consistent with TokenStep, Checkpoint, ScorerResult patterns
+  - Step counters use `task_id:agent_id` composite key for per-agent-per-task step tracking
+  - CSV export requires JSON-encoding complex fields (messages, tool_calls, context, metadata) since CSV cells can't hold nested structures
+  - TrajectoryStrategy ABC is intentionally minimal (build_item + validate) — more complex strategies (filtered, memory-based) can be added in future without changing the interface
+  - 2687 tests total across full suite (38 new trajectory tests), excluding sqlite/postgres collection errors
+---
