@@ -1418,3 +1418,15 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - ServingConfig `skills` also takes tuple of AgentSkill — consistent with other tuple-based fields in a2a.types
   - 2848 tests pass, excluding sqlite/postgres collection errors (pre-existing)
 ---
+
+## 2026-02-16 - US-101
+- What was implemented: Common tools library with reusable tool implementations — `browse_url` (HTTP fetch with HTML stripping), `screenshot` (stub for headless browser), `web_search` (Google Custom Search API with stub fallback), `read_document` (text/JSON/CSV/PDF reader), `summarize_document` (file structure/size summary). Package `__init__.py` re-exports all tools and provides `ALL_TOOLS` list.
+- Files changed: `examples/common/__init__.py` (empty), `examples/common/tools/__init__.py` (re-exports), `examples/common/tools/browser.py` (75 lines), `examples/common/tools/search.py` (80 lines), `examples/common/tools/document.py` (121 lines)
+- **Learnings for future iterations:**
+  - S310 (urlopen audit) and SLF001 ruff rules are NOT enabled — `# noqa` comments for them trigger RUF100 (unused noqa)
+  - RUF022 requires `__all__` to be sorted alphabetically — use `ruff check --fix` to auto-sort
+  - Common tools use `@tool` decorator pattern (simplest form) — consistent with `examples/quickstart/local_tool.py`
+  - Google Custom Search API uses env vars `SEARCH_API_KEY` + `SEARCH_ENGINE_ID` — stub fallback when not set
+  - Document tool supports lazy imports for heavy deps (PyPDF2) — works without them for basic text files
+  - 2848 tests pass, excluding sqlite/postgres collection errors (pre-existing)
+---
