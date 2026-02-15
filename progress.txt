@@ -467,3 +467,18 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - TF-IDF scoring uses `log(1 + tf)` per term, which dampens high-frequency terms — simple but effective for keyword search
   - 1054 tests total across full suite (41 new knowledge/integration tests)
 ---
+
+## 2026-02-15 - US-032
+- What was implemented: Checkpoint system — save and restore complete execution state for long-running tasks. `Checkpoint` (frozen dataclass with task_id, version, values, token_usage, metadata, created_at; includes `to_dict()`/`from_dict()` serialization). `CheckpointStore` (per-session versioned store with `save()`, `get(version)`, `latest`, `list_versions()`). `Context.snapshot()` captures state + token usage into a versioned checkpoint. `Context.restore()` classmethod creates a fresh context from a checkpoint.
+- Files changed:
+  - `packages/orbiter-context/src/orbiter/context/checkpoint.py` (new, ~160 lines — CheckpointError, Checkpoint, CheckpointStore)
+  - `packages/orbiter-context/src/orbiter/context/context.py` (added ~70 lines — `_checkpoint_store` slot, `checkpoints` property, `snapshot()`, `restore()` classmethod)
+  - `packages/orbiter-context/tests/test_checkpoint.py` (new, 35 tests in 7 classes)
+- Test coverage: Checkpoint creation/metadata/immutable/repr/to_dict/from_dict/roundtrip (7), CheckpointStore creation/empty-id/save/version-increment/metadata/get/invalid-version/latest/list-versions/repr (10), Context.snapshot basic/empty/metadata/version-increment/captures-current (5), Context.restore basic/config/fresh-context/no-parent/no-checkpoints/invalid-type (6), Checkpoints property/per-context/forked-own-store (3), Full roundtrip/old-version/serialization/fork-snapshot (4)
+- **Learnings for future iterations:**
+  - Checkpoint is a frozen dataclass (not Pydantic) since it's a simple value object — no need for validation beyond what the store provides
+  - CheckpointStore uses 1-based versioning (version starts at 1, not 0) — consistent with user-facing version numbering
+  - Context.restore() is a classmethod that creates a completely fresh context with no parent/children/checkpoint-history — it's a clean slate with restored state values
+  - Forked child's `snapshot()` captures `to_dict()` which includes inherited parent values — so restoring captures the full merged view, not just local state
+  - 1089 tests total across full suite (35 new checkpoint tests)
+---
