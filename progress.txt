@@ -945,3 +945,14 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - 2115 tests total across full suite (30 new reflection tests), excluding sqlite/postgres collection errors
 ---
 
+## 2026-02-15 - US-064
+- What was implemented: Ralph loop state + config module in `packages/orbiter-eval/src/orbiter/eval/ralph/config.py` (~160 lines). `StopType` (StrEnum with 9 values, `is_success()`/`is_failure()` predicates). Three frozen sub-configs: `ValidationConfig` (scorer_names tuple, min_score_threshold with [0,1] validation, parallel, timeout), `ReflectionConfig` (level, max_history), `StopConditionConfig` (max_iterations with >=1 validation, timeout, max_cost, max_consecutive_failures, score_threshold, enable_user_interrupt). `RalphConfig` (frozen, aggregates all three sub-configs + metadata). `LoopState` (mutable dataclass with iteration/cost/tokens tracking, score_history + reflection_history lists, record_score/record_reflection/record_success/record_failure mutations, elapsed/success_rate/latest_score/best_score queries, to_dict serialisation, repr).
+- Files changed: `packages/orbiter-eval/src/orbiter/eval/ralph/__init__.py` (new), `packages/orbiter-eval/src/orbiter/eval/ralph/config.py` (new, ~160 lines), `packages/orbiter-eval/tests/test_ralph_config.py` (new, 41 tests in 9 classes)
+- **Learnings for future iterations:**
+  - Ralph subpackage goes under `packages/orbiter-eval/src/orbiter/eval/ralph/` — no new workspace registration needed since it's a subdirectory of an existing package
+  - `__post_init__` on frozen dataclasses works for validation — the object is already constructed but fields can't be reassigned after
+  - `time.monotonic()` is better than `time.time()` for elapsed timing — not affected by system clock adjustments
+  - `LoopState.record_success()` resets `consecutive_failures` to 0 — this is the key mechanic for the stop detector's consecutive failure tracking
+  - 2156 tests total across full suite (41 new ralph config tests), excluding sqlite/postgres collection errors
+---
+
