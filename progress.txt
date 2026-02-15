@@ -21,6 +21,7 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
 - Ruff RUF023: `__slots__` entries must be sorted alphabetically — run `uv run ruff check --fix` to auto-sort
 - `__slots__` makes instance attributes read-only for `patch.object(instance, "method")` — use `patch.object(ClassName, "method")` instead
 - `@asynccontextmanager` returns single-use CMs — when mocking, use `side_effect=lambda: factory()` not `return_value=cm` for multi-call scenarios
+- BLE001 (broad exception) ruff rule is NOT enabled — don't add `# noqa: BLE001` comments (triggers RUF100 unused noqa)
 ---
 
 ## 2026-02-15 - US-001
@@ -789,4 +790,24 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - `__getattr__` is only called when normal attribute lookup fails — builder methods defined via `__slots__` and actual method definitions are found before `__getattr__`, so no need for an explicit builder-method whitelist
   - Ruff F401 catches unused imports even when they seem semantically relevant (e.g., `SandboxError` imported but not used in builder.py)
   - 1682 tests total across full suite (28 new builder tests), excluding sqlite/postgres collection errors
+---
+
+## 2026-02-15 - US-053
+- What was implemented: KubernetesSandbox — Kubernetes-based sandbox for remote agent execution. Extends `Sandbox` ABC with full pod + service lifecycle management (create, poll readiness, delete), lazy kubernetes client loading, configurable namespace/image via constructor or env vars, async context manager support, and detailed `describe()` output.
+- Files changed: `packages/orbiter-sandbox/src/orbiter/sandbox/kubernetes.py` (new, ~280 lines), `packages/orbiter-sandbox/tests/test_kubernetes_sandbox.py` (new, 22 tests in 8 classes)
+- Key implementation details:
+  - `_load_client()` lazy-loads `kubernetes` package with fallback: KUBECONFIG env → in-cluster config → default kubeconfig
+  - `_pod_manifest()` and `_service_manifest()` generate minimal K8s manifests with `orbiter-{sandbox_id}` naming
+  - `_wait_for_pod()` polls `read_namespaced_pod` up to 30 times at 2-second intervals for Running phase
+  - `start()` creates pod + waits for readiness + creates service; errors set status to ERROR
+  - `stop()` and `cleanup()` both delete resources via `_delete_resources()` which tolerates delete failures (logged as warnings)
+  - `run_tool()` returns execution metadata including pod name and cluster IP
+  - All K8s API calls wrapped in `asyncio.to_thread()` for async compatibility
+  - Tests use `_mock_k8s_api()` helper that returns a MagicMock CoreV1Api with configurable pod phase and service cluster_ip
+- Test coverage: init defaults/custom/env vars (4), load client missing/cached (2), manifests pod/service (2), start creates/polls/error/timeout (4), stop deletes/no-client (2), cleanup closes/tolerates-errors (2), run_tool running/not-running (2), context manager (1), describe before/after start + repr (3)
+- **Learnings for future iterations:**
+  - BLE001 (broad exception) ruff rule is NOT enabled in this project — `# noqa: BLE001` comments are unnecessary and trigger RUF100 (unused noqa)
+  - `patch.dict("sys.modules", {"kubernetes": None})` is the pattern for testing missing optional dependencies — set the module and all submodules to `None`
+  - `asyncio.to_thread()` wraps sync kubernetes client calls for async compatibility — this is the standard pattern for blocking I/O in async code
+  - 1704 tests total across full suite (22 new kubernetes sandbox tests), excluding sqlite/postgres collection errors
 ---
