@@ -2,20 +2,22 @@
 
 Provides ``Handler[IN, OUT]`` as the base abstraction for processing
 units that transform inputs to outputs via async generators, and
-``AgentHandler`` for routing between agents in multi-agent swarms
-with topology-aware stop conditions.
+concrete handlers for agent routing, tool execution, and group
+orchestration in multi-agent swarms.
 """
 
 from __future__ import annotations
 
 import abc
-from collections.abc import AsyncIterator
+import asyncio
+from collections.abc import AsyncIterator, Sequence
 from enum import StrEnum
 from typing import Any, Generic, TypeVar
 
 from orbiter._internal.call_runner import call_runner
 from orbiter._internal.state import RunState
-from orbiter.types import Message, OrbiterError, RunResult
+from orbiter.tool import Tool, ToolError
+from orbiter.types import Message, OrbiterError, RunResult, ToolResult
 
 IN = TypeVar("IN")
 OUT = TypeVar("OUT")
@@ -233,3 +235,253 @@ class AgentHandler(Handler[str, RunResult]):
         if not self.flow_order:
             return True
         return agent_name == self.flow_order[0]
+
+
+class ToolHandler(Handler[dict[str, Any], ToolResult]):
+    """Handles dynamic tool loading, execution, and result aggregation.
+
+    Accepts a dict of tool arguments keyed by tool call ID, resolves
+    tools from a registry, executes them (optionally in parallel),
+    and yields ``ToolResult`` objects.
+
+    Args:
+        tools: Dict mapping tool name to ``Tool`` instance.
+    """
+
+    def __init__(self, *, tools: dict[str, Tool] | None = None) -> None:
+        self.tools: dict[str, Tool] = tools or {}
+
+    def register(self, tool: Tool) -> None:
+        """Register a tool for execution.
+
+        Args:
+            tool: The tool to register.
+
+        Raises:
+            HandlerError: If a tool with the same name already exists.
+        """
+        if tool.name in self.tools:
+            raise HandlerError(f"Duplicate tool '{tool.name}' in ToolHandler")
+        self.tools[tool.name] = tool
+
+    def register_many(self, tools: Sequence[Tool]) -> None:
+        """Register multiple tools at once.
+
+        Args:
+            tools: Sequence of tools to register.
+        """
+        for t in tools:
+            self.register(t)
+
+    async def handle(self, input: dict[str, Any], **kwargs: Any) -> AsyncIterator[ToolResult]:
+        """Execute tool calls described by the input dict.
+
+        The input dict maps tool_call_id to a dict with ``"name"``
+        and ``"arguments"`` keys.  Tools are executed in parallel via
+        ``asyncio.TaskGroup``.
+
+        Args:
+            input: Mapping of tool_call_id -> {"name": str, "arguments": dict}.
+            **kwargs: Ignored.
+
+        Yields:
+            ``ToolResult`` for each tool call (in order of tool_call_ids).
+        """
+        if not input:
+            return
+
+        call_ids = list(input.keys())
+        results: list[ToolResult] = [ToolResult(tool_call_id="", tool_name="")] * len(call_ids)
+
+        async def _run_one(idx: int) -> None:
+            call_id = call_ids[idx]
+            call_info = input[call_id]
+            tool_name: str = call_info.get("name", "")
+            arguments: dict[str, Any] = call_info.get("arguments", {})
+
+            tool = self.tools.get(tool_name)
+            if tool is None:
+                results[idx] = ToolResult(
+                    tool_call_id=call_id,
+                    tool_name=tool_name,
+                    error=f"Unknown tool '{tool_name}'",
+                )
+                return
+
+            try:
+                output = await tool.execute(**arguments)
+                content = output if isinstance(output, str) else str(output)
+                results[idx] = ToolResult(
+                    tool_call_id=call_id,
+                    tool_name=tool_name,
+                    content=content,
+                )
+            except (ToolError, Exception) as exc:
+                results[idx] = ToolResult(
+                    tool_call_id=call_id,
+                    tool_name=tool_name,
+                    error=str(exc),
+                )
+
+        async with asyncio.TaskGroup() as tg:
+            for i in range(len(call_ids)):
+                tg.create_task(_run_one(i))
+
+        for result in results:
+            yield result
+
+    def aggregate(self, results: Sequence[ToolResult]) -> dict[str, str]:
+        """Aggregate tool results into a summary dict.
+
+        Args:
+            results: Sequence of tool results.
+
+        Returns:
+            Mapping of tool_call_id to content or error string.
+        """
+        out: dict[str, str] = {}
+        for r in results:
+            out[r.tool_call_id] = r.error if r.error else r.content
+        return out
+
+
+class GroupHandler(Handler[str, RunResult]):
+    """Orchestrates parallel and sequential agent/tool group execution.
+
+    Groups can be run in parallel (all at once) or serial (with
+    output→input chaining and dependency resolution).
+
+    Args:
+        agents: Dict mapping agent name to agent instance.
+        provider: LLM provider.
+        parallel: If True, run agents concurrently; otherwise serially.
+        dependencies: Mapping of agent name to list of agent names it
+            depends on (serial mode only).
+    """
+
+    def __init__(
+        self,
+        *,
+        agents: dict[str, Any],
+        provider: Any = None,
+        parallel: bool = True,
+        dependencies: dict[str, list[str]] | None = None,
+    ) -> None:
+        self.agents = agents
+        self.provider = provider
+        self.parallel = parallel
+        self.dependencies = dependencies or {}
+
+    async def handle(self, input: str, **kwargs: Any) -> AsyncIterator[RunResult]:
+        """Execute agent group in parallel or serial mode.
+
+        Args:
+            input: User query string.
+            **kwargs: Additional context (messages, etc.).
+
+        Yields:
+            ``RunResult`` from each agent execution.
+        """
+        messages: list[Message] = list(kwargs.get("messages", []))
+
+        if self.parallel:
+            async for result in self._run_parallel(input, messages):
+                yield result
+        else:
+            async for result in self._run_serial(input, messages):
+                yield result
+
+    async def _run_parallel(self, input: str, messages: list[Message]) -> AsyncIterator[RunResult]:
+        """Run all agents concurrently via asyncio.TaskGroup.
+
+        All agents receive the same input.  Results are yielded
+        in the order agents are registered.
+        """
+        agent_names = list(self.agents.keys())
+        results: list[RunResult] = [RunResult()] * len(agent_names)
+
+        async def _run_one(idx: int) -> None:
+            name = agent_names[idx]
+            agent = self.agents[name]
+            results[idx] = await call_runner(
+                agent, input, messages=messages, provider=self.provider
+            )
+
+        async with asyncio.TaskGroup() as tg:
+            for i in range(len(agent_names)):
+                tg.create_task(_run_one(i))
+
+        for result in results:
+            yield result
+
+    async def _run_serial(self, input: str, messages: list[Message]) -> AsyncIterator[RunResult]:
+        """Run agents in dependency-resolved order with output chaining.
+
+        Uses topological sort on the dependency graph to determine
+        execution order.  Each agent receives its predecessor's output
+        as input (or the original input if no predecessor).
+        """
+        order = self._resolve_order()
+        outputs: dict[str, str] = {}
+
+        for agent_name in order:
+            agent = self.agents.get(agent_name)
+            if agent is None:
+                raise HandlerError(f"Agent '{agent_name}' not found in group")
+
+            # Determine input: use output of last dependency, or original input
+            deps = self.dependencies.get(agent_name, [])
+            agent_input = outputs[deps[-1]] if deps else input
+
+            result = await call_runner(
+                agent, agent_input, messages=messages, provider=self.provider
+            )
+            outputs[agent_name] = result.output
+            yield result
+
+    def _resolve_order(self) -> list[str]:
+        """Topological sort of agents based on dependencies.
+
+        Uses Kahn's algorithm for deterministic ordering.
+
+        Returns:
+            Ordered list of agent names.
+
+        Raises:
+            HandlerError: If a dependency cycle is detected.
+        """
+        all_names = list(self.agents.keys())
+        if not self.dependencies:
+            return all_names
+
+        # Build in-degree counts and adjacency list
+        in_degree: dict[str, int] = {name: 0 for name in all_names}
+        successors: dict[str, list[str]] = {name: [] for name in all_names}
+
+        for name, deps in self.dependencies.items():
+            if name not in in_degree:
+                continue
+            for dep in deps:
+                if dep in successors:
+                    successors[dep].append(name)
+                    in_degree[name] += 1
+
+        # Kahn's algorithm
+        queue = [name for name in all_names if in_degree[name] == 0]
+        order: list[str] = []
+
+        while queue:
+            # Sort for deterministic ordering
+            queue.sort()
+            current = queue.pop(0)
+            order.append(current)
+
+            for succ in successors[current]:
+                in_degree[succ] -= 1
+                if in_degree[succ] == 0:
+                    queue.append(succ)
+
+        if len(order) != len(all_names):
+            raise HandlerError("Dependency cycle detected in group")
+
+        return order

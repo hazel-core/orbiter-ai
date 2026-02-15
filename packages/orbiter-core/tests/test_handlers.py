@@ -1,4 +1,4 @@
-"""Tests for orbiter._internal.handlers — Handler ABC and AgentHandler."""
+"""Tests for orbiter._internal.handlers — Handler ABC, AgentHandler, ToolHandler, GroupHandler."""
 
 from __future__ import annotations
 
@@ -10,12 +10,15 @@ import pytest
 
 from orbiter._internal.handlers import (
     AgentHandler,
+    GroupHandler,
     Handler,
     HandlerError,
     SwarmMode,
+    ToolHandler,
 )
 from orbiter.agent import Agent
-from orbiter.types import AgentOutput, RunResult
+from orbiter.tool import FunctionTool, ToolError
+from orbiter.types import AgentOutput, RunResult, ToolResult
 
 # ---------------------------------------------------------------------------
 # Fixtures: mock provider
@@ -454,3 +457,352 @@ class TestHandoffDetection:
         result = RunResult(output="  billing  ")
 
         assert handler._detect_handoff(agent, result) == "billing"
+
+
+# ---------------------------------------------------------------------------
+# ToolHandler
+# ---------------------------------------------------------------------------
+
+
+def _make_tool(name: str, output: str = "ok") -> FunctionTool:
+    """Create a simple FunctionTool that returns a fixed string."""
+
+    async def _fn(**kwargs: Any) -> str:
+        return output
+
+    return FunctionTool(_fn, name=name)
+
+
+def _make_failing_tool(name: str, error_msg: str = "boom") -> FunctionTool:
+    """Create a FunctionTool that raises ToolError."""
+
+    async def _fn(**kwargs: Any) -> str:
+        raise ToolError(error_msg)
+
+    return FunctionTool(_fn, name=name)
+
+
+class TestToolHandlerRegistration:
+    def test_register_single(self) -> None:
+        """Register a single tool."""
+        handler = ToolHandler()
+        tool = _make_tool("greet")
+        handler.register(tool)
+
+        assert "greet" in handler.tools
+
+    def test_register_many(self) -> None:
+        """Register multiple tools at once."""
+        handler = ToolHandler()
+        handler.register_many([_make_tool("a"), _make_tool("b")])
+
+        assert "a" in handler.tools
+        assert "b" in handler.tools
+
+    def test_register_duplicate_raises(self) -> None:
+        """Registering a duplicate tool name raises HandlerError."""
+        handler = ToolHandler()
+        handler.register(_make_tool("x"))
+
+        with pytest.raises(HandlerError, match="Duplicate tool"):
+            handler.register(_make_tool("x"))
+
+    def test_init_with_tools(self) -> None:
+        """Tools can be passed via constructor."""
+        tool = _make_tool("init_tool")
+        handler = ToolHandler(tools={"init_tool": tool})
+
+        assert "init_tool" in handler.tools
+
+
+class TestToolHandlerExecution:
+    async def test_single_tool_execution(self) -> None:
+        """Execute a single tool call."""
+        handler = ToolHandler(tools={"greet": _make_tool("greet", "Hello!")})
+        input_calls = {"call-1": {"name": "greet", "arguments": {}}}
+
+        results = [r async for r in handler.handle(input_calls)]
+
+        assert len(results) == 1
+        assert results[0].tool_call_id == "call-1"
+        assert results[0].tool_name == "greet"
+        assert results[0].content == "Hello!"
+        assert results[0].error is None
+
+    async def test_parallel_tool_execution(self) -> None:
+        """Execute multiple tool calls in parallel."""
+        handler = ToolHandler(
+            tools={
+                "add": _make_tool("add", "sum"),
+                "mul": _make_tool("mul", "product"),
+            }
+        )
+        input_calls = {
+            "c1": {"name": "add", "arguments": {"a": 1, "b": 2}},
+            "c2": {"name": "mul", "arguments": {"a": 3, "b": 4}},
+        }
+
+        results = [r async for r in handler.handle(input_calls)]
+
+        assert len(results) == 2
+        names = {r.tool_name for r in results}
+        assert names == {"add", "mul"}
+
+    async def test_unknown_tool_returns_error(self) -> None:
+        """Unknown tool produces a ToolResult with an error."""
+        handler = ToolHandler()
+        input_calls = {"c1": {"name": "nonexistent", "arguments": {}}}
+
+        results = [r async for r in handler.handle(input_calls)]
+
+        assert len(results) == 1
+        assert results[0].error is not None
+        assert "Unknown tool" in results[0].error
+
+    async def test_tool_error_caught(self) -> None:
+        """ToolError from execution is caught and returned in result."""
+        handler = ToolHandler(tools={"bad": _make_failing_tool("bad", "it broke")})
+        input_calls = {"c1": {"name": "bad", "arguments": {}}}
+
+        results = [r async for r in handler.handle(input_calls)]
+
+        assert len(results) == 1
+        assert results[0].error is not None
+        assert "it broke" in results[0].error
+
+    async def test_empty_input_yields_nothing(self) -> None:
+        """Empty input dict yields no results."""
+        handler = ToolHandler()
+        results = [r async for r in handler.handle({})]
+
+        assert results == []
+
+    async def test_result_ordering_matches_input(self) -> None:
+        """Results are yielded in the same order as input keys."""
+        handler = ToolHandler(
+            tools={
+                "a": _make_tool("a", "out_a"),
+                "b": _make_tool("b", "out_b"),
+                "c": _make_tool("c", "out_c"),
+            }
+        )
+        input_calls = {
+            "id1": {"name": "a", "arguments": {}},
+            "id2": {"name": "b", "arguments": {}},
+            "id3": {"name": "c", "arguments": {}},
+        }
+
+        results = [r async for r in handler.handle(input_calls)]
+
+        assert [r.tool_call_id for r in results] == ["id1", "id2", "id3"]
+        assert [r.content for r in results] == ["out_a", "out_b", "out_c"]
+
+
+class TestToolHandlerAggregate:
+    def test_aggregate_success(self) -> None:
+        """Aggregate returns content for successful results."""
+        handler = ToolHandler()
+        results = [
+            ToolResult(tool_call_id="c1", tool_name="a", content="ok"),
+            ToolResult(tool_call_id="c2", tool_name="b", content="done"),
+        ]
+        agg = handler.aggregate(results)
+
+        assert agg == {"c1": "ok", "c2": "done"}
+
+    def test_aggregate_with_errors(self) -> None:
+        """Aggregate returns error string for failed results."""
+        handler = ToolHandler()
+        results = [
+            ToolResult(tool_call_id="c1", tool_name="a", content="ok"),
+            ToolResult(tool_call_id="c2", tool_name="b", error="failed"),
+        ]
+        agg = handler.aggregate(results)
+
+        assert agg == {"c1": "ok", "c2": "failed"}
+
+
+# ---------------------------------------------------------------------------
+# GroupHandler
+# ---------------------------------------------------------------------------
+
+
+class TestGroupHandlerParallel:
+    async def test_parallel_two_agents(self) -> None:
+        """Parallel group runs two agents concurrently."""
+        agent_a = Agent(name="a")
+        agent_b = Agent(name="b")
+        provider = _make_provider([AgentOutput(text="result_a"), AgentOutput(text="result_b")])
+
+        handler = GroupHandler(
+            agents={"a": agent_a, "b": agent_b},
+            provider=provider,
+            parallel=True,
+        )
+        results = [r async for r in handler.handle("input")]
+
+        assert len(results) == 2
+        outputs = {r.output for r in results}
+        assert "result_a" in outputs or "result_b" in outputs
+
+    async def test_parallel_same_input(self) -> None:
+        """All parallel agents receive the same input — both produce results."""
+        provider = _make_provider([AgentOutput(text="from_x"), AgentOutput(text="from_y")])
+        handler = GroupHandler(
+            agents={"x": Agent(name="x"), "y": Agent(name="y")},
+            provider=provider,
+            parallel=True,
+        )
+        results = [r async for r in handler.handle("shared_input")]
+
+        # Both agents ran and produced results
+        assert len(results) == 2
+        outputs = {r.output for r in results}
+        assert outputs == {"from_x", "from_y"}
+
+    async def test_parallel_single_agent(self) -> None:
+        """Parallel group with one agent works correctly."""
+        provider = _make_provider([AgentOutput(text="solo")])
+        handler = GroupHandler(
+            agents={"only": Agent(name="only")},
+            provider=provider,
+            parallel=True,
+        )
+        results = [r async for r in handler.handle("go")]
+
+        assert len(results) == 1
+        assert results[0].output == "solo"
+
+
+class TestGroupHandlerSerial:
+    async def test_serial_chaining(self) -> None:
+        """Serial group chains output -> input between agents."""
+        provider = _make_provider([AgentOutput(text="step1"), AgentOutput(text="step2")])
+        handler = GroupHandler(
+            agents={"a": Agent(name="a"), "b": Agent(name="b")},
+            provider=provider,
+            parallel=False,
+            dependencies={"b": ["a"]},
+        )
+        results = [r async for r in handler.handle("start")]
+
+        assert len(results) == 2
+        assert results[0].output == "step1"
+        assert results[1].output == "step2"
+
+    async def test_serial_no_dependencies(self) -> None:
+        """Serial group without dependencies runs in registration order."""
+        provider = _make_provider([AgentOutput(text="first"), AgentOutput(text="second")])
+        handler = GroupHandler(
+            agents={"x": Agent(name="x"), "y": Agent(name="y")},
+            provider=provider,
+            parallel=False,
+        )
+        results = [r async for r in handler.handle("go")]
+
+        assert len(results) == 2
+
+    async def test_serial_missing_agent_raises(self) -> None:
+        """Serial group with missing agent in agents dict raises HandlerError."""
+
+        class _BadGroupHandler(GroupHandler):
+            """Override _resolve_order to return a non-existent agent."""
+
+            def _resolve_order(self) -> list[str]:
+                return ["a", "missing"]
+
+        handler = _BadGroupHandler(
+            agents={"a": Agent(name="a")},
+            provider=_make_provider([AgentOutput(text="a_out")]),
+            parallel=False,
+        )
+
+        with pytest.raises(HandlerError, match="not found"):
+            async for _ in handler.handle("test"):
+                pass
+
+    async def test_serial_diamond_dependency(self) -> None:
+        """Serial group resolves diamond dependencies correctly."""
+        # a -> b, a -> c, b -> d, c -> d
+        provider = _make_provider(
+            [
+                AgentOutput(text="a_out"),
+                AgentOutput(text="b_out"),
+                AgentOutput(text="c_out"),
+                AgentOutput(text="d_out"),
+            ]
+        )
+        handler = GroupHandler(
+            agents={
+                "a": Agent(name="a"),
+                "b": Agent(name="b"),
+                "c": Agent(name="c"),
+                "d": Agent(name="d"),
+            },
+            provider=provider,
+            parallel=False,
+            dependencies={
+                "b": ["a"],
+                "c": ["a"],
+                "d": ["b", "c"],
+            },
+        )
+        results = [r async for r in handler.handle("start")]
+
+        assert len(results) == 4
+        # 'a' must come first, 'd' must come last
+        assert results[0].output == "a_out"
+        assert results[-1].output == "d_out"
+
+
+class TestGroupHandlerDependencyResolution:
+    def test_resolve_no_deps(self) -> None:
+        """Resolution with no dependencies returns registration order."""
+        handler = GroupHandler(
+            agents={"a": Agent(name="a"), "b": Agent(name="b")},
+            parallel=False,
+        )
+        order = handler._resolve_order()
+
+        assert order == ["a", "b"]
+
+    def test_resolve_linear_chain(self) -> None:
+        """Resolution handles a linear dependency chain."""
+        handler = GroupHandler(
+            agents={"c": Agent(name="c"), "b": Agent(name="b"), "a": Agent(name="a")},
+            parallel=False,
+            dependencies={"b": ["a"], "c": ["b"]},
+        )
+        order = handler._resolve_order()
+
+        assert order.index("a") < order.index("b")
+        assert order.index("b") < order.index("c")
+
+    def test_resolve_cycle_raises(self) -> None:
+        """Cyclic dependencies raise HandlerError."""
+        handler = GroupHandler(
+            agents={"a": Agent(name="a"), "b": Agent(name="b")},
+            parallel=False,
+            dependencies={"a": ["b"], "b": ["a"]},
+        )
+
+        with pytest.raises(HandlerError, match="cycle"):
+            handler._resolve_order()
+
+    def test_resolve_diamond(self) -> None:
+        """Diamond dependency graph is resolved correctly."""
+        handler = GroupHandler(
+            agents={
+                "a": Agent(name="a"),
+                "b": Agent(name="b"),
+                "c": Agent(name="c"),
+                "d": Agent(name="d"),
+            },
+            parallel=False,
+            dependencies={"b": ["a"], "c": ["a"], "d": ["b", "c"]},
+        )
+        order = handler._resolve_order()
+
+        assert order[0] == "a"
+        assert order[-1] == "d"
+        assert set(order) == {"a", "b", "c", "d"}
