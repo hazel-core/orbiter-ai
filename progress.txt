@@ -451,3 +451,19 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - Artifact versioning uses append-only `_versions` list — revert creates a NEW version with old content rather than truncating history
   - 1013 tests total across full suite (40 new workspace tests)
 ---
+
+## 2026-02-15 - US-031
+- What was implemented: Workspace-retriever integration — `KnowledgeStore` with in-memory artifact indexing, text chunking with overlap, keyword search (TF-IDF-like scoring), and chunk range queries. Workspace auto-indexes artifacts on write/update and de-indexes on delete via `knowledge_store` parameter.
+- Files changed:
+  - `packages/orbiter-context/src/orbiter/context/_internal/__init__.py` (new, empty)
+  - `packages/orbiter-context/src/orbiter/context/_internal/knowledge.py` (new, ~195 lines — KnowledgeError, Chunk, SearchResult, chunk_text(), KnowledgeStore with add/remove/get/get_range/search)
+  - `packages/orbiter-context/src/orbiter/context/workspace.py` (modified — added `knowledge_store` param, `_index_artifact`, `_deindex_artifact` methods, auto-indexing in write/delete)
+  - `packages/orbiter-context/tests/test_knowledge.py` (new, 41 tests in 11 classes)
+- Test coverage: chunk_text (8: short/empty/exact/overlap/no-overlap/invalid-size/invalid-overlap/negative), Chunk (2: creation, immutability), SearchResult (1), KnowledgeStore init (3: defaults, custom, repr), add (5: short/long/empty-name/re-add/multiple), remove (2: existing/missing), get (2: existing/missing), get_range (3: range/missing/no-overlap), search (7: keyword/multi-term/no-results/empty/top_k/ranking/empty-store), workspace integration (8: auto-index/update-re-index/delete-removes/no-store/round-trip/multi-artifact/property/default)
+- **Learnings for future iterations:**
+  - `_internal/` directory pattern: US-033 will enhance KnowledgeStore with more features — the module is in `_internal/knowledge.py` so US-033 can extend it
+  - Workspace `knowledge_store` typed as `Any` to avoid circular import — duck-typing: any object with `add(name, content)` and `remove(name)` methods works
+  - chunk_text's loop uses `end >= len(text)` break condition, so the last chunk may be full-size (not always short) when end exactly equals text length
+  - TF-IDF scoring uses `log(1 + tf)` per term, which dampens high-frequency terms — simple but effective for keyword search
+  - 1054 tests total across full suite (41 new knowledge/integration tests)
+---

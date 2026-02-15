@@ -586,8 +586,8 @@
         "Typecheck passes"
       ],
       "priority": 31,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "KnowledgeStore with chunking + keyword search in _internal/knowledge.py. Workspace auto-indexes on write/update and de-indexes on delete. 41 new tests (1054 total)."
     },
     {
       "id": "US-032",
