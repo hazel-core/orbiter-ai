@@ -23,7 +23,7 @@
         "Typecheck passes"
       ],
       "priority": 1,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -45,8 +45,8 @@
         "Typecheck passes"
       ],
       "priority": 2,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Already implemented and committed in US-001 batch. 19 tests passing."
     },
     {
       "id": "US-003",

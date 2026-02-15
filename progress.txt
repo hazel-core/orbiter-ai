@@ -1,0 +1,34 @@
+# Ralph Progress Log
+Started: Sun Feb 15 04:58:56 PM IST 2026
+
+## Codebase Patterns
+- UV workspace monorepo: 12 packages under `packages/`, root pyproject.toml has NO build-system
+- Namespace packages: `orbiter-core/__init__.py` uses `pkgutil.extend_path()` so other packages add to the `orbiter` namespace
+- Meta-package at `packages/orbiter/` uses `_orbiter_meta` dummy package for hatchling compatibility
+- Quality checks: `uv run ruff check packages/`, `uv run ruff format --check packages/`, `uv run pyright packages/orbiter-core/`, `uv run pytest`
+- Use `Sequence[Message]` (not `list[Message]`) for function params that accept subtype lists — avoids pyright invariance errors
+- Use `ClassVar[dict[...]]` for mutable class attributes on dataclass-like test fixtures to avoid RUF012 lint errors
+- Test file names must be unique across all packages (pytest collects `tests/` from multiple packages into one `tests` module)
+- pytest-asyncio `asyncio_mode = "auto"` configured in root pyproject.toml — no need for `@pytest.mark.asyncio`
+- Import sorting: ruff enforces I001 import block sorting — use `uv run ruff check --fix` to auto-sort
+---
+
+## 2026-02-15 - US-001
+- What was implemented: Message builder with build_messages, validate_message_order, extract_last_assistant_tool_calls, merge_usage. Initial commit of entire Orbiter framework infrastructure (Phases 1-4 + partial Phase 5).
+- Files changed: packages/ (65 files — all package infrastructure, types, config, registry, events, hooks, tool, models, agent, message_builder, output_parser, and tests)
+- **Learnings for future iterations:**
+  - The codebase had pre-existing code from prior interactive sessions (Phases 1-4) that was never committed — this first commit captures everything
+  - `list[SubType]` is not assignable to `list[BaseType]` in pyright due to list invariance — use `Sequence[BaseType]` for read-only function params
+  - `test_agent.py` had RUF012 (mutable class default) and I001 (import sorting) lint errors that needed fixing
+  - All 349 tests pass across orbiter-core (222) and orbiter-models (127)
+---
+
+## 2026-02-15 - US-002
+- What was implemented: Output parser was already fully implemented and committed as part of the US-001 batch commit. Verified all acceptance criteria are met.
+- Files: `packages/orbiter-core/src/orbiter/_internal/output_parser.py` (~155 lines), `packages/orbiter-core/tests/test_output_parser.py` (19 tests)
+- Key functions: `parse_response()`, `parse_tool_arguments()`, `parse_structured_output()`, `OutputParseError`
+- All quality checks pass: ruff check, ruff format, pyright (0 errors), pytest (349 tests)
+- **Learnings for future iterations:**
+  - US-001's initial commit included code for multiple user stories — check if the next story's code already exists before implementing
+  - The PRD's `ParsedOutput` is implemented as `AgentOutput` in the actual code — the types module defines `AgentOutput` with text, tool_calls, usage fields
+---
