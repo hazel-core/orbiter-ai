@@ -308,8 +308,8 @@
         "Typecheck passes"
       ],
       "priority": 16,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Graph dataclass with adjacency lists, topological_sort() via Kahn's algorithm, cycle detection, parse_flow_dsl() with parallel group support. 31 new tests (600 total)."
     },
     {
       "id": "US-017",

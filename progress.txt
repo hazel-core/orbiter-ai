@@ -222,3 +222,18 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - The `__init__.py` for orbiter-core already uses `pkgutil.extend_path()` for namespace packages — imports of `Agent`, `run`, `tool`, `Tool` go after that line
   - 569 tests total across full suite (22 new integration tests)
 ---
+
+## 2026-02-15 - US-016
+- What was implemented: Graph utilities module with `Graph` dataclass (adjacency list), `topological_sort()` (Kahn's algorithm with deterministic ordering), cycle detection, and `parse_flow_dsl()` for parsing flow DSL strings like `"a >> b >> c"` and `"(a | b) >> c"` into Graph objects.
+- Files changed: `packages/orbiter-core/src/orbiter/_internal/graph.py` (~130 lines), `packages/orbiter-core/tests/test_graph.py` (31 tests in 4 classes)
+- Key implementation details:
+  - `Graph` is a `@dataclass` with `_adjacency: dict[str, list[str]]` — add_node (idempotent), add_edge (duplicate-safe, auto-creates nodes), nodes/edges properties, successors(), in_degree()
+  - `topological_sort()` uses Kahn's algorithm with `deque` — sorts queue entries for deterministic ordering
+  - `parse_flow_dsl()` tokenizes by `>>`, handles `(a | b)` parallel groups via regex, creates edges between all members of consecutive stages
+  - `GraphError` raised for cycles, unknown nodes, empty/malformed DSL
+- **Learnings for future iterations:**
+  - GroupHandler in `handlers.py` already has an inline topo sort (`_resolve_order`) — could be refactored to use graph.py in a future iteration, but not required now
+  - `deque.popleft()` is O(1) vs `list.pop(0)` which is O(n) — prefer deque for BFS-style queue operations
+  - The `parse_flow_dsl` returns a `Graph` (not just edges) so callers can use `topological_sort()` directly on the result
+  - 600 tests total across full suite (31 new graph tests)
+---
