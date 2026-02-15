@@ -708,3 +708,21 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - Within-package imports in orbiter-mcp source also need `# pyright: ignore[reportMissingImports]` (same namespace package issue as orbiter-core/orbiter-models)
   - 1582 tests total across full suite (31 new execution tests)
 ---
+
+## 2026-02-15 - US-048
+- What was implemented: YAML agent & swarm loader with variable substitution and factory dispatch. `LoaderError` exception. `_substitute()` recursive variable replacement for `${ENV_VAR}` (from os.environ) and `${vars.KEY}` (from YAML's `vars` section), with full-match type preservation (int, float, bool). `_build_agent()` factory with builtin Agent construction and custom class dispatch via `register_agent_class()`. `load_yaml()` loads + substitutes. `load_agents()` returns named agent instances. `load_swarm()` creates Swarm with mode (workflow/handoff/team), flow DSL, explicit order, handoff edge wiring.
+- Files changed: `packages/orbiter-core/src/orbiter/loader.py` (new, ~150 lines), `packages/orbiter-core/tests/test_loader.py` (37 tests in 9 classes), `packages/orbiter-core/pyproject.toml` (added `pyyaml>=6.0` dependency)
+- Key implementation details:
+  - Two substitution modes: `fullmatch()` preserves original type (e.g., `${vars.TEMP}` → 0.7 as float), `sub()` for partial matches always returns string
+  - `_build_agent()` supports `system_prompt` alias for `instructions` (matching old AWorld convention)
+  - `load_swarm()` handles 3 topology patterns: workflow (default, with optional explicit order or flow DSL), handoff (with `edges` for wiring handoff targets), team (lead + workers via order)
+  - `register_agent_class(name, cls)` for custom agent types via YAML `type:` field
+  - Missing env vars / vars keys return the original `${...}` string unchanged (no error, matches old AWorld behavior)
+- **Learnings for future iterations:**
+  - `pyyaml>=6.0` needed to be added as a dependency to orbiter-core's pyproject.toml — previously not needed by any orbiter-core module
+  - `_VAR_RE.fullmatch()` vs `_VAR_RE.sub()` distinction is critical for type preservation: full match returns the resolved value directly (preserving int/float/bool), partial match always converts to string
+  - YAML `vars:` section is popped from data before substitution to avoid leaking into the returned dict — consistent with old AWorld's approach
+  - ruff auto-format adjusts whitespace in function signatures — run format before committing
+  - sqlite/postgres tests have collection errors due to missing deps (aiosqlite/asyncpg not installed) — this is pre-existing, not caused by this change
+  - 1552 tests pass (37 new loader tests), excluding sqlite/postgres collection errors
+---
