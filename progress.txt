@@ -146,3 +146,19 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - Auto-provider resolution uses try/except to gracefully handle missing orbiter-models package
   - 458 tests total across full suite (13 new)
 ---
+
+## 2026-02-15 - US-011
+- What was implemented: `run.stream()` async generator attached to the `run` function, yielding `TextEvent` for text deltas and `ToolCallEvent` for tool invocations. Supports full tool execution loop with re-streaming after tool results.
+- Files changed: `packages/orbiter-core/src/orbiter/runner.py` (added `_stream()` ~110 lines), `packages/orbiter-core/tests/test_runner.py` (added 10 tests in 3 new test classes + streaming helpers)
+- Key implementation details:
+  - `run.stream(agent, input, ...)` uses `provider.stream()` for chunk-by-chunk text delivery
+  - Tool call deltas accumulated from `StreamChunk.tool_call_deltas` by index, then assembled into `ToolCall` objects
+  - After tool calls: executes tools via `agent._execute_tools()`, appends results to conversation, re-streams
+  - Loop continues until text-only response or `max_steps` reached
+  - Error in no-provider case raises `AgentError` immediately
+- **Learnings for future iterations:**
+  - `_resolve_provider` passes `agent.provider_name` to `get_provider()`, which calls `parse_model_string()` again — a bare name like "nonexistent" gets parsed as `("openai", "nonexistent")` and resolves to OpenAI provider. To test no-provider scenarios, monkeypatch `_resolve_provider` to return `None`
+  - Same pyright issue with `agent.instructions` returning `object | Any` — use `str()` cast pattern (instr/raw_instr) consistent with call_runner.py
+  - Streaming doesn't use `call_runner()` or `Agent.run()` — it operates at a lower level, directly calling `provider.stream()` and managing the tool loop itself. This is by design for real-time event delivery
+  - 468 tests total across full suite (10 new streaming tests)
+---

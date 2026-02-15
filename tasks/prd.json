@@ -219,8 +219,8 @@
         "Typecheck passes"
       ],
       "priority": 11,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "run.stream() async generator yielding TextEvent and ToolCallEvent. Integrates with provider.stream(), tool execution loop, max_steps. 10 new tests (468 total)."
     },
     {
       "id": "US-012",
