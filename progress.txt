@@ -1233,3 +1233,16 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - `from None` needed on re-raised ImportError per ruff B904
   - 2848 tests total across full suite (51 new VeRL tests), excluding sqlite/postgres collection errors (pre-existing)
 ---
+
+## 2026-02-16 - US-085
+- What was implemented: Basic quickstart examples — `define_agent.py` (agent with tool + sync runner) and `use_llm.py` (direct provider usage + auto-resolution).
+- Files changed:
+  - `examples/quickstart/define_agent.py` (new, ~30 lines)
+  - `examples/quickstart/use_llm.py` (new, ~45 lines)
+- **Learnings for future iterations:**
+  - Cross-namespace-package imports (`orbiter.models`) need `# pyright: ignore[reportMissingImports]` in example files too — same as test files
+  - `run.sync()` is the easiest entry point for examples — wraps `asyncio.run()` internally
+  - `get_provider("openai:gpt-4o-mini")` auto-resolves the provider class from the model registry
+  - Examples directory is at `examples/quickstart/` — ruff and pyright check it cleanly
+  - 2848 tests pass (no new tests — examples are not unit-tested)
+---
