@@ -733,8 +733,8 @@
         "Typecheck passes"
       ],
       "priority": 39,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "LongTermMemory (MemoryStore protocol, deduplication, namespace isolation), ExtractionType (StrEnum: user_profile/agent_experience/facts), ExtractionTask (lifecycle: pending→running→completed/failed), Extractor protocol, MemoryOrchestrator (submit/process/process_all with task queue), OrchestratorConfig. 47 new tests (1303 total)."
     },
     {
       "id": "US-040",

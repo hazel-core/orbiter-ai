@@ -573,3 +573,21 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - `generate_summary` always generates summaries for all configured templates, even when `keep_recent >= len(items)` — this is by design since the summaries capture information from the conversation regardless of compression
   - 1256 tests total across full suite (33 new summary tests)
 ---
+
+## 2026-02-15 - US-039
+- What was implemented: Long-term memory orchestrator with `LongTermMemory` (MemoryStore-compatible persistent store with content deduplication and namespace isolation), `MemoryOrchestrator` (async LLM extraction of UserProfile, AgentExperience, Facts), `ExtractionTask` (lifecycle: PENDING→RUNNING→COMPLETED/FAILED), `Extractor` protocol, `OrchestratorConfig`, and processing task queue with status tracking.
+- Files changed: `packages/orbiter-memory/src/orbiter/memory/long_term.py` (new, ~290 lines), `packages/orbiter-memory/tests/test_long_term.py` (new, 47 tests in 12 classes)
+- Key implementation details:
+  - `LongTermMemory` stores items in a dict[str, MemoryItem] for O(1) lookup by ID. Deduplicates by content+memory_type match (skips duplicate adds). Search sorts by created_at descending (newest first).
+  - `ExtractionType` (StrEnum): user_profile, agent_experience, facts — each with default extraction prompts containing `{content}` placeholder.
+  - `ExtractionTask` dataclass with start()/complete(result)/fail(error) lifecycle methods and completion timestamps.
+  - `Extractor` runtime_checkable Protocol (single `async extract(prompt) -> str` method) — decoupled from LLM provider, similar to `Summarizer` protocol in summary.py.
+  - `MemoryOrchestrator` manages task queue: `submit()` creates tasks (one per extraction type), `process()` runs single task through extractor and stores result in LongTermMemory, `process_all()` processes all pending tasks, `get_task()`/`list_tasks()` for task introspection.
+  - Failed extraction tasks mark FAILED with error message but don't store anything in memory — clean failure handling.
+- **Learnings for future iterations:**
+  - `Extractor` protocol follows the same pattern as `Summarizer` — minimal single-method protocol for LLM integration. Callers wrap their provider.
+  - `LongTermMemory` deduplication is by exact content+type match — intentionally simple. More sophisticated deduplication (semantic similarity) would require vector embeddings (US-042).
+  - `_format_extraction_items` reuses the same `[ROLE]: content` format as `_format_items` in summary.py — could be shared but kept separate to avoid cross-module coupling.
+  - `MemoryOrchestrator.process()` stores extracted knowledge with the extraction type as `memory_type` (e.g., "facts", "user_profile") — this allows `search(memory_type="facts")` to filter by extraction type.
+  - 1303 tests total across full suite (47 new long-term memory tests)
+---
