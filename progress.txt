@@ -1441,3 +1441,25 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - `SynthesisPipeline.run()` is async — use `asyncio.run()` in sync context
   - 2848 tests pass, excluding sqlite/postgres collection errors (pre-existing)
 ---
+
+## 2026-02-16 - US-103
+- What was implemented: Public API finalization — added `__all__` declarations and proper re-exports to all 10 `__init__.py` files that were missing them (orbiter-mcp, orbiter-sandbox, orbiter-trace, orbiter-eval, orbiter-eval/ralph, orbiter-a2a, orbiter-cli, orbiter-server, orbiter-train, orbiter-memory/backends).
+- Files changed:
+  - `packages/orbiter-mcp/src/orbiter/mcp/__init__.py` — 18 exports (MCPClient, MCPServerConfig, MCPToolWrapper, etc.)
+  - `packages/orbiter-sandbox/src/orbiter/sandbox/__init__.py` — 8 exports (Sandbox, LocalSandbox, KubernetesSandbox, etc.)
+  - `packages/orbiter-trace/src/orbiter/trace/__init__.py` — 28 exports (TraceConfig, traced, span_sync, SpanConsumer, etc.)
+  - `packages/orbiter-eval/src/orbiter/eval/__init__.py` — 34 exports (Evaluator, Scorer, EvalResult, all scorer types, etc.)
+  - `packages/orbiter-eval/src/orbiter/eval/ralph/__init__.py` — 16 exports (RalphRunner, RalphConfig, StopDetector, etc.)
+  - `packages/orbiter-a2a/src/orbiter/a2a/__init__.py` — 19 exports (A2AServer, A2AClient, AgentCard, etc.)
+  - `packages/orbiter-cli/src/orbiter_cli/__init__.py` — 30 exports (app, LocalExecutor, loader functions, etc.)
+  - `packages/orbiter-server/src/orbiter_server/__init__.py` — 14 exports (create_app, register_agent, session models, etc.)
+  - `packages/orbiter-train/src/orbiter/train/__init__.py` — 31 exports (Trainer, TrajectoryDataset, VeRLTrainer, etc.)
+  - `packages/orbiter-memory/src/orbiter/memory/backends/__init__.py` — docstring only (backends have optional deps, import directly)
+- Quality checks: ruff check pass, ruff format pass, pyright 0 errors, 2848 tests passing
+- **Learnings for future iterations:**
+  - orbiter-memory/backends has optional deps (asyncpg, aiosqlite) — can't eagerly import in `__init__.py` or it breaks test collection; use direct imports from submodules instead
+  - orbiter-core, orbiter-models, orbiter-context, and orbiter-memory already had proper `__all__` from prior sessions — no changes needed
+  - All namespace package imports need `# pyright: ignore[reportMissingImports]` due to .pth-based editable installs
+  - orbiter-cli and orbiter-server use regular imports (not namespace packages) — no pyright ignore needed
+  - Design spec section 1.6 defines the minimal public API surface; actual exports are broader to include all public classes/functions
+---
