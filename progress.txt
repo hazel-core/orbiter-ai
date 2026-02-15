@@ -726,3 +726,24 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - sqlite/postgres tests have collection errors due to missing deps (aiosqlite/asyncpg not installed) — this is pre-existing, not caused by this change
   - 1552 tests pass (37 new loader tests), excluding sqlite/postgres collection errors
 ---
+
+## 2026-02-15 - US-049
+- What was implemented: Multi-source skill registry (`orbiter/skills.py`, ~240 lines) with:
+  - `Skill` class with name, description, usage, tool_list, skill_type, active, path
+  - `SkillRegistry` — register local/GitHub sources, load_all(), get(), search(), list_names()
+  - `parse_github_url()` — regex-based GitHub URL parsing (owner, repo, branch, subdir)
+  - `extract_front_matter()` — YAML front-matter extraction from markdown skill files
+  - `_clone_github()` — shallow git clone with branch support, cached at ~/.orbiter/skills/
+  - `_collect_skills()` — recursive directory walking for skill.md/SKILL.md files
+  - `ConflictStrategy` enum: keep_first, keep_last, raise
+  - Search with case-insensitive query, type filter, active_only filter
+- Files changed: `packages/orbiter-core/src/orbiter/skills.py` (new, ~240 lines), `packages/orbiter-core/tests/test_skills.py` (new, 44 tests)
+- **Learnings for future iterations:**
+  - Skill files use `skill.md` or `SKILL.md` — both names are supported
+  - Skill name falls back to parent directory name if not in front-matter
+  - `tool_list` field is JSON-parsed from front-matter (not YAML within YAML)
+  - `active` field is string "True"/"False" in front-matter, converted to bool
+  - `__slots__` entries must be alphabetically sorted (ruff RUF023)
+  - ruff N802 disallows uppercase in test function names — use descriptive lowercase instead
+  - 1596 tests pass (44 new), excluding sqlite/postgres collection errors
+---
