@@ -162,3 +162,19 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - Streaming doesn't use `call_runner()` or `Agent.run()` — it operates at a lower level, directly calling `provider.stream()` and managing the tool loop itself. This is by design for real-time event delivery
   - 468 tests total across full suite (10 new streaming tests)
 ---
+
+## 2026-02-15 - US-012
+- What was implemented: Handler system with `Handler[IN, OUT]` ABC (generic async generator base), `AgentHandler` (routes between agents in swarms), `SwarmMode` enum (workflow/handoff/team), handoff detection, and topology-aware stop checks.
+- Files changed: `packages/orbiter-core/src/orbiter/_internal/handlers.py` (~130 lines), `packages/orbiter-core/tests/test_handlers.py` (28 tests in 7 classes)
+- Key implementation details:
+  - `Handler[IN, OUT]` is a generic ABC with abstract `handle(input) -> AsyncIterator[OUT]` — non-async def returning AsyncIterator avoids pyright type issues with abstract async generators
+  - `AgentHandler` implements workflow (sequential, output→input chaining), handoff (follow handoff chains with max_handoffs guard), and team (run lead agent) modes
+  - Handoff detection: exact match of `result.output.strip()` against agent's handoff target names, with additional check that the target exists in the swarm's agents dict
+  - Stop checks are separate methods (`_check_workflow_stop`, `_check_handoff_stop`, `_check_team_stop`) for composability
+  - Delegates actual agent execution to `call_runner()` from the existing call_runner module
+- **Learnings for future iterations:**
+  - Abstract async generator methods in ABCs: use `def handle(...) -> AsyncIterator[T]` (not `async def`) to avoid pyright issues with `yield` in abstract methods yielding `None` instead of `T`
+  - Handoff cycle test: when testing A→B→A→B cycles, the mock provider must alternate responses ("b", "a", "b", "a") since each agent checks handoff targets against its own handoffs dict
+  - The handler system is the bridge between the runner layer (run/call_runner) and the swarm layer (US-017+). AgentHandler will be used by Swarm to orchestrate multi-agent execution
+  - 496 tests total across full suite (28 new handler tests)
+---
