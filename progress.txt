@@ -31,6 +31,9 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
 - orbiter-cli is a regular package (`orbiter_cli` import path), NOT a namespace package — it has its own entry point via `typer`
 - Typer `no_args_is_help=True` returns exit code 2 (not 0) — test with `assert exit_code in (0, 2)`
 - FastAPI routers: use `Request` dependency (`req: Request`) to access app state — `router.app` has pyright typing issues (`MethodType` instead of `FastAPI`)
+- `pytest.importorskip()` for optional deps triggers E402 on subsequent imports — add `# noqa: E402` to those import lines
+- Async generator functions need `-> AsyncIterator[T]` return type (not `-> Any`) for pyright
+- `from __future__ import annotations` makes annotations lazy — types in annotations still need explicit import for pyright
 ---
 
 ## 2026-02-15 - US-001
@@ -1488,4 +1491,23 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - The old README.md was tracked by git as deleted (D status) — creating a new one at the same path properly replaces it
   - 233 total lines across both files (acceptance criteria asked for ~150 — slightly over but comprehensive)
   - All 2848 tests pass, ruff/pyright clean — documentation-only changes can't break quality checks
+---
+
+## 2026-02-16 - US-106
+- What was implemented: Deleted the old/ reference directory (untracked by git, used as read-only reference during rewrite). Fixed 14 pyright type errors across 5 files in 3 packages: orbiter-mcp (list invariance), orbiter-memory (missing imports + optional member access), orbiter-trace (async generator annotations + pytest fixture types). Added pytest.importorskip for optional db dependencies (asyncpg, aiosqlite) to prevent test collection failures.
+- Files changed:
+  - `packages/orbiter-mcp/tests/test_mcp_execution.py` — Sequence import for list invariance fix
+  - `packages/orbiter-memory/src/orbiter/memory/backends/postgres.py` — pyright ignore on asyncpg import, assert pool not None
+  - `packages/orbiter-memory/src/orbiter/memory/backends/sqlite.py` — pyright ignore on aiosqlite import, assert db not None
+  - `packages/orbiter-memory/tests/test_postgres.py` — pytest.importorskip("asyncpg") + noqa E402
+  - `packages/orbiter-memory/tests/test_sqlite.py` — pytest.importorskip("aiosqlite") + noqa E402
+  - `packages/orbiter-trace/tests/test_trace_decorator.py` — AsyncIterator return type for async generators
+  - `packages/orbiter-trace/tests/test_trace_prompt_logger.py` — import pytest + LogCaptureFixture type
+- Final verification: uv sync ✓, ruff check ✓, ruff format ✓, pyright 0 errors ✓, 2848 tests passed (2 skipped for optional deps) ✓
+- **Learnings for future iterations:**
+  - old/ directory was never tracked by git — deleting it produces no git diff
+  - `pytest.importorskip()` triggers E402 on subsequent imports — add `# noqa: E402` to those import lines
+  - For async generator functions, use `-> AsyncIterator[T]` return type annotation (not `-> Any`) to satisfy pyright
+  - `from __future__ import annotations` makes all annotations lazy strings — any type used in annotations must still be imported for pyright
+  - When pyright can't resolve an optional dependency import (e.g., aiosqlite), attribute access on returned values shows as `None` — use `assert x is not None` after assignment to narrow the type
 ---
