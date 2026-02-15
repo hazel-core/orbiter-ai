@@ -158,7 +158,7 @@ class Swarm:
         for agent_name in self.flow_order:
             agent = self.agents[agent_name]
 
-            if getattr(agent, "is_group", False):
+            if getattr(agent, "is_group", False) or getattr(agent, "is_swarm", False):
                 last_result = await agent.run(
                     current_input,
                     messages=messages,
