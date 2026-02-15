@@ -67,6 +67,16 @@ async def run(
         usage stats, and step count.
     """
     resolved_provider = provider or _resolve_provider(agent)
+
+    # Detect Swarm: delegate to its own run() method
+    if hasattr(agent, "flow_order"):
+        return await agent.run(
+            input,
+            messages=messages,
+            provider=resolved_provider,
+            max_retries=max_retries,
+        )
+
     return await call_runner(
         agent,
         input,
