@@ -237,3 +237,21 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - The `parse_flow_dsl` returns a `Graph` (not just edges) so callers can use `topological_sort()` directly on the result
   - 600 tests total across full suite (31 new graph tests)
 ---
+
+## 2026-02-15 - US-017
+- What was implemented: Swarm class with workflow mode (`packages/orbiter-core/src/orbiter/swarm.py`, ~120 lines). Workflow mode runs agents sequentially with output→input chaining. Uses `parse_flow_dsl()` and `topological_sort()` from graph.py for execution ordering. Updated `runner.py` to detect Swarm (via `hasattr(agent, "flow_order")`) and delegate to `swarm.run()`.
+- Files changed: `packages/orbiter-core/src/orbiter/swarm.py` (new, ~120 lines), `packages/orbiter-core/tests/test_swarm.py` (new, 20 tests in 5 classes), `packages/orbiter-core/src/orbiter/runner.py` (added Swarm detection in `run()`)
+- Key implementation details:
+  - `Swarm.__init__` accepts `agents` (list), `flow` (DSL string, optional), `mode` (default "workflow")
+  - Without flow DSL, agents execute in list order. With flow DSL, topological sort determines order
+  - `Swarm.run()` delegates to `call_runner()` per agent, chaining output→input
+  - Validates: no duplicate agent names, all flow DSL nodes are known agents, no cycles
+  - `SwarmError` for all swarm-level errors
+  - `describe()` and `__repr__()` for introspection
+  - Swarm has a `name` attribute for runner compatibility
+- **Learnings for future iterations:**
+  - Swarm detection in `run()` uses duck-typing (`hasattr(agent, "flow_order")`) rather than isinstance to avoid circular imports — this works because Agent doesn't have a `flow_order` attribute
+  - Swarm.run() has its own `provider` and `max_retries` params, but doesn't take `loop_threshold` (that's Agent-level via call_runner)
+  - The AgentHandler from handlers.py already has workflow mode — Swarm is a higher-level API that wraps the same call_runner() directly without going through AgentHandler. Future handoff/team modes (US-018, US-019) may leverage AgentHandler's existing implementations
+  - 620 tests total across full suite (20 new swarm tests)
+---

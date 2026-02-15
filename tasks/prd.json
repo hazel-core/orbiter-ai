@@ -327,8 +327,8 @@
         "Typecheck passes"
       ],
       "priority": 17,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Swarm class with workflow mode, flow DSL parsing via parse_flow_dsl/topological_sort, output→input chaining, run() integration. 20 new tests (620 total)."
     },
     {
       "id": "US-018",
