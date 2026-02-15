@@ -1147,3 +1147,17 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - When testing workspace routes, mock both workspace.list() and workspace.get() — list returns artifacts, get takes a name and returns single artifact or None
   - 1745 tests pass across core/models/server/cli/context/trace packages (24 new agent route tests)
 ---
+
+## 2026-02-16 - US-079
+- What was implemented: WebSocket endpoint (`/ws/chat`) and SSE fallback endpoint (`GET /stream`) for real-time streaming of agent output. Shared `_iter_events()` generator produces JSON-serialisable event dicts consumed by both transports. `_resolve_agent()` resolves agents without raising HTTPException (suitable for non-HTTP contexts like WebSocket).
+- Files changed:
+  - `packages/orbiter-server/src/orbiter_server/streaming.py` (new, ~140 lines)
+  - `packages/orbiter-server/src/orbiter_server/app.py` (added stream_router import + include)
+  - `packages/orbiter-server/tests/test_server_streaming.py` (new, 21 tests)
+- **Learnings for future iterations:**
+  - Use `starlette.testclient.TestClient` with `tc.websocket_connect()` for WebSocket tests — httpx `AsyncClient` doesn't support real WebSocket connections
+  - WebSocket error handling: use `WebSocketDisconnect` exception, not HTTPException
+  - `_resolve_agent()` in streaming.py returns `None` instead of raising HTTPException — WebSocket handlers can't use HTTPException
+  - The existing `_sse_stream()` in app.py and the new `_sse_iter()` in streaming.py share the same event generation logic via `_iter_events()`
+  - 2649 tests passing across all packages (21 new streaming tests)
+---

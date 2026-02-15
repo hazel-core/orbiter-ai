@@ -1424,8 +1424,8 @@
         "Typecheck passes"
       ],
       "priority": 79,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "WebSocket /ws/chat + SSE GET /stream. 21 tests, 140 lines source in streaming.py."
     },
     {
       "id": "US-080",
