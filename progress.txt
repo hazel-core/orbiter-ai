@@ -1332,3 +1332,15 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - 135 lines total across 3 files, all passing ruff/pyright/pytest (2848 tests)
   - Custom agent pattern: use a factory function returning Agent rather than subclassing — simpler and more Pythonic
 ---
+
+## 2026-02-16 - US-093
+- What was implemented: Search patterns workflow example — fan-out search across 3 sources (web, docs, code) in parallel, aggregate/de-duplicate, then rank by relevance.
+- Files changed: `examples/multi_agent/search_patterns.py` (new, ~78 lines)
+- Key implementation details:
+  - 3-stage pipeline: ParallelGroup (3 search agents) >> aggregator >> ranker
+  - Follows established workflow pattern from debate.py and deepresearch.py
+  - Uses `Swarm(mode="workflow")` with flow DSL for stage ordering
+- **Learnings for future iterations:**
+  - 78 lines total, all passing ruff/pyright/pytest (2848 tests)
+  - Fan-out search is the natural use case for ParallelGroup — each agent queries a different source independently
+---
