@@ -1430,3 +1430,14 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - Document tool supports lazy imports for heavy deps (PyPDF2) — works without them for basic text files
   - 2848 tests pass, excluding sqlite/postgres collection errors (pre-existing)
 ---
+
+## 2026-02-16 - US-102
+- What was implemented: Two training pipeline example scripts — `trajectory_capture.py` (trajectory capture, export to JSON/CSV, validation) and `evolution_pipeline.py` (seed data → filter/synthesis → multi-epoch evolution with mock strategy, early stopping, per-epoch metrics).
+- Files changed: `examples/training/__init__.py` (new, empty), `examples/training/trajectory_capture.py` (new, 80 lines), `examples/training/evolution_pipeline.py` (new, 117 lines)
+- **Learnings for future iterations:**
+  - Training package imports need `# pyright: ignore[reportMissingImports]` since orbiter-train is a namespace package
+  - `filter_by_score` is a standalone function (not a method) in `orbiter.train.synthesis` — useful for pre-filtering before pipeline
+  - `EvolutionStrategy` subclass must implement synthesise/train/evaluate — each returns a dict or sequence
+  - `SynthesisPipeline.run()` is async — use `asyncio.run()` in sync context
+  - 2848 tests pass, excluding sqlite/postgres collection errors (pre-existing)
+---
