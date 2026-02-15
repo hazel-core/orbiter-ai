@@ -750,8 +750,8 @@
         "Typecheck passes"
       ],
       "priority": 40,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "SQLiteMemoryStore implementing MemoryStore protocol with JSON metadata indexes (json_extract), soft deletes, upsert with version bumping, async context manager lifecycle, subtype reconstruction (System/Human/AI/Tool). 34 new tests (1337 total)."
     },
     {
       "id": "US-041",

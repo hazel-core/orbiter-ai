@@ -591,3 +591,20 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - `MemoryOrchestrator.process()` stores extracted knowledge with the extraction type as `memory_type` (e.g., "facts", "user_profile") — this allows `search(memory_type="facts")` to filter by extraction type.
   - 1303 tests total across full suite (47 new long-term memory tests)
 ---
+
+## 2026-02-15 - US-040
+- What was implemented: SQLiteMemoryStore — SQLite-backed persistent memory store implementing the MemoryStore protocol. Uses `aiosqlite` for async database access. Features: JSON metadata indexes via `json_extract()`, soft deletes (deleted flag), upsert with version bumping (`ON CONFLICT DO UPDATE SET version = version + 1`), async context manager lifecycle (`async with SQLiteMemoryStore(...) as store:`), and full MemoryItem subtype reconstruction on read (dispatches to SystemMemory/HumanMemory/AIMemory/ToolMemory based on `memory_type` column).
+- Files changed:
+  - `packages/orbiter-memory/src/orbiter/memory/backends/sqlite.py` (new, ~230 lines — SQLiteMemoryStore, _extra_fields, _row_to_item, SQL schema with indexes)
+  - `packages/orbiter-memory/tests/test_sqlite.py` (new, 34 tests in 9 classes)
+- Test coverage: ProtocolConformance (1: isinstance MemoryStore check), Lifecycle (5: init/close, double init idempotent, context manager, pre-init RuntimeError, repr), AddGet (6: add+get, get nonexistent, upsert, SystemMemory, AIMemory with tool_calls, ToolMemory), Search (9: all, query, memory_type, status, metadata user_id, limit, newest-first ordering, session+task metadata, agent_id metadata), Clear (5: clear all, clear with metadata filter, soft-delete hides from get, soft-delete preserved in DB, re-add after soft-delete), Version (2: initial version=1, version increments on upsert), Count (3: empty, active, with deleted), FilePersistence (2: data persists across connections, metadata persists), CustomMemoryType (1: unknown type returns base MemoryItem)
+- **Learnings for future iterations:**
+  - `aiosqlite` needs to be installed separately — it's an optional dep (`orbiter-memory[sqlite]`), but `uv pip install aiosqlite` for dev
+  - SQLite `json_extract()` works well for metadata filtering — no need for separate metadata columns
+  - Soft delete pattern: `deleted INTEGER DEFAULT 0` with `WHERE deleted = 0` in all queries, `SET deleted = 1` for clear — allows `count(include_deleted=True)` for auditing
+  - Upsert via `ON CONFLICT(id) DO UPDATE` is cleaner than separate INSERT/UPDATE logic
+  - Row factory `aiosqlite.Row` enables dict-like access (`row["column_name"]`)
+  - Subtype reconstruction from DB: dispatch on `memory_type` column to construct the right Pydantic model class, extra fields (tool_calls, tool_call_id, etc.) stored in `extra_json` column
+  - ruff S608 (SQL injection) is not enabled in this project — no need for `# noqa: S608` comments
+  - 1337 tests total across full suite (34 new SQLite backend tests)
+---
