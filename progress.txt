@@ -320,3 +320,21 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - SwarmNode's context isolation is a design choice: inner swarm starts fresh each time, which prevents message pollution between nesting levels
   - 689 tests total across full suite (14 new nested swarm tests)
 ---
+
+## 2026-02-15 - US-022
+- What was implemented: Swarm integration with the public `run()` API and public API exports. Updated `packages/orbiter-core/src/orbiter/__init__.py` to export `Swarm`, `SwarmNode`, `ParallelGroup`, `SerialGroup`. Created comprehensive integration tests covering all swarm modes and features via the public `run()` entry point.
+- Files changed: `packages/orbiter-core/src/orbiter/__init__.py` (added 6 new exports), `packages/orbiter-core/tests/test_swarm_integration.py` (new, 21 tests in 8 classes)
+- Integration test coverage:
+  - Workflow mode: 2-agent, 3-agent pipeline, no-flow-DSL, sync wrapper
+  - Handoff mode: simple handoff, A→B→C chain, no-handoff-returns-directly
+  - Team mode: lead-delegates-to-worker, lead-no-delegation
+  - Groups: ParallelGroup in workflow, SerialGroup in workflow, custom aggregation
+  - Nested swarms: nested workflow, nested handoff-inside-workflow
+  - Public API: Swarm/SwarmNode/ParallelGroup/SerialGroup importable from `orbiter`, run() detects Agent vs Swarm
+  - Tools in workflows: agent uses @tool then chains to next agent
+- **Learnings for future iterations:**
+  - Swarm was already wired into `run()` via `hasattr(agent, "flow_order")` from US-017 — this story only needed to add public exports and integration tests
+  - The `_make_provider` mock must account for ALL LLM calls across ALL agents in a swarm (e.g., 3-agent pipeline = 3 responses, team with delegation = lead + worker + lead = 3 responses)
+  - `__init__.py` imports must be sorted alphabetically by module path for ruff I001 compliance
+  - 710 tests total across full suite (21 new swarm integration tests)
+---

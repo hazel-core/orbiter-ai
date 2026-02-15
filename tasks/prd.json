@@ -414,8 +414,8 @@
         "Typecheck passes"
       ],
       "priority": 22,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Swarm, SwarmNode, ParallelGroup, SerialGroup exported from orbiter __init__.py. 21 integration tests (workflow, handoff, team, parallel/serial groups, nested swarms, public API exports, tools in workflows). 710 total tests."
     },
     {
       "id": "US-023",
