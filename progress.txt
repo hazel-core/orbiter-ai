@@ -417,3 +417,14 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - `re.sub` with a callable replacement function is clean for template resolution with error handling per-variable
   - 904 tests total across full suite (46 new: 32 neuron tests, 14 variable tests)
 ---
+
+## 2026-02-15 - US-028
+- What was implemented: PromptBuilder — composes neurons in priority order to build rich system prompts. `PromptBuilder.__init__(ctx, *, variables, separator)`, `add(neuron_name, **kwargs)` for registry lookup, `add_neuron(neuron, **kwargs)` for direct instances, `async build()` resolves all neurons by priority, filters empty results, joins with separator, and optionally resolves `${path}` template variables via DynamicVariableRegistry. Also: `clear()`, `__len__`, `__repr__`, method chaining. Internal `_NeuronEntry` pairs neuron with kwargs.
+- Files changed: `packages/orbiter-context/src/orbiter/context/prompt_builder.py` (new, ~130 lines), `packages/orbiter-context/tests/test_prompt_builder.py` (new, 30 tests in 9 classes)
+- Test coverage: init/repr (3), add neurons by name/instance/chaining (5), build with empty/single/multiple/custom separator/filtered empty (6), priority ordering/stability/registered neurons (3), variable resolution/unresolvable/no-vars/multiple/across-neurons (5), kwargs forwarding (1), clear (2), context traversal with parent state/overridden state (2), integration with built-in neurons and full composition (3)
+- **Learnings for future iterations:**
+  - Ruff I001 import sorting and pyright `reportMissingImports` ignore comments conflict on multi-line parenthesized imports: ruff reformats `from X import Y  # pyright: ignore[...]` into `from X import (\n    Y,  # pyright: ignore[...]\n)`, but pyright reports the error on the `from` line, not the import name line. Solution: put `# pyright: ignore[reportMissingImports]` on the `from` line: `from X import (  # pyright: ignore[reportMissingImports]\n    Y,\n)`
+  - PromptBuilder's `build()` uses Python's stable sort (`sorted()`) to preserve insertion order for neurons with equal priority — important for deterministic prompt construction
+  - Template variable resolution happens AFTER joining all neuron fragments — this means variables can span across neuron outputs but resolution applies to the final composed string
+  - 934 tests total across full suite (30 new prompt builder tests)
+---

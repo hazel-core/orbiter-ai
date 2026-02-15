@@ -530,8 +530,8 @@
         "Typecheck passes"
       ],
       "priority": 28,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "PromptBuilder with priority-ordered neuron composition, variable resolution via DynamicVariableRegistry, add/add_neuron/build/clear/chaining API. 30 new tests (934 total)."
     },
     {
       "id": "US-029",
