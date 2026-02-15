@@ -493,8 +493,8 @@
         "Typecheck passes"
       ],
       "priority": 26,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Neuron ABC with __slots__, neuron_registry (Registry[Neuron]), SystemNeuron (date/time/platform), TaskNeuron (task_id/input/output/subtasks), HistoryNeuron (windowed via config.history_rounds). 32 new tests (858 total)."
     },
     {
       "id": "US-027",

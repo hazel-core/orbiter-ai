@@ -386,3 +386,19 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - The `field` import from dataclasses wasn't needed (no mutable defaults) — ruff F401 catches unused imports
   - 826 tests total across full suite (24 new token tracker tests)
 ---
+
+## 2026-02-15 - US-026
+- What was implemented: Neuron ABC with `__slots__`, `neuron_registry` (Registry[Neuron]), and three built-in neurons: `SystemNeuron` (priority 100 — date/time/platform via `datetime.UTC`), `TaskNeuron` (priority 1 — task_id, input, output, subtask plan from context state), `HistoryNeuron` (priority 10 — windowed conversation history using `ctx.config.history_rounds`).
+- Files changed: `packages/orbiter-context/src/orbiter/context/neuron.py` (new, ~130 lines), `packages/orbiter-context/tests/test_neuron.py` (new, 32 tests in 6 classes)
+- Key implementation details:
+  - Neuron ABC has `name` (str) and `priority` (int) properties, abstract `async format(ctx, **kwargs) -> str`
+  - XML-like tags wrap neuron output (e.g., `<system_info>`, `<task_info>`, `<conversation_history>`) for LLM clarity
+  - HistoryNeuron windowing: `history_rounds * 2` messages from end (each round = user + assistant)
+  - SystemNeuron uses `datetime.UTC` (not `timezone.utc`) per ruff UP017
+  - Built-in neurons registered at module level: `neuron_registry.register("system", SystemNeuron())`
+- **Learnings for future iterations:**
+  - `datetime.UTC` is the preferred alias over `timezone.utc` — ruff UP017 enforces this
+  - Registry[Neuron] from orbiter-core works well for neuron discovery across packages
+  - The two-level design from old AWorld (format_items → format) was simplified to single `format()` — the old pattern was over-engineered for most use cases
+  - 858 tests total across full suite (32 new neuron tests)
+---
