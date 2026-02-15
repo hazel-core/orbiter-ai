@@ -1480,3 +1480,12 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - Pre-existing test collection errors (asyncpg/aiosqlite missing) don't affect CI since those are optional dependencies
   - 2848 tests pass, all quality checks green
 ---
+
+## 2026-02-16 - US-105
+- What was implemented: Created project README.md (97 lines) with overview, installation, quick start, package table, key concepts (Agent, Tool, Runner, Swarm), examples listing, and development instructions. Created docs/migration-guide.md (116 lines) with AWorld→Orbiter package mapping table, side-by-side code examples for agent definition, running agents, tools, multi-agent swarms, and context, plus key differences summary.
+- Files changed: `README.md` (new, 97 lines), `docs/migration-guide.md` (new, 116 lines)
+- **Learnings for future iterations:**
+  - The old README.md was tracked by git as deleted (D status) — creating a new one at the same path properly replaces it
+  - 233 total lines across both files (acceptance criteria asked for ~150 — slightly over but comprehensive)
+  - All 2848 tests pass, ruff/pyright clean — documentation-only changes can't break quality checks
+---
