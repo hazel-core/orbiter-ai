@@ -683,3 +683,15 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - Namespace format `mcp__server__tool` uses double underscore as separator with `split("__", 2)` to handle tool names that may contain `__`
   - 1519 tests total across full suite (44 new MCP tools tests)
 ---
+
+## 2026-02-15 - US-046
+- What was implemented: `@mcp_server()` class decorator that converts Python classes into MCP servers via FastMCP. `MCPServerError` exception. `MCPServerRegistry` (singleton class/instance store with register, get_class, get_instance, has, clear, names). `_register_methods()` helper that discovers public methods (excluding private, `run`, `stop`) and registers them as MCP tools via `FastMCP.tool()`. Decorator adds `_mcp` (FastMCP instance), `_tool_names` (list of registered tool names), `run(transport=)`, and `stop()` to the decorated class. Module-level `server_registry` global singleton.
+- Files changed: `packages/orbiter-mcp/src/orbiter/mcp/server.py` (new, ~120 lines), `packages/orbiter-mcp/tests/test_mcp_server.py` (new, 32 tests in 10 classes)
+- Test coverage: MCPServerRegistryInit (2), MCPServerRegistryRegister (4: register, multiple, overwrite, missing), MCPServerRegistryInstance (4: get, singleton, args, missing), MCPServerRegistryClear (2: clear, has), DecoratorRegistration (3: global registry, default name, custom name), DecoratorInit (3: creates mcp, uses docstring, preserves init), DecoratorMethods (4: registers public, skips private, skips run/stop, tool_names attr), DecoratorRun (4: run added, default transport, not-initialized raises, stop added), RegisterMethods (3: sync, async, empty), GlobalRegistry (3: exists, decorator uses, cleared)
+- **Learnings for future iterations:**
+  - FastMCP.__init__ uses `instructions=` not `description=` — the old AWorld code used `description=` which was valid in older mcp versions but mcp>=1.26 uses `instructions`
+  - pyright may not see overloaded parameters that exist at runtime (e.g., `FastMCP.tool(description=...)`) — use `# pyright: ignore[reportCallIssue]` for known-valid calls that pyright's stubs miss
+  - Dynamically added attributes via class decorator (`_mcp`, `run`, `stop`) are invisible to pyright — test files need `# pyright: ignore[reportAttributeAccessIssue]`
+  - The `_register_methods` helper uses default argument capture (`_m=method`) to avoid closure variable binding issues in for-loops — same pattern as old AWorld's `create_tool_wrapper(method_to_call)`
+  - 1551 tests total across full suite (32 new MCP server tests)
+---

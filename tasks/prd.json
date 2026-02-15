@@ -852,8 +852,8 @@
         "Typecheck passes"
       ],
       "priority": 46,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "MCPServerError, MCPServerRegistry (singleton class/instance store), @mcp_server() class decorator (method→MCP tool conversion via FastMCP, run/stop methods, global registry). 32 new tests (1551 total)."
     },
     {
       "id": "US-047",
