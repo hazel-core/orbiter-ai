@@ -178,3 +178,18 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - The handler system is the bridge between the runner layer (run/call_runner) and the swarm layer (US-017+). AgentHandler will be used by Swarm to orchestrate multi-agent execution
   - 496 tests total across full suite (28 new handler tests)
 ---
+
+## 2026-02-15 - US-013
+- What was implemented: ToolHandler (dynamic tool loading, parallel execution via asyncio.TaskGroup, result aggregation) and GroupHandler (parallel and serial agent group execution with dependency resolution via Kahn's topological sort).
+- Files changed: `packages/orbiter-core/src/orbiter/_internal/handlers.py` (added ~130 lines for ToolHandler + GroupHandler), `packages/orbiter-core/tests/test_handlers.py` (added 23 tests in 6 new test classes)
+- Key implementation details:
+  - `ToolHandler` — receives dict of `{tool_call_id: {"name": str, "arguments": dict}}`, resolves tools from registry, executes in parallel, yields `ToolResult` objects. Also has `register()`, `register_many()`, `aggregate()` methods
+  - `GroupHandler` — `parallel=True` runs all agents concurrently (same input, TaskGroup), `parallel=False` runs serially with output→input chaining and dependency resolution
+  - `_resolve_order()` implements Kahn's algorithm for topological sort with cycle detection — raises `HandlerError` on cyclic dependencies
+  - Both handlers follow the `Handler[IN, OUT]` ABC pattern from US-012
+- **Learnings for future iterations:**
+  - When testing with `_make_provider`, response count must match total LLM calls across all agents — each `call_runner()` invocation triggers at least one `provider.complete()` call
+  - Custom mock providers in tests need to return objects with `content`, `tool_calls`, and `usage` attributes matching what `parse_response()` expects — `usage=None` will fail
+  - To test "missing agent" in serial mode, either override `_resolve_order()` in a subclass or manipulate the agents dict after construction (since `_resolve_order` only includes keys from `self.agents`)
+  - 519 tests total across full suite (23 new handler tests)
+---
