@@ -679,8 +679,8 @@
         "Typecheck passes"
       ],
       "priority": 36,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "MemoryStatus (StrEnum: draft/accepted/discard), MemoryMetadata (frozen Pydantic: user_id/session_id/task_id/agent_id/extra), MemoryItem (base with transition()), SystemMemory/HumanMemory/AIMemory/ToolMemory subtypes, MemoryStore (runtime_checkable Protocol: add/get/search/clear). 38 new tests (1191 total)."
     },
     {
       "id": "US-037",

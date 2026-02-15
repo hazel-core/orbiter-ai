@@ -531,3 +531,16 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - The `__init__.py` pattern for namespace packages: use `# pyright: ignore[reportMissingImports]` on each `from` line since editable installs use `.pth` files
   - 1153 tests total across full suite (26 new integration tests)
 ---
+
+## 2026-02-15 - US-036
+- What was implemented: Memory interface + types for the orbiter-memory package. `MemoryStatus` (StrEnum: draft/accepted/discard) with valid transition map. `MemoryMetadata` (frozen Pydantic: user_id, session_id, task_id, agent_id, extra). `MemoryItem` base class with id (auto UUID), content, memory_type, status, metadata, timestamps, `transition()` method with validation. Four subtypes: `SystemMemory` (system prompts), `HumanMemory` (user messages), `AIMemory` (assistant + tool_calls list), `ToolMemory` (tool results + tool_call_id, tool_name, is_error). `MemoryStore` runtime_checkable Protocol with async add/get/search/clear methods.
+- Files changed: `packages/orbiter-memory/src/orbiter/memory/base.py` (new, ~120 lines), `packages/orbiter-memory/tests/test_memory_base.py` (new, 38 tests in 10 classes)
+- Test coverage: MemoryStatus (2), MemoryMetadata (4: defaults, values, extra, frozen), MemoryItem (5: creation, custom id, default metadata, with metadata, draft status), Status transitions (7: valid transitions, invalid transitions, timestamp update), SystemMemory (2), HumanMemory (2), AIMemory (3), ToolMemory (3), Protocol conformance (10: isinstance, add/get, search by type/query/metadata/status/limit, clear all, clear with filter)
+- **Learnings for future iterations:**
+  - orbiter-memory package stub already existed (pyproject.toml, __init__.py, backends/__init__.py) — just needed base.py
+  - For test classes that aren't dataclasses, ruff RUF012 does NOT apply to mutable class attributes — no need for ClassVar. But pyright DOES flag `ClassVar` + `__init__` reassignment as `reportAttributeAccessIssue`. Best to avoid ClassVar in regular classes.
+  - `runtime_checkable` Protocol allows `isinstance()` checks — useful for verifying that store implementations satisfy the protocol
+  - MemoryItem uses mutable Pydantic model (no frozen=True) since `transition()` mutates status and updated_at — same pattern as RunNode from state.py
+  - Status transitions use an explicit transition map dict rather than methods per status — cleaner and more maintainable
+  - 1191 tests total across full suite (38 new memory tests)
+---
