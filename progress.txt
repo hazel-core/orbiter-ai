@@ -1407,3 +1407,14 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - BFCL categories: simple, multiple, parallel, parallel_multiple, irrelevance, java, javascript, rest
   - 2848 tests pass, excluding sqlite/postgres collection errors (pre-existing)
 ---
+
+## 2026-02-16 - US-100
+- What was implemented: Two advanced example scripts — `skill_agent.py` (SkillRegistry-based agent construction from local skill.md files with filtering) and `web_deploy.py` (A2AServer deployment with custom AgentSkills, streaming, and agent card discovery). ~120 lines each.
+- Files changed: `examples/advanced/skill_agent.py` (new), `examples/advanced/web_deploy.py` (new)
+- **Learnings for future iterations:**
+  - SkillRegistry loads from local dirs (skill.md files with YAML front-matter) and GitHub URLs
+  - A2AServer imports need `# pyright: ignore[reportMissingImports]` since orbiter-a2a is a separate namespace package
+  - AgentSkill `tags` field takes a tuple (not list) — Pydantic model_validator coerces lists to tuples
+  - ServingConfig `skills` also takes tuple of AgentSkill — consistent with other tuple-based fields in a2a.types
+  - 2848 tests pass, excluding sqlite/postgres collection errors (pre-existing)
+---
