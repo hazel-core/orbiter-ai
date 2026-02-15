@@ -998,3 +998,16 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - 2256 tests total across full suite (36 new A2A type tests), excluding sqlite/postgres collection errors
 ---
 
+## 2026-02-15 - US-068
+- What was implemented: FastAPI-based A2A server with agent card discovery, task execution, and streaming support. `A2AServerError` exception. `TaskStore` runtime_checkable Protocol (get/save/delete). `InMemoryTaskStore` in-memory implementation. `AgentExecutor` wrapping any Orbiter Agent with `execute(text, provider=)` async method. `A2AServer` class with `build_app()` creating FastAPI app: `GET /.well-known/agent-card` (returns agent card JSON), `POST /` (task execution with submitted→working→completed/failed lifecycle), `GET /tasks/{task_id}` (task lookup), `POST /stream` (NDJSON streaming when `config.streaming=True`).
+- Files changed: `packages/orbiter-a2a/src/orbiter/a2a/server.py` (new, ~130 lines), `packages/orbiter-a2a/tests/test_a2a_server.py` (new, 34 tests in 11 classes)
+- Test coverage: InMemoryTaskStore (7: save/get, missing, delete, delete missing, overwrite, protocol, repr), AgentExecutorInit (3: default, streaming, fallback name), AgentExecutorExecute (4: basic, with provider, empty text, None text), AgentExecutorRepr (1), A2AServerInit (4: defaults, custom config, skills, custom store), AgentCardEndpoint (2: get card, card with skills), TaskExecution (5: success, custom task_id, auto task_id, failure, stores task), TaskLookup (2: existing, missing), StreamingEndpoint (3: disabled, success, failure), BuildApp (2: returns app, idempotent), Repr (1)
+- **Learnings for future iterations:**
+  - httpx `ASGITransport` + `AsyncClient` is the pattern for testing FastAPI apps without running a server — `AsyncClient(transport=ASGITransport(app=app), base_url="http://test")`
+  - `build_app()` creates a new FastAPI app each call (not cached) — each call wires fresh route handlers that close over `self`
+  - Task lifecycle: SUBMITTED → WORKING → COMPLETED/FAILED, each state saved to TaskStore for retrieval via `GET /tasks/{task_id}`
+  - Streaming uses NDJSON (`application/x-ndjson`) — one JSON object per line, parsed by splitting on newlines
+  - `AgentExecutor` wraps any object with `run(input, **kwargs)` and `name` attribute — duck-typed to avoid importing orbiter.agent directly
+  - 2290 tests total across full suite (34 new A2A server tests), excluding sqlite/postgres collection errors
+---
+
