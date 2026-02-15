@@ -1222,3 +1222,14 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - Strategy ABC with `__slots__ = ()` — keeps subclasses lightweight
   - 2797 tests total across full suite (32 new evolution tests), excluding sqlite/postgres collection errors (pre-existing: missing optional deps asyncpg/aiosqlite)
 ---
+
+## 2026-02-16 - US-084
+- What was implemented: VeRL integration module — VeRLConfig (RL-specific config extending TrainConfig), VeRLAlgorithm enum (PPO/GRPO), RewardSpec (callable or importable reward function descriptor), VeRLTrainer (concrete Trainer subclass with full validation + mocked VeRL training), plus helper functions (_check_verl_available, _build_verl_params)
+- Files changed: `packages/orbiter-train/src/orbiter/train/verl.py` (~240 lines), `packages/orbiter-train/tests/test_verl.py` (51 tests)
+- **Learnings for future iterations:**
+  - Cannot inherit a frozen dataclass from a non-frozen one — `VeRLConfig` uses `@dataclass(slots=True)` to match parent `TrainConfig(slots=True)` which is not frozen
+  - `getattr()` returns `object` in pyright — must `cast(Callable[..., float], fn)` after `callable()` guard since pyright doesn't narrow through `callable()`
+  - VeRL is an optional dependency (`pip install orbiter-train[verl]`) — lazy-import with clear error messages and `# pyright: ignore[reportMissingImports]` on the import line
+  - `from None` needed on re-raised ImportError per ruff B904
+  - 2848 tests total across full suite (51 new VeRL tests), excluding sqlite/postgres collection errors (pre-existing)
+---
