@@ -510,8 +510,8 @@
         "Typecheck passes"
       ],
       "priority": 27,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Six extended neurons (TodoNeuron p2, KnowledgeNeuron p20, WorkspaceNeuron p30, SkillNeuron p40, FactNeuron p50, EntityNeuron p60) added to neuron.py. DynamicVariableRegistry with nested path resolution, resolver registration, and template substitution in variables.py. 46 new tests (904 total)."
     },
     {
       "id": "US-028",

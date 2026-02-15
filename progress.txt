@@ -402,3 +402,18 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - The two-level design from old AWorld (format_items → format) was simplified to single `format()` — the old pattern was over-engineered for most use cases
   - 858 tests total across full suite (32 new neuron tests)
 ---
+
+## 2026-02-15 - US-027
+- What was implemented: Six extended neurons (TodoNeuron, KnowledgeNeuron, WorkspaceNeuron, SkillNeuron, FactNeuron, EntityNeuron) added to `neuron.py` with proper priorities. Dynamic variable system (`DynamicVariableRegistry`) with nested path resolution, callable/static resolver registration, decorator form, and `resolve_template()` for `${path}` substitution in `variables.py`.
+- Files changed: `packages/orbiter-context/src/orbiter/context/neuron.py` (+180 lines — 6 new neuron classes + registration), `packages/orbiter-context/src/orbiter/context/variables.py` (new, ~132 lines), `packages/orbiter-context/tests/test_extended_neurons.py` (new, 46 tests in 11 classes)
+- Key implementation details:
+  - All extended neurons follow the same pattern: read from `ctx.state`, return empty string if no data, format with XML-like tags
+  - TodoNeuron reads `todos` (list of {item, done}), KnowledgeNeuron reads `knowledge_items` (list of {source, content}), WorkspaceNeuron reads `workspace_artifacts` (list of {name, type, size}), SkillNeuron reads `skills` (list of {name, description, active}), FactNeuron reads `facts` (list of strings), EntityNeuron reads `entities` (list of {name, type})
+  - DynamicVariableRegistry: registered resolvers take priority over nested path lookup. `resolve()` checks resolvers first, then falls back to `_resolve_nested()` which walks dot-separated paths through dicts/ContextState/objects. `resolve_template()` uses regex to substitute `${path}` placeholders
+  - All 9 neurons are registered at module level in neuron_registry
+- **Learnings for future iterations:**
+  - Extended neurons are intentionally simple — each reads from a well-known state key and formats it. Complex logic (populating those state keys) belongs in processors/tools, not neurons
+  - DynamicVariableRegistry is separate from neuron system — neurons produce prompt fragments, variables resolve individual values. The PromptBuilder (US-028) will likely use both
+  - `re.sub` with a callable replacement function is clean for template resolution with error handling per-variable
+  - 904 tests total across full suite (46 new: 32 neuron tests, 14 variable tests)
+---
