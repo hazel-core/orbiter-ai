@@ -131,3 +131,18 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - The call_runner delegates the actual LLM→tool→LLM loop entirely to Agent.run() — it's a thin orchestration layer for state tracking, not a replacement for Agent's internal loop
   - 445 tests total across full suite (15 new)
 ---
+
+## 2026-02-15 - US-010
+- What was implemented: Public `run()` async entry point and `run.sync()` blocking wrapper as the primary API for executing agents. Auto-provider resolution via orbiter.models registry when available.
+- Files changed: `packages/orbiter-core/src/orbiter/runner.py` (~100 lines), `packages/orbiter-core/tests/test_runner.py` (13 tests in 5 classes)
+- Key implementation details:
+  - `run(agent, input, *, messages, provider, max_retries, loop_threshold) -> RunResult` — async, delegates to `call_runner()`
+  - `run.sync(...)` — attached as attribute on `run` function, uses `asyncio.run()` internally
+  - `_resolve_provider(agent)` — tries `orbiter.models.provider.get_provider()` with graceful fallback to `None`
+  - Provider typed as `Any` since orbiter-core doesn't depend on orbiter-models
+- **Learnings for future iterations:**
+  - Python functions are objects — you can attach attributes like `run.sync = _sync` with `# type: ignore[attr-defined]` for pyright
+  - `asyncio.run()` creates a new event loop, so `run.sync()` can't be called from within an existing async context — this is the expected behavior
+  - Auto-provider resolution uses try/except to gracefully handle missing orbiter-models package
+  - 458 tests total across full suite (13 new)
+---

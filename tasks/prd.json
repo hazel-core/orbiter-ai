@@ -202,8 +202,8 @@
         "Typecheck passes"
       ],
       "priority": 10,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Public run() async + run.sync() wrapper, auto-provider resolution, 13 new tests (458 total)."
     },
     {
       "id": "US-011",
