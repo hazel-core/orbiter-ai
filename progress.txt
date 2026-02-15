@@ -774,3 +774,19 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - Unused variable detection (F841) — be careful with placeholder variables like `shell = True`
   - 1654 tests total across full suite (31 new sandbox tool tests), excluding sqlite/postgres collection errors
 ---
+
+## 2026-02-15 - US-052
+- What was implemented: `SandboxBuilder` — fluent builder for constructing `Sandbox` instances with method chaining and lazy evaluation (auto-build on first non-builder attribute access via `__getattr__`).
+- Files changed: `packages/orbiter-sandbox/src/orbiter/sandbox/builder.py` (new, ~115 lines), `packages/orbiter-sandbox/tests/test_sandbox_builder.py` (new, 28 tests in 7 classes)
+- Key implementation details:
+  - Fluent setters: `with_sandbox_id()`, `with_workspace()`, `with_mcp_config()`, `with_agents()`, `with_timeout()`, `with_sandbox_class()`, `with_extra()`
+  - `build()` constructs the Sandbox once and caches it (`_built`); subsequent calls return the same instance
+  - `reset()` clears the cached instance for builder reuse
+  - `__getattr__` triggers lazy `build()` and delegates to the sandbox — builder methods are resolved via normal `__slots__` lookup so they're never intercepted
+  - `__slots__` for memory efficiency, defensive copies on `with_workspace()`, `with_mcp_config()`, `with_agents()`
+  - Default sandbox class is `LocalSandbox`, overridable via constructor or `with_sandbox_class()`
+- **Learnings for future iterations:**
+  - `__getattr__` is only called when normal attribute lookup fails — builder methods defined via `__slots__` and actual method definitions are found before `__getattr__`, so no need for an explicit builder-method whitelist
+  - Ruff F401 catches unused imports even when they seem semantically relevant (e.g., `SandboxError` imported but not used in builder.py)
+  - 1682 tests total across full suite (28 new builder tests), excluding sqlite/postgres collection errors
+---
