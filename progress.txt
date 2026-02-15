@@ -974,3 +974,15 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - 2197 tests total across full suite (41 new detector tests), excluding sqlite/postgres collection errors
 ---
 
+## 2026-02-15 - US-066
+- What was implemented: RalphRunner — iterative refinement loop implementing the 5-phase Run→Analyze→Learn→Plan→Halt cycle. `RalphResult` (frozen dataclass: output, stop_type, reason, iterations, scores, state, reflections). `RalphRunner` class with `run(input)` async entry point, `_execute()` (calls execute_fn, tracks success/failure in LoopState), `_analyze()` (scores output via configured Scorers, records to state), `_learn()` (reflects via Reflector when execution failed or scores below threshold), `_plan()` (re-prompts by appending reflection suggestions to original input), `_halt()` (checks CompositeDetector with all 5 built-in detectors).
+- Files changed: `packages/orbiter-eval/src/orbiter/eval/ralph/runner.py` (new, ~130 lines), `packages/orbiter-eval/tests/test_ralph_runner.py` (new, 23 tests in 9 classes)
+- Test coverage: RalphResult (3: creation, frozen, with reflections), Init (2: defaults, custom config), Single iteration (3: success, no scorers, failure), Score improvement (2: threshold stop, max iterations), Early stopping (2: consecutive failures, failure recovery), Reflection (4: low scores, high scores, execution failure, no reflector), Plan re-prompt (1: suggestions appended), Scorer edge cases (3: failing scorer ignored, validation disabled, reflection disabled), State tracking (2: state in result, mixed success/failure), Repr (1)
+- **Learnings for future iterations:**
+  - RalphRunner's `_learn()` triggers reflection when execution fails OR mean score is below `config.validation.min_score_threshold` — both conditions checked separately
+  - The `_plan()` phase always re-prompts from original input (not accumulated), appending new suggestions — this prevents prompt explosion from chaining suggestions across iterations
+  - `_execute()` catches all exceptions and records failure via `state.record_failure()` — the error message becomes the "output" for that iteration
+  - The runner composes all 5 built-in detectors in `_build_detector()` rather than taking a detector parameter — keeps the API simple while still supporting all stop conditions via config
+  - 2220 tests total across full suite (23 new runner tests), excluding sqlite/postgres collection errors
+---
+
