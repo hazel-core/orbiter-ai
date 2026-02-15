@@ -1320,3 +1320,15 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - The debate pattern (ParallelGroup + workflow) and travel pattern (team mode) naturally map to the two main Orbiter orchestration paradigms
   - 119 lines total across 2 files, all passing ruff/pyright/pytest (2848 tests), excluding sqlite/postgres collection errors
 ---
+
+## 2026-02-16 - US-092
+- What was implemented: Coordination examples — `custom_agent.py` (factory pattern for pre-configured agents with bundled tools), `deepresearch.py` (parallel researchers + synthesiser using ParallelGroup + workflow), `master_worker.py` (team mode master delegates to summariser + translator workers).
+- Files changed: `examples/multi_agent/custom_agent.py` (new, ~42 lines), `examples/multi_agent/deepresearch.py` (new, ~45 lines), `examples/multi_agent/master_worker.py` (new, ~48 lines)
+- Key implementation details:
+  - `custom_agent.py` — factory function `support_agent()` bundles tools (search_docs, create_ticket) with defaults, showing reusable agent patterns
+  - `deepresearch.py` — parallel web + academic researchers feeding into a synthesiser, demonstrates multi-source research aggregation
+  - `master_worker.py` — Swarm(mode="team") with master delegating to summariser then translator, shows sequential coordination
+- **Learnings for future iterations:**
+  - 135 lines total across 3 files, all passing ruff/pyright/pytest (2848 tests)
+  - Custom agent pattern: use a factory function returning Agent rather than subclassing — simpler and more Pythonic
+---
