@@ -1,4 +1,4 @@
-"""Tests for orbiter.swarm — Swarm multi-agent orchestration (workflow mode)."""
+"""Tests for orbiter.swarm — Swarm multi-agent orchestration."""
 
 from __future__ import annotations
 
@@ -333,3 +333,297 @@ class TestSwarmEdgeCases:
         swarm = Swarm(agents=[a])
 
         assert "leader" in swarm.name
+
+
+# ---------------------------------------------------------------------------
+# Handoff mode — construction
+# ---------------------------------------------------------------------------
+
+
+class TestSwarmHandoffConstruction:
+    def test_handoff_mode_creation(self) -> None:
+        """Swarm can be created in handoff mode."""
+        triage = Agent(name="triage")
+        billing = Agent(name="billing")
+        swarm = Swarm(agents=[triage, billing], mode="handoff")
+
+        assert swarm.mode == "handoff"
+        assert swarm.max_handoffs == 10
+
+    def test_handoff_mode_custom_max_handoffs(self) -> None:
+        """max_handoffs can be configured."""
+        a = Agent(name="a")
+        b = Agent(name="b")
+        swarm = Swarm(agents=[a, b], mode="handoff", max_handoffs=3)
+
+        assert swarm.max_handoffs == 3
+
+    def test_handoff_mode_no_flow_required(self) -> None:
+        """Handoff mode works without flow DSL."""
+        a = Agent(name="a")
+        b = Agent(name="b")
+        swarm = Swarm(agents=[a, b], mode="handoff")
+
+        assert swarm.flow is None
+        assert swarm.flow_order == ["a", "b"]
+
+
+# ---------------------------------------------------------------------------
+# Handoff mode — execution
+# ---------------------------------------------------------------------------
+
+
+class TestSwarmHandoff:
+    async def test_simple_handoff_a_to_b(self) -> None:
+        """Agent A hands off to agent B, B produces final output."""
+        b = Agent(name="b")
+        a = Agent(name="a", handoffs=[b])
+
+        swarm = Swarm(agents=[a, b], mode="handoff")
+
+        # Agent a outputs "b" (matching handoff target name) -> triggers handoff
+        # Agent b outputs "final answer" (no handoff) -> stops
+        provider = _make_provider(
+            [
+                AgentOutput(text="b"),
+                AgentOutput(text="final answer"),
+            ]
+        )
+
+        result = await swarm.run("Hello", provider=provider)
+
+        assert result.output == "final answer"
+
+    async def test_no_handoff_returns_immediately(self) -> None:
+        """Agent with no handoff targets returns its output directly."""
+        a = Agent(name="a")
+        b = Agent(name="b")
+        swarm = Swarm(agents=[a, b], mode="handoff")
+
+        provider = _make_provider([AgentOutput(text="no handoff here")])
+
+        result = await swarm.run("Hello", provider=provider)
+
+        assert result.output == "no handoff here"
+
+    async def test_handoff_chain_a_to_b_to_c(self) -> None:
+        """Handoff chain: A -> B -> C, C produces final output."""
+        c = Agent(name="c")
+        b = Agent(name="b", handoffs=[c])
+        a = Agent(name="a", handoffs=[b])
+
+        swarm = Swarm(agents=[a, b, c], mode="handoff")
+
+        provider = _make_provider(
+            [
+                AgentOutput(text="b"),  # a -> handoff to b
+                AgentOutput(text="c"),  # b -> handoff to c
+                AgentOutput(text="done!"),  # c -> final
+            ]
+        )
+
+        result = await swarm.run("start", provider=provider)
+
+        assert result.output == "done!"
+
+    async def test_handoff_output_not_matching_target(self) -> None:
+        """Agent with handoffs but output doesn't match any target name."""
+        b = Agent(name="b")
+        a = Agent(name="a", handoffs=[b])
+
+        swarm = Swarm(agents=[a, b], mode="handoff")
+
+        # Agent a outputs something that is NOT "b" -> no handoff
+        provider = _make_provider([AgentOutput(text="some regular answer")])
+
+        result = await swarm.run("Hello", provider=provider)
+
+        assert result.output == "some regular answer"
+
+    async def test_handoff_with_whitespace_stripping(self) -> None:
+        """Handoff detection strips whitespace from output."""
+        b = Agent(name="b")
+        a = Agent(name="a", handoffs=[b])
+
+        swarm = Swarm(agents=[a, b], mode="handoff")
+
+        # Output has leading/trailing whitespace around target name
+        provider = _make_provider(
+            [
+                AgentOutput(text="  b  "),
+                AgentOutput(text="handled by b"),
+            ]
+        )
+
+        result = await swarm.run("Hello", provider=provider)
+
+        assert result.output == "handled by b"
+
+    async def test_handoff_target_not_in_swarm(self) -> None:
+        """Handoff target must exist in the swarm's agents dict."""
+        external = Agent(name="external")
+        a = Agent(name="a", handoffs=[external])
+
+        # external is a handoff target on agent a, but NOT in the swarm
+        swarm = Swarm(agents=[a], mode="handoff")
+
+        # Agent a outputs "external" which matches handoff target name
+        # but "external" is not in swarm.agents, so no handoff
+        provider = _make_provider([AgentOutput(text="external")])
+
+        result = await swarm.run("Hello", provider=provider)
+
+        assert result.output == "external"
+
+    async def test_handoff_conversation_history_transferred(self) -> None:
+        """Handoff transfers conversation history to the next agent."""
+        received_messages: list[list[Any]] = []
+
+        call_count = 0
+
+        async def tracked_complete(messages: Any, **kwargs: Any) -> Any:
+            nonlocal call_count
+            received_messages.append(list(messages))
+
+            responses = [
+                AgentOutput(text="b"),  # a -> handoff to b
+                AgentOutput(text="final"),  # b -> done
+            ]
+            resp = responses[min(call_count, len(responses) - 1)]
+            call_count += 1
+
+            class FakeResponse:
+                content = resp.text
+                tool_calls = resp.tool_calls
+                usage = resp.usage
+
+            return FakeResponse()
+
+        provider = AsyncMock()
+        provider.complete = tracked_complete
+
+        b = Agent(name="b")
+        a = Agent(name="a", handoffs=[b])
+        swarm = Swarm(agents=[a, b], mode="handoff")
+
+        result = await swarm.run("Hello", provider=provider)
+
+        # Handoff happened: 2 LLM calls (one per agent)
+        assert len(received_messages) == 2
+        # Agent b receives the handoff output ("b") as its input
+        last_user_msg = None
+        for m in received_messages[1]:
+            if getattr(m, "role", None) == "user":
+                last_user_msg = m
+        assert last_user_msg is not None
+        assert last_user_msg.content == "b"
+        # Final result comes from agent b
+        assert result.output == "final"
+
+
+# ---------------------------------------------------------------------------
+# Handoff mode — loop detection
+# ---------------------------------------------------------------------------
+
+
+class TestSwarmHandoffLoopDetection:
+    async def test_loop_detection_triggers(self) -> None:
+        """Endless handoff loop raises SwarmError."""
+        b = Agent(name="b")
+        a = Agent(name="a", handoffs=[b])
+        # Make b hand off back to a
+        b.handoffs = {"a": a}
+
+        swarm = Swarm(agents=[a, b], mode="handoff", max_handoffs=3)
+
+        # a -> b -> a -> b -> exceeds max_handoffs=3
+        provider = _make_provider(
+            [
+                AgentOutput(text="b"),  # a -> b
+                AgentOutput(text="a"),  # b -> a
+                AgentOutput(text="b"),  # a -> b
+                AgentOutput(text="a"),  # b -> a (exceeds limit)
+            ]
+        )
+
+        with pytest.raises(SwarmError, match=r"Max handoffs.*3.*exceeded"):
+            await swarm.run("Hello", provider=provider)
+
+    async def test_loop_detection_max_handoffs_1(self) -> None:
+        """max_handoffs=1 allows exactly one handoff."""
+        b = Agent(name="b")
+        a = Agent(name="a", handoffs=[b])
+
+        swarm = Swarm(agents=[a, b], mode="handoff", max_handoffs=1)
+
+        provider = _make_provider(
+            [
+                AgentOutput(text="b"),  # a -> b (1 handoff, allowed)
+                AgentOutput(text="result"),  # b -> final
+            ]
+        )
+
+        result = await swarm.run("Hello", provider=provider)
+        assert result.output == "result"
+
+    async def test_loop_detection_max_handoffs_exceeded_exactly(self) -> None:
+        """max_handoffs=1 fails on second handoff attempt."""
+        b = Agent(name="b")
+        a = Agent(name="a", handoffs=[b])
+        b.handoffs = {"a": a}
+
+        swarm = Swarm(agents=[a, b], mode="handoff", max_handoffs=1)
+
+        provider = _make_provider(
+            [
+                AgentOutput(text="b"),  # a -> b (1 handoff, OK)
+                AgentOutput(text="a"),  # b -> a (2nd handoff, exceeds 1)
+            ]
+        )
+
+        with pytest.raises(SwarmError, match=r"Max handoffs.*1.*exceeded"):
+            await swarm.run("Hello", provider=provider)
+
+
+# ---------------------------------------------------------------------------
+# Handoff via run() public API
+# ---------------------------------------------------------------------------
+
+
+class TestSwarmHandoffViaRun:
+    async def test_run_handoff_swarm(self) -> None:
+        """run(handoff_swarm, ...) works correctly."""
+        b = Agent(name="b")
+        a = Agent(name="a", handoffs=[b])
+
+        swarm = Swarm(agents=[a, b], mode="handoff")
+
+        provider = _make_provider(
+            [
+                AgentOutput(text="b"),
+                AgentOutput(text="via run()"),
+            ]
+        )
+
+        result = await run(swarm, "test", provider=provider)
+
+        assert isinstance(result, RunResult)
+        assert result.output == "via run()"
+
+    def test_run_sync_handoff_swarm(self) -> None:
+        """run.sync(handoff_swarm, ...) works for synchronous execution."""
+        b = Agent(name="b")
+        a = Agent(name="a", handoffs=[b])
+
+        swarm = Swarm(agents=[a, b], mode="handoff")
+
+        provider = _make_provider(
+            [
+                AgentOutput(text="b"),
+                AgentOutput(text="sync handoff"),
+            ]
+        )
+
+        result = run.sync(swarm, "test", provider=provider)
+
+        assert result.output == "sync handoff"

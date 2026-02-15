@@ -1,9 +1,9 @@
 """Swarm: multi-agent orchestration with flow DSL.
 
 A ``Swarm`` groups multiple agents and defines their execution
-topology using a simple DSL (``"a >> b >> c"``).  Currently
-supports ``mode='workflow'`` which runs agents sequentially,
-passing each agent's output as the next agent's input.
+topology using a simple DSL (``"a >> b >> c"``).  Supports
+``mode='workflow'`` (sequential pipeline) and ``mode='handoff'``
+(agent-driven delegation).
 
 Usage::
 
@@ -33,14 +33,16 @@ class Swarm:
 
     Groups agents and defines their execution topology via a flow DSL.
     In workflow mode, agents run sequentially with output→input chaining.
+    In handoff mode, agents delegate dynamically via handoff targets.
 
     Args:
         agents: List of ``Agent`` instances to include in the swarm.
         flow: Flow DSL string defining execution order
             (e.g., ``"a >> b >> c"``).  If not provided, agents
             run in the order they are given.
-        mode: Execution mode.  Currently only ``"workflow"`` is
-            supported.
+        mode: Execution mode — ``"workflow"`` or ``"handoff"``.
+        max_handoffs: Maximum number of handoff transitions before
+            raising an error (handoff mode only).
     """
 
     def __init__(
@@ -49,11 +51,13 @@ class Swarm:
         agents: list[Any],
         flow: str | None = None,
         mode: str = "workflow",
+        max_handoffs: int = 10,
     ) -> None:
         if not agents:
             raise SwarmError("Swarm requires at least one agent")
 
         self.mode = mode
+        self.max_handoffs = max_handoffs
 
         # Index agents by name for O(1) lookup
         self.agents: dict[str, Any] = {}
@@ -99,7 +103,8 @@ class Swarm:
         """Execute the swarm according to its mode.
 
         In workflow mode, agents execute in topological order.
-        Each agent's output becomes the next agent's input.
+        In handoff mode, the first agent runs and can hand off
+        to other agents dynamically.
 
         Args:
             input: User query string.
@@ -115,6 +120,10 @@ class Swarm:
         """
         if self.mode == "workflow":
             return await self._run_workflow(
+                input, messages=messages, provider=provider, max_retries=max_retries
+            )
+        if self.mode == "handoff":
+            return await self._run_handoff(
                 input, messages=messages, provider=provider, max_retries=max_retries
             )
         raise SwarmError(f"Unsupported swarm mode: {self.mode!r}")
@@ -147,6 +156,75 @@ class Swarm:
 
         assert last_result is not None  # guaranteed since agents is non-empty
         return last_result
+
+    async def _run_handoff(
+        self,
+        input: str,
+        *,
+        messages: Sequence[Message] | None = None,
+        provider: Any = None,
+        max_retries: int = 3,
+    ) -> RunResult:
+        """Execute agents following handoff chains.
+
+        Starts with the first agent in flow_order.  If an agent's
+        output matches a handoff target name (declared on the agent),
+        control transfers to that target with the full conversation
+        history.  Stops when an agent produces output that is not a
+        handoff target, or when ``max_handoffs`` is exceeded.
+
+        Returns the ``RunResult`` from the last agent that ran.
+        """
+        current_agent_name = self.flow_order[0]
+        current_input = input
+        all_messages: list[Message] = list(messages) if messages else []
+        handoff_count = 0
+
+        while True:
+            agent = self.agents[current_agent_name]
+            result = await call_runner(
+                agent,
+                current_input,
+                messages=all_messages,
+                provider=provider,
+                max_retries=max_retries,
+            )
+
+            # Accumulate conversation history from this agent's run
+            all_messages = list(result.messages)
+
+            # Check for handoff
+            next_agent = self._detect_handoff(agent, result)
+            if next_agent is None:
+                return result
+
+            handoff_count += 1
+            if handoff_count > self.max_handoffs:
+                raise SwarmError(f"Max handoffs ({self.max_handoffs}) exceeded in swarm")
+
+            current_agent_name = next_agent
+            current_input = result.output
+
+    def _detect_handoff(self, agent: Any, result: RunResult) -> str | None:
+        """Check if an agent's result indicates a handoff.
+
+        Matches the agent's output (stripped) against its declared
+        handoff target names.  The target must also exist in the
+        swarm's agents dict.
+
+        Returns:
+            Target agent name, or ``None`` if no handoff detected.
+        """
+        handoffs: dict[str, Any] = getattr(agent, "handoffs", {})
+        if not handoffs:
+            return None
+
+        output = result.output.strip()
+        for target_name in handoffs:
+            if target_name in self.agents and output == target_name:
+                return target_name
+
+        return None
 
     def describe(self) -> dict[str, Any]:
         """Return a summary of the swarm's configuration.
