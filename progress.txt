@@ -1272,3 +1272,18 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - `SwarmNode` wraps a `Swarm` to act as a node in another swarm's flow DSL — enables nested multi-level orchestration
   - orbiter-memory tests have a pre-existing collection error (missing `asyncpg` module) — not related to examples, 791 core/models tests all pass
 ---
+
+## 2026-02-16 - US-088
+- What was implemented: Two quickstart examples for memory and tracing
+  - `examples/quickstart/use_memory.py` — demonstrates `ShortTermMemory` with scope filtering, keyword search, metadata-based filtering, and conversation windowing (57 lines)
+  - `examples/quickstart/use_trace.py` — demonstrates `@traced` decorator, `span_async` context manager, `PromptLogger` for token breakdown logging, and `TraceConfig` for backend configuration (89 lines)
+- Files changed: `examples/quickstart/use_memory.py`, `examples/quickstart/use_trace.py`
+- **Learnings for future iterations:**
+  - orbiter-memory imports need `# pyright: ignore[reportMissingImports]` since they're namespace package cross-references
+  - orbiter-trace imports also need `# pyright: ignore[reportMissingImports]` — same pattern for `orbiter.trace.config`, `orbiter.trace.decorator`, `orbiter.trace.prompt_logger`
+  - `ShortTermMemory` API: `add(MemoryItem)`, `search(query=, metadata=, memory_type=, limit=)`, `clear(metadata=)` — all async
+  - `PromptLogger.log_execution()` returns an `ExecutionLogEntry` with `format_summary()` for pretty-printing
+  - Ruff RUF001 catches ambiguous Unicode chars (e.g., EN DASH vs HYPHEN-MINUS) — use standard ASCII in string literals
+  - Both examples run successfully without any API keys (they don't call LLMs)
+  - 2848 tests pass (ignoring pre-existing asyncpg/aiosqlite import errors in postgres/sqlite backend tests)
+---
