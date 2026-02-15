@@ -922,3 +922,15 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - 2045 tests total across full suite (43 new LLM scorer tests)
 ---
 
+## 2026-02-15 - US-062
+- What was implemented: Trajectory + time scorers with scorer registry. `scorer_register()` decorator for automatic scorer discovery, `get_scorer()` lookup, `list_scorers()`. `TrajectoryValidator` (validates trajectory step lists for required keys like `step`/`id` and `action`, scores fraction of valid steps). `TimeCostScorer` (reads `_time_cost_ms` from output dict, scores inversely relative to max budget). `AnswerAccuracyLLMScorer` (LLMAsJudgeScorer subclass comparing agent response to reference answer, configurable question/answer keys). `LabelDistributionScorer` (per-case placeholder + `summarize()` for dataset-level label distribution with counts, fractions, and skew).
+- Files changed: `packages/orbiter-eval/src/orbiter/eval/trajectory_scorers.py` (new, ~200 lines — 4 scorers, registry, helper), `packages/orbiter-eval/tests/test_trajectory_scorers.py` (new, 40 tests in 8 classes)
+- Test coverage: ScorerRegistry (4: register decorator, builtins registered, missing key, sorted), ParseTrajectory (5: list, wrapped dict, empty, non-list, filters), TrajectoryValidator (8: valid, empty, missing action/step/id, partial, custom keys, custom name), TimeCostScorer (7: zero, half budget, over budget, no key, non-dict, details, custom name), AnswerAccuracyLLMScorer (6: no judge, with judge, prompt content, custom keys, non-dict input, custom name), LabelDistributionScorer (5: placeholder, no label, non-dict, custom key, custom name), LabelDistributionSummarize (5: balanced, skewed, empty, no labels, single label)
+- **Learnings for future iterations:**
+  - Scorer registry uses module-level dict `_SCORER_REGISTRY` — simple and effective, registered at class definition time via `@scorer_register("name")`
+  - `LabelDistributionScorer.summarize()` is a separate method (not part of the `Scorer.score()` ABC) since it operates on aggregated results rather than individual cases
+  - `AnswerAccuracyLLMScorer` inherits from `LLMAsJudgeScorer` (not `Scorer` directly) — reuses the judge callable pattern and `parse_response()` from US-061
+  - `TrajectoryValidator` accepts both `"step"` and `"id"` as valid step identifier keys — flexible for different trajectory formats
+  - 2085 tests total across full suite (40 new scorer tests), excluding sqlite/postgres collection errors
+---
+
