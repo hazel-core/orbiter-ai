@@ -1463,3 +1463,20 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - orbiter-cli and orbiter-server use regular imports (not namespace packages) — no pyright ignore needed
   - Design spec section 1.6 defines the minimal public API surface; actual exports are broader to include all public classes/functions
 ---
+
+## 2026-02-16 - US-104
+- What was implemented: GitHub Actions CI workflow at `.github/workflows/ci.yml` (~77 lines). Three parallel jobs: `lint` (ruff check + ruff format --check), `typecheck` (pyright packages/orbiter-core/), `test` (pytest with Python 3.11 matrix). All jobs use `astral-sh/setup-uv@v4` with `enable-cache: true` for UV dependency caching.
+- Files changed: `.github/workflows/ci.yml` (new)
+- Key implementation details:
+  - Uses `astral-sh/setup-uv@v4` action with built-in UV cache (caches `~/.cache/uv` automatically)
+  - `uv python install 3.11` instead of `actions/setup-python` — keeps UV managing the Python version
+  - Three separate jobs run in parallel: lint, typecheck, test — fast feedback on failures
+  - Triggers on push to main and PRs targeting main
+  - Pyright only runs on `packages/orbiter-core/` (matching local dev workflow)
+  - Test job uses matrix strategy for future Python version expansion
+- **Learnings for future iterations:**
+  - `astral-sh/setup-uv@v4` with `enable-cache: true` is the canonical way to cache UV deps in GitHub Actions — no need for manual `actions/cache` setup
+  - `uv python install` + `uv sync` is the UV-native CI setup — no need for `actions/setup-python`
+  - Pre-existing test collection errors (asyncpg/aiosqlite missing) don't affect CI since those are optional dependencies
+  - 2848 tests pass, all quality checks green
+---
