@@ -397,8 +397,8 @@
         "Typecheck passes"
       ],
       "priority": 21,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "SwarmNode wrapper with is_swarm duck-typing marker, context isolation (inner swarm gets clean message history). Swarm._run_workflow updated to detect is_swarm. 14 new tests (689 total)."
     },
     {
       "id": "US-022",

@@ -304,3 +304,19 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - The existing `GroupHandler` in `handlers.py` has similar parallel/serial logic but operates at the handler layer — `ParallelGroup`/`SerialGroup` are the public-facing API while `GroupHandler` is the internal handler abstraction
   - 675 tests total across full suite (27 new agent group tests)
 ---
+
+## 2026-02-15 - US-021
+- What was implemented: Nested swarm support via `SwarmNode` wrapper class in `packages/orbiter-core/src/orbiter/_internal/nested.py`. `SwarmNode` wraps a Swarm so it can be used as a node in another Swarm's agent list. Context isolation: inner swarm gets clean message history (outer messages NOT forwarded). Updated `Swarm._run_workflow()` to detect `is_swarm` marker via duck-typing.
+- Files changed: `packages/orbiter-core/src/orbiter/_internal/nested.py` (new, ~107 lines), `packages/orbiter-core/tests/test_nested.py` (new, 14 tests in 5 classes), `packages/orbiter-core/src/orbiter/swarm.py` (1-line change in `_run_workflow`)
+- Key implementation details:
+  - `SwarmNode` has `is_swarm = True` marker, `name` attribute, and `run()` method — same interface pattern as `ParallelGroup`/`SerialGroup` with `is_group`
+  - `_run_workflow()` condition: `getattr(agent, "is_group", False) or getattr(agent, "is_swarm", False)` — both groups and nested swarms use `agent.run()` directly
+  - Context isolation: `SwarmNode.run()` does NOT forward outer `messages` to inner swarm — each level maintains its own conversation context
+  - Inner swarm can use any mode (workflow, handoff, team) — tested with both workflow and handoff modes
+  - `NestedSwarmError` for validation errors, `describe()` includes inner swarm metadata
+- **Learnings for future iterations:**
+  - The duck-typing pattern (`is_group`, `is_swarm`) is consistent across the codebase for detecting node types without isinstance checks
+  - `Agent.__init__` expects `handoffs` as `list[Agent]`, NOT `dict` — the dict is built internally by `_register_handoff()`
+  - SwarmNode's context isolation is a design choice: inner swarm starts fresh each time, which prevents message pollution between nesting levels
+  - 689 tests total across full suite (14 new nested swarm tests)
+---
