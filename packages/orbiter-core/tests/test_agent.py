@@ -371,15 +371,27 @@ class TestAgentRun:
             await agent.run("Hello")
 
     async def test_run_with_tool_calls_in_response(self) -> None:
-        """Tool calls from the LLM are included in output."""
+        """Tool calls from the LLM trigger tool execution and re-call."""
         tc = ToolCall(id="tc-1", name="greet", arguments='{"name": "World"}')
-        provider = _mock_provider(content="", tool_calls=[tc])
+        # First call returns tool call, second returns text
+        resp_tool = ModelResponse(
+            content="",
+            tool_calls=[tc],
+            usage=Usage(input_tokens=10, output_tokens=5, total_tokens=15),
+        )
+        resp_text = ModelResponse(
+            content="Done!",
+            usage=Usage(input_tokens=10, output_tokens=5, total_tokens=15),
+        )
+        provider = AsyncMock()
+        provider.complete = AsyncMock(side_effect=[resp_tool, resp_text])
         agent = Agent(name="bot", tools=[greet])
 
         output = await agent.run("Hello", provider=provider)
 
-        assert len(output.tool_calls) == 1
-        assert output.tool_calls[0].name == "greet"
+        # Final output should be the text response after tool execution
+        assert output.text == "Done!"
+        assert provider.complete.await_count == 2
 
     async def test_run_passes_tool_schemas(self) -> None:
         """Tool schemas are passed to provider.complete()."""
@@ -548,3 +560,222 @@ class TestAgentRunHooks:
             await agent.run("Hello", provider=provider)
 
         assert "post_llm" not in events
+
+
+# ---------------------------------------------------------------------------
+# Agent.run() — tool execution loop
+# ---------------------------------------------------------------------------
+
+
+def _multi_step_provider(
+    *responses: ModelResponse,
+) -> AsyncMock:
+    """Create a provider that returns responses sequentially."""
+    provider = AsyncMock()
+    provider.complete = AsyncMock(side_effect=list(responses))
+    return provider
+
+
+class TestAgentToolLoop:
+    async def test_single_tool_call(self) -> None:
+        """Single tool call → execute → LLM returns text."""
+        tc = ToolCall(id="tc-1", name="greet", arguments='{"name": "Alice"}')
+        provider = _multi_step_provider(
+            ModelResponse(
+                content="",
+                tool_calls=[tc],
+                usage=Usage(input_tokens=10, output_tokens=5, total_tokens=15),
+            ),
+            ModelResponse(
+                content="I greeted Alice for you!",
+                usage=Usage(input_tokens=20, output_tokens=10, total_tokens=30),
+            ),
+        )
+        agent = Agent(name="bot", tools=[greet])
+
+        output = await agent.run("Say hi to Alice", provider=provider)
+
+        assert output.text == "I greeted Alice for you!"
+        assert provider.complete.await_count == 2
+
+        # Second call should include the tool result in messages
+        second_call_msgs = provider.complete.call_args_list[1][0][0]
+        tool_result_msgs = [m for m in second_call_msgs if m.role == "tool"]
+        assert len(tool_result_msgs) == 1
+        assert "Hello, Alice!" in tool_result_msgs[0].content
+
+    async def test_multi_tool_parallel_call(self) -> None:
+        """Multiple tool calls execute in parallel."""
+        tc1 = ToolCall(id="tc-1", name="greet", arguments='{"name": "Alice"}')
+        tc2 = ToolCall(id="tc-2", name="add", arguments='{"a": 2, "b": 3}')
+        provider = _multi_step_provider(
+            ModelResponse(
+                content="",
+                tool_calls=[tc1, tc2],
+                usage=Usage(input_tokens=10, output_tokens=5, total_tokens=15),
+            ),
+            ModelResponse(
+                content="Done with both tools.",
+                usage=Usage(input_tokens=20, output_tokens=10, total_tokens=30),
+            ),
+        )
+        agent = Agent(name="bot", tools=[greet, add])
+
+        output = await agent.run("Do both tasks", provider=provider)
+
+        assert output.text == "Done with both tools."
+        assert provider.complete.await_count == 2
+
+        # Both tool results should be in the second call
+        second_call_msgs = provider.complete.call_args_list[1][0][0]
+        tool_result_msgs = [m for m in second_call_msgs if m.role == "tool"]
+        assert len(tool_result_msgs) == 2
+
+    async def test_tool_error_returned_not_propagated(self) -> None:
+        """Tool errors are captured as ToolResult(error=...), not raised."""
+
+        @tool
+        def failing_tool(x: str) -> str:
+            """A tool that always fails."""
+            raise ValueError("boom!")
+
+        tc = ToolCall(id="tc-1", name="failing_tool", arguments='{"x": "hi"}')
+        provider = _multi_step_provider(
+            ModelResponse(
+                content="",
+                tool_calls=[tc],
+                usage=Usage(input_tokens=10, output_tokens=5, total_tokens=15),
+            ),
+            ModelResponse(
+                content="The tool failed, sorry.",
+                usage=Usage(input_tokens=20, output_tokens=10, total_tokens=30),
+            ),
+        )
+        agent = Agent(name="bot", tools=[failing_tool])
+
+        output = await agent.run("Try it", provider=provider)
+
+        assert output.text == "The tool failed, sorry."
+        # The error should be in the tool result message
+        second_call_msgs = provider.complete.call_args_list[1][0][0]
+        tool_result_msgs = [m for m in second_call_msgs if m.role == "tool"]
+        assert len(tool_result_msgs) == 1
+        assert tool_result_msgs[0].error is not None
+        assert "boom" in tool_result_msgs[0].error
+
+    async def test_unknown_tool_returns_error(self) -> None:
+        """Calling an unknown tool returns an error ToolResult."""
+        tc = ToolCall(id="tc-1", name="nonexistent", arguments="{}")
+        provider = _multi_step_provider(
+            ModelResponse(
+                content="",
+                tool_calls=[tc],
+                usage=Usage(input_tokens=10, output_tokens=5, total_tokens=15),
+            ),
+            ModelResponse(
+                content="Tool not found.",
+                usage=Usage(input_tokens=20, output_tokens=10, total_tokens=30),
+            ),
+        )
+        agent = Agent(name="bot", tools=[greet])
+
+        output = await agent.run("Use nonexistent", provider=provider)
+
+        assert output.text == "Tool not found."
+        second_call_msgs = provider.complete.call_args_list[1][0][0]
+        tool_result_msgs = [m for m in second_call_msgs if m.role == "tool"]
+        assert tool_result_msgs[0].error is not None
+        assert "Unknown tool" in tool_result_msgs[0].error
+
+    async def test_max_steps_enforcement(self) -> None:
+        """Tool loop stops at max_steps even if LLM keeps returning tool calls."""
+        tc = ToolCall(id="tc-1", name="greet", arguments='{"name": "Loop"}')
+        # All responses have tool calls — never returns text
+        responses = [
+            ModelResponse(
+                content="",
+                tool_calls=[tc],
+                usage=Usage(input_tokens=10, output_tokens=5, total_tokens=15),
+            )
+            for _ in range(5)
+        ]
+        provider = _multi_step_provider(*responses)
+        agent = Agent(name="bot", tools=[greet], max_steps=3)
+
+        output = await agent.run("Loop forever", provider=provider)
+
+        # Should stop after 3 steps, returning last tool-call output
+        assert provider.complete.await_count == 3
+        assert len(output.tool_calls) == 1
+
+    async def test_tool_hooks_fired(self) -> None:
+        """PRE_TOOL_CALL and POST_TOOL_CALL hooks fire for each tool."""
+        events: list[str] = []
+
+        async def pre_tool(**data: Any) -> None:
+            events.append(f"pre:{data['tool_name']}")
+
+        async def post_tool(**data: Any) -> None:
+            events.append(f"post:{data['tool_name']}")
+
+        tc = ToolCall(id="tc-1", name="greet", arguments='{"name": "Bob"}')
+        provider = _multi_step_provider(
+            ModelResponse(
+                content="",
+                tool_calls=[tc],
+                usage=Usage(input_tokens=10, output_tokens=5, total_tokens=15),
+            ),
+            ModelResponse(
+                content="Done.",
+                usage=Usage(input_tokens=20, output_tokens=10, total_tokens=30),
+            ),
+        )
+        agent = Agent(
+            name="bot",
+            tools=[greet],
+            hooks=[
+                (HookPoint.PRE_TOOL_CALL, pre_tool),
+                (HookPoint.POST_TOOL_CALL, post_tool),
+            ],
+        )
+
+        await agent.run("Hello", provider=provider)
+
+        assert events == ["pre:greet", "post:greet"]
+
+    async def test_multi_step_tool_loop(self) -> None:
+        """Agent executes multiple rounds of tool calls before final text."""
+        tc1 = ToolCall(id="tc-1", name="greet", arguments='{"name": "A"}')
+        tc2 = ToolCall(id="tc-2", name="add", arguments='{"a": 1, "b": 2}')
+        provider = _multi_step_provider(
+            ModelResponse(
+                content="",
+                tool_calls=[tc1],
+                usage=Usage(input_tokens=10, output_tokens=5, total_tokens=15),
+            ),
+            ModelResponse(
+                content="",
+                tool_calls=[tc2],
+                usage=Usage(input_tokens=15, output_tokens=5, total_tokens=20),
+            ),
+            ModelResponse(
+                content="All done!",
+                usage=Usage(input_tokens=20, output_tokens=5, total_tokens=25),
+            ),
+        )
+        agent = Agent(name="bot", tools=[greet, add])
+
+        output = await agent.run("Do everything", provider=provider)
+
+        assert output.text == "All done!"
+        assert provider.complete.await_count == 3
+
+    async def test_no_tools_returns_immediately(self) -> None:
+        """Agent with no tools returns LLM response without looping."""
+        provider = _mock_provider(content="Direct answer.")
+        agent = Agent(name="bot")
+
+        output = await agent.run("Hello", provider=provider)
+
+        assert output.text == "Direct answer."
+        provider.complete.assert_awaited_once()

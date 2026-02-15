@@ -9,11 +9,18 @@ from typing import Any
 from pydantic import BaseModel
 
 from orbiter._internal.message_builder import build_messages
-from orbiter._internal.output_parser import parse_response
+from orbiter._internal.output_parser import parse_response, parse_tool_arguments
 from orbiter.config import parse_model_string
 from orbiter.hooks import Hook, HookManager, HookPoint
-from orbiter.tool import Tool
-from orbiter.types import AgentOutput, Message, OrbiterError, UserMessage
+from orbiter.tool import Tool, ToolError
+from orbiter.types import (
+    AgentOutput,
+    AssistantMessage,
+    Message,
+    OrbiterError,
+    ToolResult,
+    UserMessage,
+)
 
 
 class AgentError(OrbiterError):
@@ -151,12 +158,12 @@ class Agent:
         provider: Any = None,
         max_retries: int = 3,
     ) -> AgentOutput:
-        """Execute a single-turn LLM call with retry logic.
+        """Execute the agent's LLM-tool loop with retry logic.
 
-        Builds the message list from instructions + history + user input,
-        calls the LLM provider, fires PRE/POST hooks, and returns parsed
-        output. Transient errors are retried with exponential backoff;
-        context-length errors fail immediately.
+        Builds the message list, calls the LLM, and if tool calls are
+        returned, executes them in parallel, feeds results back, and
+        re-calls the LLM. The loop continues until a text-only response
+        is produced or ``max_steps`` is reached.
 
         Args:
             input: User query string for this turn.
@@ -166,7 +173,7 @@ class Agent:
             max_retries: Maximum retry attempts for transient errors.
 
         Returns:
-            Parsed ``AgentOutput`` from the LLM response.
+            Parsed ``AgentOutput`` from the final LLM response.
 
         Raises:
             AgentError: If no provider is supplied or all retries are exhausted.
@@ -179,7 +186,7 @@ class Agent:
         if callable(instructions):
             instructions = instructions(self.name)
 
-        # Build message list
+        # Build initial message list
         history: list[Message] = list(messages) if messages else []
         history.append(UserMessage(content=input))
         msg_list = build_messages(instructions, history)
@@ -187,18 +194,38 @@ class Agent:
         # Tool schemas
         tool_schemas = self.get_tool_schemas() or None
 
-        # Retry loop
+        # Tool loop — iterate up to max_steps
+        for _step in range(self.max_steps):
+            output = await self._call_llm(msg_list, tool_schemas, provider, max_retries)
+
+            # No tool calls — return the final text response
+            if not output.tool_calls:
+                return output
+
+            # Execute tool calls and collect results
+            actions = parse_tool_arguments(output.tool_calls)
+            tool_results = await self._execute_tools(actions)
+
+            # Append assistant message (with tool calls) and results to history
+            msg_list.append(AssistantMessage(content=output.text, tool_calls=output.tool_calls))
+            msg_list.extend(tool_results)
+
+        # max_steps exhausted — return last output as-is
+        return output
+
+    async def _call_llm(
+        self,
+        msg_list: list[Message],
+        tool_schemas: list[dict[str, Any]] | None,
+        provider: Any,
+        max_retries: int,
+    ) -> AgentOutput:
+        """Single LLM call with retry logic and lifecycle hooks."""
         last_error: Exception | None = None
         for attempt in range(max_retries):
             try:
-                # PRE_LLM_CALL hook
-                await self.hook_manager.run(
-                    HookPoint.PRE_LLM_CALL,
-                    agent=self,
-                    messages=msg_list,
-                )
+                await self.hook_manager.run(HookPoint.PRE_LLM_CALL, agent=self, messages=msg_list)
 
-                # LLM call
                 response = await provider.complete(
                     msg_list,
                     tools=tool_schemas,
@@ -206,14 +233,8 @@ class Agent:
                     max_tokens=self.max_tokens,
                 )
 
-                # POST_LLM_CALL hook
-                await self.hook_manager.run(
-                    HookPoint.POST_LLM_CALL,
-                    agent=self,
-                    response=response,
-                )
+                await self.hook_manager.run(HookPoint.POST_LLM_CALL, agent=self, response=response)
 
-                # Parse and return
                 return parse_response(
                     content=response.content,
                     tool_calls=response.tool_calls,
@@ -221,22 +242,76 @@ class Agent:
                 )
 
             except Exception as exc:
-                # Context-length errors fail immediately, no retry
                 if _is_context_length_error(exc):
                     raise AgentError(
                         f"Context length exceeded on agent '{self.name}': {exc}"
                     ) from exc
 
                 last_error = exc
-
-                # Don't sleep after the final attempt
                 if attempt < max_retries - 1:
-                    delay = 2**attempt  # 1s, 2s, 4s ...
+                    delay = 2**attempt
                     await asyncio.sleep(delay)
 
         raise AgentError(
             f"Agent '{self.name}' failed after {max_retries} retries: {last_error}"
         ) from last_error
+
+    async def _execute_tools(
+        self,
+        actions: list[Any],
+    ) -> list[ToolResult]:
+        """Execute tool calls in parallel, catching errors per-tool."""
+        results: list[ToolResult] = [ToolResult(tool_call_id="", tool_name="")] * len(actions)
+
+        async def _run_one(idx: int) -> None:
+            action = actions[idx]
+            tool = self.tools.get(action.tool_name)
+
+            # PRE_TOOL_CALL hook
+            await self.hook_manager.run(
+                HookPoint.PRE_TOOL_CALL,
+                agent=self,
+                tool_name=action.tool_name,
+                arguments=action.arguments,
+            )
+
+            if tool is None:
+                result = ToolResult(
+                    tool_call_id=action.tool_call_id,
+                    tool_name=action.tool_name,
+                    error=f"Unknown tool '{action.tool_name}'",
+                )
+            else:
+                try:
+                    output = await tool.execute(**action.arguments)
+                    content = output if isinstance(output, str) else str(output)
+                    result = ToolResult(
+                        tool_call_id=action.tool_call_id,
+                        tool_name=action.tool_name,
+                        content=content,
+                    )
+                except (ToolError, Exception) as exc:
+                    result = ToolResult(
+                        tool_call_id=action.tool_call_id,
+                        tool_name=action.tool_name,
+                        error=str(exc),
+                    )
+
+            # POST_TOOL_CALL hook
+            await self.hook_manager.run(
+                HookPoint.POST_TOOL_CALL,
+                agent=self,
+                tool_name=action.tool_name,
+                result=result,
+            )
+
+            results[idx] = result
+
+        async with asyncio.TaskGroup() as tg:
+            for i in range(len(actions)):
+                tg.create_task(_run_one(i))
+
+        return results
 
     def __repr__(self) -> str:
         parts = [f"name={self.name!r}", f"model={self.model!r}"]
