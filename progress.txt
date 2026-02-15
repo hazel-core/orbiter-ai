@@ -1307,3 +1307,16 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - CLI entry point is `orbiter_cli.main:app` (typer), installed as `orbiter` console script
   - 116 lines total across 3 files, all passing ruff/pyright/pytest (2848 tests)
 ---
+
+## 2026-02-16 - US-091
+- What was implemented: Collaborative multi-agent examples — `debate.py` (parallel debaters + serial moderator using ParallelGroup + workflow) and `travel.py` (team-mode travel planner with specialist agents for flights, hotels, activities).
+- Files changed: `examples/multi_agent/debate.py` (new, ~55 lines), `examples/multi_agent/travel.py` (new, ~55 lines)
+- Key implementation details:
+  - `debate.py` — ParallelGroup for concurrent affirmative/negative agents, workflow pipes to moderator for balanced synthesis
+  - `travel.py` — Swarm(mode="team") with planner as lead, delegates to flights/hotels/activities specialists
+  - Both follow existing example patterns: docstring with usage, `run.sync()` in `if __name__` block
+- **Learnings for future iterations:**
+  - `examples/multi_agent/` is a new directory for more advanced multi-agent patterns (vs `examples/quickstart/` for basics)
+  - The debate pattern (ParallelGroup + workflow) and travel pattern (team mode) naturally map to the two main Orbiter orchestration paradigms
+  - 119 lines total across 2 files, all passing ruff/pyright/pytest (2848 tests), excluding sqlite/postgres collection errors
+---
