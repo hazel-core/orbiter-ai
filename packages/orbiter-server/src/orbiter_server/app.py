@@ -26,6 +26,7 @@ from pydantic import BaseModel, Field
 from orbiter.runner import run as _run_agent
 from orbiter_server.agents import agent_router
 from orbiter_server.sessions import session_router
+from orbiter_server.streaming import stream_router
 
 # ---------------------------------------------------------------------------
 # Request / response models
@@ -146,6 +147,7 @@ def create_app() -> FastAPI:
     app = FastAPI(title="Orbiter Server", version="0.1.0")
     app.include_router(agent_router)
     app.include_router(session_router)
+    app.include_router(stream_router)
 
     @app.post("/chat", response_model=ChatResponse)
     async def chat(request: ChatRequest) -> Any:
