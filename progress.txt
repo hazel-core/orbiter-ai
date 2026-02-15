@@ -747,3 +747,15 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - ruff N802 disallows uppercase in test function names — use descriptive lowercase instead
   - 1596 tests pass (44 new), excluding sqlite/postgres collection errors
 ---
+
+## 2026-02-15 - US-050
+- What was implemented: Sandbox ABC and LocalSandbox implementation with full lifecycle management. `SandboxStatus` (StrEnum: INIT, RUNNING, IDLE, ERROR, CLOSED) with explicit valid transition map. `Sandbox` ABC with `__slots__`, workspace/mcp_config/agents properties (return copies for safety), status transition validation, abstract lifecycle methods (start/stop/cleanup), describe(), repr(). `LocalSandbox` implementation with start→RUNNING, stop→IDLE, cleanup→CLOSED, `run_tool()` (requires RUNNING status), async context manager support.
+- Files changed: `packages/orbiter-sandbox/src/orbiter/sandbox/base.py` (new, ~130 lines), `packages/orbiter-sandbox/tests/test_sandbox_base.py` (new, 27 tests in 7 classes)
+- Test coverage: SandboxStatus values + StrEnum (2), Sandbox ABC instantiation + defaults + custom init + property copies (4), Status transitions valid 7-case + invalid 3-case (10), LocalSandbox lifecycle start/stop/restart/cleanup/context-manager (6), run_tool running/not-running/after-stop (3), describe + repr (2)
+- **Learnings for future iterations:**
+  - orbiter-sandbox package stub already existed (pyproject.toml, __init__.py, tests/__init__.py) — just needed `base.py`
+  - Status transition validation via `_VALID_TRANSITIONS` dict is cleaner than individual method checks — easy to reason about allowed transitions
+  - Properties returning copies (`list(self._workspace)`, `dict(self._mcp_config)`) prevent external mutation of internal state
+  - `__slots__` entries must be sorted alphabetically (ruff RUF023 enforced) — pre-sorted to avoid fix cycle
+  - 1623 tests pass (27 new), excluding sqlite/postgres collection errors
+---
