@@ -24,6 +24,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from orbiter.runner import run as _run_agent
+from orbiter_server.sessions import session_router
 
 # ---------------------------------------------------------------------------
 # Request / response models
@@ -142,6 +143,7 @@ async def _sse_stream(agent: Any, message: str) -> AsyncIterator[str]:
 def create_app() -> FastAPI:
     """Create a configured FastAPI application with the /chat endpoint."""
     app = FastAPI(title="Orbiter Server", version="0.1.0")
+    app.include_router(session_router)
 
     @app.post("/chat", response_model=ChatResponse)
     async def chat(request: ChatRequest) -> Any:

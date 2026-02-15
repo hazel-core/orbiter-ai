@@ -30,6 +30,7 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
 - Ruff B039: `ContextVar` default cannot be mutable (e.g., `default={}`) — use `default=None` with `T | None` type and handle None in accessor functions
 - orbiter-cli is a regular package (`orbiter_cli` import path), NOT a namespace package — it has its own entry point via `typer`
 - Typer `no_args_is_help=True` returns exit code 2 (not 0) — test with `assert exit_code in (0, 2)`
+- FastAPI routers: use `Request` dependency (`req: Request`) to access app state — `router.app` has pyright typing issues (`MethodType` instead of `FastAPI`)
 ---
 
 ## 2026-02-15 - US-001
@@ -1114,5 +1115,17 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - httpx `ASGITransport` + `AsyncClient` is the standard FastAPI testing pattern (no need for `TestClient` in async tests)
   - FastAPI `StreamingResponse` with `media_type="text/event-stream"` works for SSE without needing `sse-starlette` dependency
   - 2575 tests total across full suite (23 new server tests), excluding sqlite/postgres collection errors
+---
+
+## 2026-02-16 - US-077
+- What was implemented: Session management CRUD routes (`sessions.py`) with in-memory session store. Models: `Session`, `SessionMessage`, `SessionSummary`, `CreateSessionRequest`, `UpdateSessionRequest`, `AppendMessageRequest`. Routes: POST /sessions (create), GET /sessions (list newest-first), GET /sessions/{id} (get), PATCH /sessions/{id} (update title/agent_name), DELETE /sessions/{id}, POST /sessions/{id}/messages (append), GET /sessions/{id}/messages (list). Wired `session_router` into `create_app()` via `app.include_router()`.
+- Files changed: `packages/orbiter-server/src/orbiter_server/sessions.py` (new, ~185 lines), `packages/orbiter-server/tests/test_server_sessions.py` (new, 29 tests in 11 classes), `packages/orbiter-server/src/orbiter_server/app.py` (added session_router import + include_router)
+- Test coverage: SessionMessage (2), Session (2), RequestModels (4), CreateSession (3), ListSessions (3), GetSession (2), UpdateSession (4), DeleteSession (2), AppendMessage (3), ListMessages (2), SessionLifecycle (2: full CRUD lifecycle + timestamp updates)
+- **Learnings for future iterations:**
+  - `APIRouter.app` property has typing issues with pyright (`MethodType` instead of `FastAPI`) — use FastAPI's `Request` dependency (`req: Request`) to access `req.app.state` instead of `router.app.state`
+  - `include_router(session_router)` in `create_app()` wires the router's prefix (/sessions) automatically
+  - In-memory store via `app.state` works the same for routers when using `Request` — the `Request.app` always points to the root FastAPI app
+  - ruff auto-fix sorts imports and removes unused ones (pytest was unused in test file) in one pass
+  - 2604 tests total across full suite (29 new session tests), excluding sqlite/postgres collection errors
 ---
 
