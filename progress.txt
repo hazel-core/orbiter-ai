@@ -1011,3 +1011,16 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - 2290 tests total across full suite (34 new A2A server tests), excluding sqlite/postgres collection errors
 ---
 
+## 2026-02-15 - US-069
+- What was implemented: A2A HTTP client, thread-safe ClientManager, and RemoteAgent for calling remote A2A agents. `A2AClientError` exception. `A2AClient` class with agent card resolution (from URL via httpx or local JSON file), `send_task()` for synchronous task execution, `send_task_streaming()` for NDJSON streaming, and `close()` lifecycle. `ClientManager` with per-thread `A2AClient` instances via `threading.local()`, thread-safe registry with `threading.Lock()`, and `shutdown()` to close all clients. `RemoteAgent` with `run(input)` returning `AgentOutput`, `describe()` returning agent card metadata, and `close()`. `_extract_text()` helper for response parsing (artifact.text → result → empty string fallback).
+- Files changed: `packages/orbiter-a2a/src/orbiter/a2a/client.py` (new, ~130 lines of core logic), `packages/orbiter-a2a/tests/test_a2a_client.py` (new, 42 tests in 12 classes)
+- Test coverage: A2AClientInit (6: card, url, file, empty, invalid type, default config), ResolveCard (7: already resolved, from file, file not found, invalid json, from url, url failure, caching), SendTask (3: success, custom task_id, failure), Streaming (3: not supported, success, failure), Lifecycle (4: close, repr resolved/url/source), ClientManager (6: get_client, same thread, different threads, shutdown, repr, custom config), RemoteAgentInit (3: basic, config, repr), RemoteAgentRun (3: success, empty response, result field), Describe (1), Close (1), ExtractText (5: artifact, result, empty, empty text fallback, non-dict artifact)
+- **Learnings for future iterations:**
+  - httpx `AsyncClient` requires `aclose()` (not `close()`) for proper async cleanup — our `A2AClient.close()` delegates to `self._http.aclose()`
+  - `ClientManager` uses `threading.local()` for per-thread client storage and `threading.Lock()` for the shared registry — simpler than the old AWorld `ThreadSafeManager` which had a daemon monitor thread and `RLock`
+  - `RemoteAgent` is NOT an `Agent` subclass — it's a standalone class with a compatible `run()` interface. This avoids pulling in Agent's LLM/tool dependencies for a pure HTTP proxy
+  - Response text extraction uses a priority chain: `artifact.text` (from A2A server's TaskArtifactUpdateEvent) → `result` field (server stores it) → empty string
+  - The A2A package already depends on `httpx>=0.27` in pyproject.toml — no new dependencies needed
+  - 2332 tests total across full suite (42 new client tests), excluding sqlite/postgres collection errors
+---
+

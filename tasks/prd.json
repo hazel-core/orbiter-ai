@@ -1,7 +1,7 @@
 {
   "project": "Orbiter",
   "branchName": "ralph/orbiter-framework",
-  "description": "Orbiter Framework — Complete remaining implementation (Phases 5-22) of the modern multi-agent framework rewrite from AWorld",
+  "description": "Orbiter Framework \u2014 Complete remaining implementation (Phases 5-22) of the modern multi-agent framework rewrite from AWorld",
   "userStories": [
     {
       "id": "US-001",
@@ -50,7 +50,7 @@
     },
     {
       "id": "US-003",
-      "title": "Implement Agent class — init and configuration",
+      "title": "Implement Agent class \u2014 init and configuration",
       "description": "As a framework user, I want to create Agent instances with a clean constructor that accepts name, model, instructions, tools, hooks, memory, handoffs, and output_type, so that I can define agents declaratively.",
       "acceptanceCriteria": [
         "Create packages/orbiter-core/src/orbiter/agent.py",
@@ -224,7 +224,7 @@
     },
     {
       "id": "US-012",
-      "title": "Implement handler system — base + agent handler",
+      "title": "Implement handler system \u2014 base + agent handler",
       "description": "As a framework developer, I want a handler abstraction and an AgentHandler that routes between agents in a swarm, so that multi-agent execution is composable.",
       "acceptanceCriteria": [
         "Create packages/orbiter-core/src/orbiter/_internal/handlers.py",
@@ -313,7 +313,7 @@
     },
     {
       "id": "US-017",
-      "title": "Implement Swarm — workflow mode",
+      "title": "Implement Swarm \u2014 workflow mode",
       "description": "As a framework user, I want Swarm(agents=[...], flow='a >> b >> c') that runs agents sequentially, passing output as input, so that I can build agent pipelines.",
       "acceptanceCriteria": [
         "Create packages/orbiter-core/src/orbiter/swarm.py",
@@ -328,11 +328,11 @@
       ],
       "priority": 17,
       "passes": true,
-      "notes": "Swarm class with workflow mode, flow DSL parsing via parse_flow_dsl/topological_sort, output→input chaining, run() integration. 20 new tests (620 total)."
+      "notes": "Swarm class with workflow mode, flow DSL parsing via parse_flow_dsl/topological_sort, output\u2192input chaining, run() integration. 20 new tests (620 total)."
     },
     {
       "id": "US-018",
-      "title": "Implement Swarm — handoff mode",
+      "title": "Implement Swarm \u2014 handoff mode",
       "description": "As a framework user, I want agents to be able to hand off to other agents dynamically (like triage -> billing), so that I can build agent-driven delegation patterns.",
       "acceptanceCriteria": [
         "Add mode='handoff' support to Swarm",
@@ -350,7 +350,7 @@
     },
     {
       "id": "US-019",
-      "title": "Implement Swarm — team mode",
+      "title": "Implement Swarm \u2014 team mode",
       "description": "As a framework user, I want a team mode where a lead agent coordinates worker agents, so that I can build leader-delegation patterns.",
       "acceptanceCriteria": [
         "Add mode='team' support to Swarm",
@@ -381,7 +381,7 @@
       ],
       "priority": 20,
       "passes": true,
-      "notes": "ParallelGroup (concurrent via asyncio.TaskGroup, custom aggregation) and SerialGroup (output→input chaining) in agent_group.py. Both integrate as Swarm workflow nodes via is_group marker. 27 new tests (675 total)."
+      "notes": "ParallelGroup (concurrent via asyncio.TaskGroup, custom aggregation) and SerialGroup (output\u2192input chaining) in agent_group.py. Both integrate as Swarm workflow nodes via is_group marker. 27 new tests (675 total)."
     },
     {
       "id": "US-021",
@@ -438,7 +438,7 @@
     },
     {
       "id": "US-024",
-      "title": "Implement Context class — core lifecycle",
+      "title": "Implement Context class \u2014 core lifecycle",
       "description": "As a framework developer, I want the Context class with fork/merge for hierarchical task decomposition, so that multi-agent contexts are isolated but composable.",
       "acceptanceCriteria": [
         "Create packages/orbiter-context/src/orbiter/context/context.py",
@@ -661,7 +661,7 @@
       ],
       "priority": 35,
       "passes": true,
-      "notes": "Updated __init__.py with 23 public exports (Context, ContextConfig, ContextState, PromptBuilder, ContextProcessor, Neuron, Workspace, etc.). 26 integration tests covering: public API imports, Context+PromptBuilder E2E, Context+Processor E2E, Context+Workspace E2E, full lifecycle (create→populate→process→build→checkpoint), fork/merge with workspace, context tools with workspace, custom processors, Agent context wiring. 1153 total tests."
+      "notes": "Updated __init__.py with 23 public exports (Context, ContextConfig, ContextState, PromptBuilder, ContextProcessor, Neuron, Workspace, etc.). 26 integration tests covering: public API imports, Context+PromptBuilder E2E, Context+Processor E2E, Context+Workspace E2E, full lifecycle (create\u2192populate\u2192process\u2192build\u2192checkpoint), fork/merge with workspace, context tools with workspace, custom processors, Agent context wiring. 1153 total tests."
     },
     {
       "id": "US-036",
@@ -734,7 +734,7 @@
       ],
       "priority": 39,
       "passes": true,
-      "notes": "LongTermMemory (MemoryStore protocol, deduplication, namespace isolation), ExtractionType (StrEnum: user_profile/agent_experience/facts), ExtractionTask (lifecycle: pending→running→completed/failed), Extractor protocol, MemoryOrchestrator (submit/process/process_all with task queue), OrchestratorConfig. 47 new tests (1303 total)."
+      "notes": "LongTermMemory (MemoryStore protocol, deduplication, namespace isolation), ExtractionType (StrEnum: user_profile/agent_experience/facts), ExtractionTask (lifecycle: pending\u2192running\u2192completed/failed), Extractor protocol, MemoryOrchestrator (submit/process/process_all with task queue), OrchestratorConfig. 47 new tests (1303 total)."
     },
     {
       "id": "US-040",
@@ -805,7 +805,7 @@
     },
     {
       "id": "US-044",
-      "title": "MCP client — server connection",
+      "title": "MCP client \u2014 server connection",
       "description": "As a framework developer, I want an MCP client that connects to MCP servers via SSE, stdio, and streamable-http transports.",
       "acceptanceCriteria": [
         "Create packages/orbiter-mcp/src/orbiter/mcp/client.py",
@@ -822,7 +822,7 @@
     },
     {
       "id": "US-045",
-      "title": "MCP tools — loading + conversion",
+      "title": "MCP tools \u2014 loading + conversion",
       "description": "As a framework developer, I want MCP tool schema extraction and conversion to Orbiter Tool format.",
       "acceptanceCriteria": [
         "Create packages/orbiter-mcp/src/orbiter/mcp/tools.py",
@@ -853,7 +853,7 @@
       ],
       "priority": 46,
       "passes": true,
-      "notes": "MCPServerError, MCPServerRegistry (singleton class/instance store), @mcp_server() class decorator (method→MCP tool conversion via FastMCP, run/stop methods, global registry). 32 new tests (1551 total)."
+      "notes": "MCPServerError, MCPServerRegistry (singleton class/instance store), @mcp_server() class decorator (method\u2192MCP tool conversion via FastMCP, run/stop methods, global registry). 32 new tests (1551 total)."
     },
     {
       "id": "US-047",
@@ -1158,7 +1158,7 @@
     },
     {
       "id": "US-064",
-      "title": "Ralph loop — state + config",
+      "title": "Ralph loop \u2014 state + config",
       "description": "As a framework developer, I want Ralph loop configuration (validation, reflection, stop conditions) and iteration state tracking, so that iterative refinement has a structured lifecycle.",
       "acceptanceCriteria": [
         "Create packages/orbiter-eval/src/orbiter/eval/ralph/config.py",
@@ -1175,7 +1175,7 @@
     },
     {
       "id": "US-065",
-      "title": "Ralph loop — stop detectors",
+      "title": "Ralph loop \u2014 stop detectors",
       "description": "As a framework developer, I want pluggable stop condition detectors for the Ralph loop (max iterations, timeout, cost limit, score threshold).",
       "acceptanceCriteria": [
         "Create packages/orbiter-eval/src/orbiter/eval/ralph/detectors.py",
@@ -1192,7 +1192,7 @@
     },
     {
       "id": "US-066",
-      "title": "Ralph loop — runner",
+      "title": "Ralph loop \u2014 runner",
       "description": "As a framework user, I want a RalphRunner that implements the 5-phase Run->Analyze->Learn->Plan->Halt loop for iterative agent refinement.",
       "acceptanceCriteria": [
         "Create packages/orbiter-eval/src/orbiter/eval/ralph/runner.py",
@@ -1259,7 +1259,7 @@
         "Typecheck passes"
       ],
       "priority": 69,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -1511,7 +1511,7 @@
     },
     {
       "id": "US-085",
-      "title": "Basic examples — define_agent, use_llm",
+      "title": "Basic examples \u2014 define_agent, use_llm",
       "description": "As a new user, I want simple examples showing how to define an agent and use LLM providers.",
       "acceptanceCriteria": [
         "Create examples/quickstart/define_agent.py",
@@ -1526,7 +1526,7 @@
     },
     {
       "id": "US-086",
-      "title": "Tool examples — local_tool, mcp_tool",
+      "title": "Tool examples \u2014 local_tool, mcp_tool",
       "description": "As a new user, I want examples showing how to create local tools and use MCP tools.",
       "acceptanceCriteria": [
         "Create examples/quickstart/local_tool.py",
@@ -1540,7 +1540,7 @@
     },
     {
       "id": "US-087",
-      "title": "Swarm examples — workflow, handoff, hybrid_swarm",
+      "title": "Swarm examples \u2014 workflow, handoff, hybrid_swarm",
       "description": "As a new user, I want examples showing multi-agent orchestration patterns.",
       "acceptanceCriteria": [
         "Create examples/quickstart/workflow.py",
@@ -1569,7 +1569,7 @@
     },
     {
       "id": "US-089",
-      "title": "Advanced quickstart — parallel_task, HITL, multi_root_agent, serving",
+      "title": "Advanced quickstart \u2014 parallel_task, HITL, multi_root_agent, serving",
       "description": "As a user, I want examples showing advanced patterns like parallel tasks, human-in-the-loop, multi-root agents, and serving.",
       "acceptanceCriteria": [
         "Create examples/quickstart/parallel_task.py",
@@ -1600,7 +1600,7 @@
     },
     {
       "id": "US-091",
-      "title": "Collaborative examples — debate, travel",
+      "title": "Collaborative examples \u2014 debate, travel",
       "description": "As a user, I want examples showing collaborative multi-agent patterns.",
       "acceptanceCriteria": [
         "Create examples/multi_agent/debate.py",
@@ -1614,7 +1614,7 @@
     },
     {
       "id": "US-092",
-      "title": "Coordination examples — custom_agent, deepresearch, master_worker",
+      "title": "Coordination examples \u2014 custom_agent, deepresearch, master_worker",
       "description": "As a user, I want examples showing coordination patterns.",
       "acceptanceCriteria": [
         "Create examples/multi_agent/custom_agent.py",
@@ -1629,7 +1629,7 @@
     },
     {
       "id": "US-093",
-      "title": "Workflow examples — search patterns",
+      "title": "Workflow examples \u2014 search patterns",
       "description": "As a user, I want examples showing workflow search patterns.",
       "acceptanceCriteria": [
         "Create examples/multi_agent/search_patterns.py",
