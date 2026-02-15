@@ -896,3 +896,17 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - 1955 tests total across full suite (36 new eval tests), excluding sqlite/postgres collection errors
 ---
 
+## 2026-02-15 - US-060
+- What was implemented: Rule-based scorers for the evaluation framework. Six concrete `Scorer` subclasses: `FormatValidationScorer` (validates JSON, XML, YAML, Markdown, CSV format), `SchemaValidationScorer` (minimal JSON Schema validation — type checking, required fields, nested property validation), `OutputCorrectnessScorer` (ground truth matching with normalization + keyword presence checking), `OutputLengthScorer` (min/max length bounds), `OutputRelevanceScorer` (keyword overlap between input and output), `OutputCompletenessScorer` (required section presence checking).
+- Files changed:
+  - `packages/orbiter-eval/src/orbiter/eval/scorers.py` (new, ~260 lines — 6 scorer classes)
+  - `packages/orbiter-eval/tests/test_scorers.py` (new, 47 tests in 12 classes)
+- Test coverage: FormatValidationScorerInit (3: default, custom name, unsupported format), FormatJSON (3: valid, invalid, array), FormatXML (3: valid, invalid, malformed), FormatMarkdown (4: heading, list, bold, plain text), FormatCSV (4: valid, tab-delimited, too few rows, inconsistent), FormatNoneOutput (1), SchemaValidation (6: valid object, missing required, wrong type, invalid JSON, nested, custom name), OutputCorrectness (8: exact, normalized, no match, normalize off, keywords all/partial/none, no criteria), OutputLength (5: within range, too short/long, empty, details), OutputRelevance (5: full/partial/no overlap, empty input, custom name), OutputCompleteness (5: all/some/none present, empty sections, case insensitive)
+- **Learnings for future iterations:**
+  - Within-package namespace imports (e.g., `scorers.py` importing `base.py`) also need `# pyright: ignore[reportMissingImports]` — same pattern as cross-package imports
+  - `ClassVar[dict[...]]` is needed for mutable class attributes (RUF012) — even for internal validator dispatch tables
+  - FormatValidationScorer uses a `_VALIDATORS` ClassVar dict populated after class definition for a clean dispatch pattern
+  - SchemaValidationScorer implements minimal JSON Schema validation (type + required + properties + nesting) without external dependencies — sufficient for rule-based evaluation
+  - 2002 tests total across full suite (47 new scorer tests)
+---
+
