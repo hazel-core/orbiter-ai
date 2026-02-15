@@ -39,6 +39,8 @@ class Agent:
         max_steps: Maximum LLM-tool round-trips before stopping.
         temperature: LLM sampling temperature.
         max_tokens: Maximum output tokens per LLM call.
+        memory: Optional memory store for persistent memory across sessions.
+        context: Optional context engine for hierarchical state and prompt building.
     """
 
     def __init__(
@@ -54,6 +56,8 @@ class Agent:
         max_steps: int = 10,
         temperature: float = 1.0,
         max_tokens: int | None = None,
+        memory: Any = None,
+        context: Any = None,
     ) -> None:
         self.name = name
         self.model = model
@@ -63,6 +67,8 @@ class Agent:
         self.max_steps = max_steps
         self.temperature = temperature
         self.max_tokens = max_tokens
+        self.memory = memory
+        self.context = context
 
         # Tools indexed by name for O(1) lookup during execution
         self.tools: dict[str, Tool] = {}

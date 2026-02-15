@@ -53,6 +53,8 @@ class TestAgentCreation:
         assert agent.max_steps == 10
         assert agent.temperature == 1.0
         assert agent.max_tokens is None
+        assert agent.memory is None
+        assert agent.context is None
 
     def test_full_config(self) -> None:
         """Agent accepts all configuration parameters."""
