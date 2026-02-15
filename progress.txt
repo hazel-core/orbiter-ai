@@ -1063,3 +1063,15 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - 2449 tests total across full suite (39 new console tests), excluding sqlite/postgres collection errors
 ---
 
+## 2026-02-15 - US-073
+- What was implemented: LocalExecutor — local agent execution wrapper with Rich output formatting, timeout support, streaming, and error handling. `ExecutorError` exception. `ExecutionResult` (output, steps, elapsed, usage dict, raw result; summary() for human-readable stats). `LocalExecutor` class with `execute()` (wraps `orbiter.runner.run` with timeout via `asyncio.wait_for`, usage extraction, verbose timing), `stream()` (wraps `run.stream()` yielding text chunks), `print_result()` (Rich Panel), `print_error()` (Rich formatted error).
+- Files changed: `packages/orbiter-cli/src/orbiter_cli/executor.py` (new, ~120 lines), `packages/orbiter-cli/tests/test_cli_executor.py` (new, 28 tests in 8 classes)
+- Test coverage: ExecutorError (1), ExecutionResult creation (3: defaults, full, usage-is-copy), ExecutionResult summary (4: basic, elapsed, tokens, repr), LocalExecutor init (3: defaults, custom, repr), Execute (5: basic, provider, messages, verbose, no-usage), Timeout (2: raises, no-timeout), Errors (2: agent-error, preserves-cause), Stream (5: basic, no-text, missing-stream, error, with-provider), Display (3: print-result, verbose, print-error)
+- **Learnings for future iterations:**
+  - Lazy import `from orbiter.runner import run` inside `execute()` / `stream()` methods to avoid import errors at class instantiation time when orbiter-core isn't fully initialized
+  - `monkeypatch.setattr(orbiter.runner, "run", mock_run)` patches the lazy import target — works because `from orbiter.runner import run` re-reads from the module at call time
+  - `MagicMock(spec=[])` creates a mock with NO attributes — useful for testing "stream not available" when `run.stream` is missing
+  - `getattr(usage_obj, "field", 0) or 0` handles both missing and None usage fields
+  - 2477 tests total across full suite (28 new executor tests), excluding sqlite/postgres collection errors
+---
+
