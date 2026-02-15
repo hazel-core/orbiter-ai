@@ -146,6 +146,10 @@ class Swarm:
     ) -> RunResult:
         """Execute agents sequentially, chaining output→input.
 
+        Supports both regular agents and group nodes (``ParallelGroup``,
+        ``SerialGroup``).  Groups have an ``is_group`` attribute and
+        their own ``run()`` method.
+
         Returns the ``RunResult`` from the last agent in the flow.
         """
         current_input = input
@@ -153,13 +157,22 @@ class Swarm:
 
         for agent_name in self.flow_order:
             agent = self.agents[agent_name]
-            last_result = await call_runner(
-                agent,
-                current_input,
-                messages=messages,
-                provider=provider,
-                max_retries=max_retries,
-            )
+
+            if getattr(agent, "is_group", False):
+                last_result = await agent.run(
+                    current_input,
+                    messages=messages,
+                    provider=provider,
+                    max_retries=max_retries,
+                )
+            else:
+                last_result = await call_runner(
+                    agent,
+                    current_input,
+                    messages=messages,
+                    provider=provider,
+                    max_retries=max_retries,
+                )
             current_input = last_result.output
 
         assert last_result is not None  # guaranteed since agents is non-empty
