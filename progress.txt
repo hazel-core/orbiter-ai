@@ -1287,3 +1287,13 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - Both examples run successfully without any API keys (they don't call LLMs)
   - 2848 tests pass (ignoring pre-existing asyncpg/aiosqlite import errors in postgres/sqlite backend tests)
 ---
+
+## 2026-02-16 - US-089
+- What was implemented: Four advanced quickstart examples — parallel_task.py (ParallelGroup + Swarm workflow), hitl.py (HumanInputTool with ConsoleHandler), multi_root_agent.py (Swarm team mode with lead + workers), serving.py (A2AServer with FastAPI)
+- Files changed: `examples/quickstart/parallel_task.py`, `examples/quickstart/hitl.py`, `examples/quickstart/multi_root_agent.py`, `examples/quickstart/serving.py`
+- **Learnings for future iterations:**
+  - `HumanInputTool` and `ConsoleHandler` are in `orbiter.human`, not re-exported from `orbiter.__init__`
+  - A2A server types (`A2AServer`, `AgentExecutor`, `ServingConfig`) are in `orbiter.a2a.server` and `orbiter.a2a.types` — both need pyright ignore for namespace cross-package imports
+  - `Swarm(mode="team")` auto-generates `delegate_to_{name}` tools for worker agents — the lead agent just needs appropriate instructions
+  - 145 lines total across 4 files, all passing ruff/pyright/pytest (2848 tests)
+---
