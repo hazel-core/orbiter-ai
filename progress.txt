@@ -23,6 +23,8 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
 - `@asynccontextmanager` returns single-use CMs — when mocking, use `side_effect=lambda: factory()` not `return_value=cm` for multi-call scenarios
 - BLE001 (broad exception) ruff rule is NOT enabled — don't add `# noqa: BLE001` comments (triggers RUF100 unused noqa)
 - OTel `trace.set_tracer_provider()` can only be called once — in tests, reset `trace._TRACER_PROVIDER_SET_ONCE._done = False` and `trace._TRACER_PROVIDER = None` before each test
+- OTel `metrics.set_meter_provider()` can only be called once — in tests, reset `metrics._internal._METER_PROVIDER_SET_ONCE._done = False` and `metrics._internal._METER_PROVIDER = None` before each test
+- OTel metrics instruments created at module level bind to the no-op provider — use `metrics.get_meter().create_*()` inside recording functions so instruments always use the current MeterProvider
 - OTel SDK may not ship `InMemorySpanExporter` — create a simple `_MemoryExporter(SpanExporter)` subclass that collects spans in a list
 - SLF001 (private member access) ruff rule is NOT enabled — `# noqa: SLF001` is unnecessary and triggers RUF100
 ---
@@ -844,4 +846,16 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - `inspect.signature(len)` returns `(obj, /)` in Python 3.11+ — builtins DO have signatures now, so don't assume empty parameters for builtins
   - SLF001 (private member access like `sys._getframe`) ruff rule is NOT enabled — no need for `# noqa: SLF001`
   - 1796 tests total across full suite (37 new decorator tests), excluding sqlite/postgres collection errors
+---
+
+## 2026-02-15 - US-056
+- What was implemented: Agent/tool instrumentation module with OpenTelemetry metrics. Metric name constants (`METRIC_AGENT_RUN_DURATION`, `METRIC_AGENT_RUN_COUNTER`, `METRIC_AGENT_TOKEN_USAGE`, `METRIC_TOOL_STEP_DURATION`, `METRIC_TOOL_STEP_COUNTER`). Instrument factory functions (`create_agent_run_duration()`, etc.). Attribute builders (`build_agent_attributes()`, `build_tool_attributes()`) using semantic conventions from config.py. Recording helpers (`record_agent_run()`, `record_tool_step()`) that create instruments from the current MeterProvider on each call. `Timer` class for duration measurement.
+- Files changed: `packages/orbiter-trace/src/orbiter/trace/instrumentation.py` (new, ~120 lines), `packages/orbiter-trace/tests/test_trace_instrumentation.py` (new, 36 tests in 9 classes)
+- Test coverage: MetricNames (5), InstrumentFactory (5), BuildAgentAttributes (3: defaults, all fields, None→empty), BuildToolAttributes (2), RecordAgentRun (5: success, failure, no tokens, token attributes, empty attributes), RecordToolStep (4: success, failure, empty, no mutation), Timer (5: timing, chaining, elapsed, match, initial), HistogramBuckets (4: fractional, large, small, token), Integration (3: agent flow, tool flow, multiple recordings)
+- **Learnings for future iterations:**
+  - OTel `metrics.set_meter_provider()` is one-shot like `trace.set_tracer_provider()` — reset `metrics._internal._METER_PROVIDER_SET_ONCE._done = False` and `metrics._internal._METER_PROVIDER = None` in test fixtures
+  - Module-level instruments (`_meter.create_histogram(...)`) bind to the no-op provider at import time and won't see later `set_meter_provider()` calls — recording functions must call `metrics.get_meter().create_*()` each time to use the current provider
+  - OTel SDK's `InMemoryMetricReader.get_metrics_data()` can return `None` — always guard with `if data is None: return`
+  - The `create_*()` pattern (factory functions) gives callers flexibility while `record_*()` functions handle the common case internally
+  - 1832 tests total across full suite (36 new instrumentation tests), excluding sqlite/postgres collection errors
 ---
