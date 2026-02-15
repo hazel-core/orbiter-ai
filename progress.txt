@@ -910,3 +910,15 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - 2002 tests total across full suite (47 new scorer tests)
 ---
 
+## 2026-02-15 - US-061
+- What was implemented: LLM-as-Judge scorers and multi-dimensional quality assessment. `extract_json()` (brace-counting JSON extraction supporting nested objects). `LLMAsJudgeScorer` (base scorer with configurable `judge` async callable, overridable `build_prompt()` and `parse_response()` hooks, score clamping to [0.0, 1.0]). `OutputQualityScorer` (weighted 5-dimensional: correctness 40%, relevance 20%, completeness 20%, clarity 10%, professionalism 10%, with quality labels: Excellent/Good/Medium/Pass/Fail). `LogicConsistencyScorer` (weighted: contradiction 0.5, causal 0.3, data 0.2). `ReasoningValidityScorer` (fallacy detection, reasoning type classification). `ConstraintSatisfactionScorer` (binary PASS/FAIL per constraint, computed from constraint_results or fallback score field).
+- Files changed: `packages/orbiter-eval/src/orbiter/eval/llm_scorer.py` (new, ~130 lines), `packages/orbiter-eval/tests/test_llm_scorer.py` (new, 43 tests in 12 classes)
+- Test coverage: extract_json (4: simple, no json, invalid, empty), LLMAsJudgeScorerInit (3), LLMAsJudgeScorerScore (7: no judge, with judge, clamp high/low, missing score, prompt with/without input), OutputQualityScorerInit (3), OutputQualityScorerScore (6: full, weighted, mixed, missing dims, labels, prompt dims), LogicConsistencyScorerInit (2), LogicConsistencyScorerScore (4: weighted, partial, missing, no judge), ReasoningValidityScorerInit (1), ReasoningValidityScorerScore (3: valid, fallacies, no judge), ConstraintSatisfactionScorerInit (2), ConstraintSatisfactionScorerScore (6: all pass, partial, all fail, fallback, prompt, no judge), Integration (2: protocol, subclass)
+- **Learnings for future iterations:**
+  - Regex `\{[^{}]*\}` can't handle nested JSON objects (e.g., `dimension_scores` dict inside outer object) — use brace-counting approach instead
+  - `judge` parameter is `Any` async callable `(prompt: str) -> str` — keeps scorers decoupled from any specific LLM provider
+  - Subclass pattern: override `_default_system_prompt()` as `@staticmethod` for class-specific defaults, override `build_prompt()` and `parse_response()` for custom behavior
+  - Quality labels use a threshold list sorted descending — first match wins
+  - 2045 tests total across full suite (43 new LLM scorer tests)
+---
+
