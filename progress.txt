@@ -28,6 +28,8 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
 - OTel SDK may not ship `InMemorySpanExporter` — create a simple `_MemoryExporter(SpanExporter)` subclass that collects spans in a list
 - SLF001 (private member access) ruff rule is NOT enabled — `# noqa: SLF001` is unnecessary and triggers RUF100
 - Ruff B039: `ContextVar` default cannot be mutable (e.g., `default={}`) — use `default=None` with `T | None` type and handle None in accessor functions
+- orbiter-cli is a regular package (`orbiter_cli` import path), NOT a namespace package — it has its own entry point via `typer`
+- Typer `no_args_is_help=True` returns exit code 2 (not 0) — test with `assert exit_code in (0, 2)`
 ---
 
 ## 2026-02-15 - US-001
@@ -1022,5 +1024,18 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - Response text extraction uses a priority chain: `artifact.text` (from A2A server's TaskArtifactUpdateEvent) → `result` field (server stores it) → empty string
   - The A2A package already depends on `httpx>=0.27` in pyproject.toml — no new dependencies needed
   - 2332 tests total across full suite (42 new client tests), excluding sqlite/postgres collection errors
+---
+
+## 2026-02-15 - US-070
+- What was implemented: CLI entry point with Typer-based argument parsing and YAML config file loading. `CLIError` exception. `find_config(directory)` for auto-discovery of `.orbiter.yaml` / `orbiter.config.yaml` (first found wins). `load_config(path)` delegates to `orbiter.loader.load_yaml()` with validation. `resolve_config(config_path)` for explicit-path-or-auto-discovery resolution. Typer `app` with `--verbose` / `-v` callback, `run` command with `--config` / `-c`, `--model` / `-m`, `--stream` / `-s` options and input text argument.
+- Files changed: `packages/orbiter-cli/src/orbiter_cli/main.py` (new, ~155 lines), `packages/orbiter-cli/tests/test_cli_main.py` (new, 33 tests in 9 classes)
+- Test coverage: CLIError (2), find_config (5: .orbiter.yaml, orbiter.config.yaml, precedence, none, cwd default), load_config (6: valid, missing, invalid, env var substitution, vars section, string path), resolve_config (4: explicit, auto-discovery, none, explicit overrides), CLI run (8: no args help, no config exit 1, with config, explicit config, model flag, stream flag, verbose, invalid path), CLI help (2: top-level, run subcommand), config precedence (3: first wins, fallback, ignores non-config), edge cases (3: empty dict, nested vars, Path object)
+- **Learnings for future iterations:**
+  - orbiter-cli package stub already existed with `typer>=0.12` and `rich>=13.0` deps, entry point `orbiter = "orbiter_cli.main:app"`
+  - Typer's `no_args_is_help=True` returns exit code 2 (not 0) — test with `assert result.exit_code in (0, 2)` for compatibility
+  - `typer.testing.CliRunner` for testing CLI invocations — similar to Click's runner but supports Typer-specific features
+  - `load_config` uses lazy import of `orbiter.loader.load_yaml` to avoid import errors when orbiter-core isn't fully initialized
+  - orbiter-cli is a regular package (not namespace) — uses `orbiter_cli` import path, not `orbiter.cli`
+  - 2365 tests total across full suite (33 new CLI tests), excluding sqlite/postgres collection errors
 ---
 
