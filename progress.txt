@@ -8,9 +8,13 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
 - Quality checks: `uv run ruff check packages/`, `uv run ruff format --check packages/`, `uv run pyright packages/orbiter-core/`, `uv run pytest`
 - Use `Sequence[Message]` (not `list[Message]`) for function params that accept subtype lists — avoids pyright invariance errors
 - Use `ClassVar[dict[...]]` for mutable class attributes on dataclass-like test fixtures to avoid RUF012 lint errors
+- Use `StrEnum` (not `str, Enum`) for string enums — ruff UP042 enforces this
 - Test file names must be unique across all packages (pytest collects `tests/` from multiple packages into one `tests` module)
 - pytest-asyncio `asyncio_mode = "auto"` configured in root pyproject.toml — no need for `@pytest.mark.asyncio`
 - Import sorting: ruff enforces I001 import block sorting — use `uv run ruff check --fix` to auto-sort
+- Forward-compatible params: use `Any` type with `None` default for params whose concrete types come from future packages
+- Cross-package error handling: since orbiter-core can't import ModelError from orbiter-models, check error attributes (e.g., `.code`) via `getattr()` on caught exceptions
+- pyright ignore comments: put `# pyright: ignore[reportMissingImports]` on the import line itself (not a separate comment line) to avoid ruff I001 import sorting issues
 ---
 
 ## 2026-02-15 - US-001
@@ -31,4 +35,82 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
 - **Learnings for future iterations:**
   - US-001's initial commit included code for multiple user stories — check if the next story's code already exists before implementing
   - The PRD's `ParsedOutput` is implemented as `AgentOutput` in the actual code — the types module defines `AgentOutput` with text, tool_calls, usage fields
+---
+
+## 2026-02-15 - US-003
+- What was implemented: Agent class was already mostly implemented from prior sessions. Added missing `memory` and `context` parameters to `Agent.__init__` (typed as `Any` since orbiter-context and orbiter-memory packages are not yet implemented). Updated test to assert defaults are `None`.
+- Files changed: `packages/orbiter-core/src/orbiter/agent.py`, `packages/orbiter-core/tests/test_agent.py`
+- **Learnings for future iterations:**
+  - Agent class already had 21 tests covering: minimal/full creation, keyword-only enforcement, model parsing, tool/handoff registration with duplicate detection, hook integration, callable instructions, describe(), __repr__
+  - `memory` and `context` params use `Any` type since their implementations are in future phases (orbiter-memory Phase 9, orbiter-context Phase 8)
+  - Pattern: when PRD references types from future packages, use `Any` with `None` default as a forward-compatible placeholder
+---
+
+## 2026-02-15 - US-004
+- What was implemented: `Agent.run()` async method with single-turn LLM execution and retry logic. Added `code` parameter to `ModelError` for error classification.
+- Files changed: `packages/orbiter-core/src/orbiter/agent.py` (added ~85 lines for run() + _is_context_length_error()), `packages/orbiter-core/tests/test_agent.py` (added 15 tests in 3 new test classes), `packages/orbiter-models/src/orbiter/models/types.py` (added `code` param to ModelError)
+- Key implementation details:
+  - `run(input, *, messages, provider, max_retries=3)` wires message_builder → LLM call → output_parser
+  - PRE_LLM_CALL / POST_LLM_CALL hooks fire at correct points
+  - Retry with exponential backoff (2^attempt seconds): 1s, 2s, 4s...
+  - Context-length errors (via `ModelError.code == "context_length"` or message text) fail immediately
+  - Provider typed as `Any` since orbiter-core doesn't depend on orbiter-models
+- **Learnings for future iterations:**
+  - orbiter-core can't import from orbiter-models directly — use `Any` type for provider parameter and catch base exceptions
+  - `_is_context_length_error()` checks both `.code` attribute and error message text for robustness
+  - pyright inline ignore comments on import lines don't break ruff I001 sorting (put `# pyright: ignore[...]` on the same import line, not a separate comment line)
+  - All 364 tests pass (15 new: 7 run tests, 4 retry tests, 4 hook tests)
+---
+
+## 2026-02-15 - US-005
+- What was implemented: Tool execution loop in `Agent.run()` — when LLM returns tool calls, agent executes them in parallel, feeds results back, and re-calls LLM until text response or max_steps.
+- Files changed: `packages/orbiter-core/src/orbiter/agent.py` (refactored run() into run() + _call_llm() + _execute_tools(), ~120 new lines), `packages/orbiter-core/tests/test_agent.py` (8 new tests in TestAgentToolLoop class)
+- Key implementation details:
+  - `run()` now has a `for _step in range(self.max_steps)` loop around `_call_llm()`
+  - `_call_llm()` extracted from old `run()` — single LLM call with retry logic and hooks
+  - `_execute_tools()` uses `asyncio.TaskGroup` for parallel tool execution
+  - Tool errors caught per-tool and returned as `ToolResult(error=...)`, not propagated
+  - Unknown tools return `ToolResult(error="Unknown tool '...'")`
+  - PRE_TOOL_CALL / POST_TOOL_CALL hooks fire for each tool
+  - `parse_tool_arguments()` from output_parser converts ToolCall JSON args to ActionModel
+  - Updated existing test `test_run_with_tool_calls_in_response` to account for the tool loop (provider now needs to return text on second call)
+- **Learnings for future iterations:**
+  - When adding tool loop, existing tests that mock a single tool-call response break because the agent now tries to execute the tool and re-call. Update mocks to return text on the follow-up call.
+  - `asyncio.TaskGroup` requires Python 3.11+ — already satisfied by this project
+  - The placeholder list pattern `[ToolResult(...)] * len(actions)` creates shared references — must assign by index in the async task, not append
+  - All 372 tests pass (8 new tool loop tests)
+---
+
+## 2026-02-15 - US-006
+- What was implemented: 8 new edge case tests in `TestAgentEdgeCases` class covering: retry during tool loop, agent with handoffs runs normally, handoffs don't appear as tools, sequential tool calls accumulate messages, max_steps=1, empty input, usage from final response, tool with no arguments.
+- Files changed: `packages/orbiter-core/tests/test_agent.py` (+161 lines)
+- **Learnings for future iterations:**
+  - Most edge cases were already covered by earlier test classes (TestAgentToolLoop had 8 tests for the core scenarios)
+  - The key gap was retry behavior mid-tool-loop and handoff interaction — these are important to test because they exercise separate code paths in the agent
+  - 52 agent tests total across 9 test classes, 380 tests across the full suite
+---
+
+## 2026-02-15 - US-007
+- What was implemented: Human-in-the-loop tool with `HumanInputHandler` ABC, `ConsoleHandler` (stdin-based), and `HumanInputTool` (Tool subclass with timeout support).
+- Files changed: `packages/orbiter-core/src/orbiter/human.py` (~120 lines), `packages/orbiter-core/tests/test_human.py` (21 tests in 4 classes)
+- Key implementation details:
+  - `HumanInputHandler` ABC with `async get_input(prompt, choices)` — extensible to console, web, Slack, etc.
+  - `ConsoleHandler` — reads from stdin via `asyncio.to_thread()`, validates choices, defaults to first choice on invalid input
+  - `HumanInputTool` — `Tool` subclass with manually defined JSON schema (prompt required, choices optional array)
+  - Timeout via `asyncio.wait_for()` — raises `ToolError` on timeout
+  - Tests use `MockHandler` and `SlowHandler` fixtures, plus `monkeypatch` for `ConsoleHandler._read_line`
+- **Learnings for future iterations:**
+  - `HumanInputTool` manually defines its JSON schema rather than using `_generate_schema()` since it's not a FunctionTool wrapper — this is the pattern for custom Tool subclasses
+  - `asyncio.wait_for()` raises `TimeoutError` (Python 3.11+) — catch that and convert to `ToolError` for consistent error handling
+  - 401 tests total across full suite (21 new)
+---
+
+## 2026-02-15 - US-008
+- What was implemented: Run state tracking with `RunNodeStatus` (StrEnum: INIT, RUNNING, SUCCESS, FAILED, TIMEOUT), `RunNode` (Pydantic model with lifecycle transitions: start/succeed/fail/timeout, timing, usage, metadata), and `RunState` (mutable execution tracker with message accumulation, node management, usage aggregation, terminal state detection).
+- Files changed: `packages/orbiter-core/src/orbiter/_internal/state.py` (~145 lines), `packages/orbiter-core/tests/test_state.py` (29 tests in 3 classes)
+- **Learnings for future iterations:**
+  - Use `StrEnum` instead of `str, Enum` — ruff UP042 enforces this pattern
+  - `Sequence[Message]` still needed for function params that accept `list[SubType]` — pyright invariance on `list[T]`
+  - `RunNode` uses mutable Pydantic model (no `frozen=True`) since state transitions mutate fields — this is the right pattern for stateful objects vs. value objects
+  - 430 tests total across full suite (29 new)
 ---

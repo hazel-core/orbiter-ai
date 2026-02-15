@@ -68,8 +68,8 @@
         "Typecheck passes"
       ],
       "priority": 3,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Agent class was mostly pre-existing from Phase 5 sessions. Added missing memory and context parameters."
     },
     {
       "id": "US-004",
@@ -89,8 +89,8 @@
         "Typecheck passes"
       ],
       "priority": 4,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Agent.run() method with retry logic, 15 new tests (364 total). ModelError gained code parameter for error classification."
     },
     {
       "id": "US-005",
@@ -108,8 +108,8 @@
         "Typecheck passes"
       ],
       "priority": 5,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Tool loop with parallel execution via asyncio.TaskGroup, PRE/POST_TOOL_CALL hooks, error handling. 8 new tests (372 total)."
     },
     {
       "id": "US-006",
@@ -124,8 +124,8 @@
         "Typecheck passes"
       ],
       "priority": 6,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "8 new edge case tests in TestAgentEdgeCases class (380 total tests). Covers retry during tool loop, handoff agents, sequential message accumulation, max_steps=1, empty input, usage tracking, no-arg tools."
     },
     {
       "id": "US-007",
@@ -144,8 +144,8 @@
         "Typecheck passes"
       ],
       "priority": 7,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "HumanInputHandler ABC, ConsoleHandler, HumanInputTool with timeout support. 21 tests (401 total)."
     },
     {
       "id": "US-008",
@@ -163,8 +163,8 @@
         "Typecheck passes"
       ],
       "priority": 8,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "RunNodeStatus (StrEnum), RunNode (Pydantic BaseModel with lifecycle transitions), RunState (mutable execution tracker with message/node/usage accumulation). 29 tests (430 total)."
     },
     {
       "id": "US-009",
