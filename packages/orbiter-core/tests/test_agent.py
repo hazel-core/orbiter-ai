@@ -779,3 +779,164 @@ class TestAgentToolLoop:
 
         assert output.text == "Direct answer."
         provider.complete.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# Agent edge cases
+# ---------------------------------------------------------------------------
+
+
+class TestAgentEdgeCases:
+    async def test_retry_during_tool_loop(self) -> None:
+        """Retry logic works on the second LLM call (after tool execution)."""
+        tc = ToolCall(id="tc-1", name="greet", arguments='{"name": "Eve"}')
+        resp_tool = ModelResponse(
+            content="",
+            tool_calls=[tc],
+            usage=Usage(input_tokens=10, output_tokens=5, total_tokens=15),
+        )
+        resp_text = ModelResponse(
+            content="Recovered!",
+            usage=Usage(input_tokens=15, output_tokens=5, total_tokens=20),
+        )
+        provider = AsyncMock()
+        # First call succeeds (returns tool call), second fails, third succeeds
+        provider.complete = AsyncMock(side_effect=[resp_tool, RuntimeError("transient"), resp_text])
+        agent = Agent(name="bot", tools=[greet])
+
+        output = await agent.run("Hello", provider=provider, max_retries=3)
+
+        assert output.text == "Recovered!"
+        assert provider.complete.await_count == 3
+
+    async def test_agent_with_handoffs_runs_normally(self) -> None:
+        """Agent with handoffs declared still runs normally (no handoff triggered)."""
+        helper = Agent(name="helper")
+        provider = _mock_provider(content="I handled it myself.")
+        agent = Agent(name="triage", handoffs=[helper])
+
+        output = await agent.run("Help me", provider=provider)
+
+        assert output.text == "I handled it myself."
+        assert "helper" in agent.handoffs
+
+    async def test_handoffs_do_not_appear_as_tools(self) -> None:
+        """Handoff agents are not included in tool schemas."""
+        helper = Agent(name="helper")
+        agent = Agent(name="triage", tools=[greet], handoffs=[helper])
+
+        schemas = agent.get_tool_schemas()
+
+        assert len(schemas) == 1
+        assert schemas[0]["function"]["name"] == "greet"
+        # Handoff should not appear as a tool
+        names = [s["function"]["name"] for s in schemas]
+        assert "helper" not in names
+
+    async def test_sequential_tool_calls_accumulate_messages(self) -> None:
+        """Each tool loop iteration appends assistant + tool result messages."""
+        tc1 = ToolCall(id="tc-1", name="add", arguments='{"a": 1, "b": 2}')
+        tc2 = ToolCall(id="tc-2", name="add", arguments='{"a": 3, "b": 4}')
+        provider = _multi_step_provider(
+            ModelResponse(
+                content="",
+                tool_calls=[tc1],
+                usage=Usage(input_tokens=10, output_tokens=5, total_tokens=15),
+            ),
+            ModelResponse(
+                content="",
+                tool_calls=[tc2],
+                usage=Usage(input_tokens=20, output_tokens=5, total_tokens=25),
+            ),
+            ModelResponse(
+                content="Results: 3 and 7",
+                usage=Usage(input_tokens=30, output_tokens=10, total_tokens=40),
+            ),
+        )
+        agent = Agent(name="bot", tools=[add])
+
+        output = await agent.run("Add things", provider=provider)
+
+        assert output.text == "Results: 3 and 7"
+        # Third call should have: user + assistant(tc1) + tool(result1) + assistant(tc2) + tool(result2)
+        third_call_msgs = provider.complete.call_args_list[2][0][0]
+        assistant_msgs = [m for m in third_call_msgs if m.role == "assistant"]
+        tool_msgs = [m for m in third_call_msgs if m.role == "tool"]
+        assert len(assistant_msgs) == 2
+        assert len(tool_msgs) == 2
+
+    async def test_max_steps_one(self) -> None:
+        """Agent with max_steps=1 makes exactly one LLM call."""
+        tc = ToolCall(id="tc-1", name="greet", arguments='{"name": "X"}')
+        provider = _multi_step_provider(
+            ModelResponse(
+                content="",
+                tool_calls=[tc],
+                usage=Usage(input_tokens=10, output_tokens=5, total_tokens=15),
+            ),
+        )
+        agent = Agent(name="bot", tools=[greet], max_steps=1)
+
+        output = await agent.run("Go", provider=provider)
+
+        assert provider.complete.await_count == 1
+        assert len(output.tool_calls) == 1
+
+    async def test_empty_input(self) -> None:
+        """Agent handles empty string input gracefully."""
+        provider = _mock_provider(content="You said nothing.")
+        agent = Agent(name="bot")
+
+        output = await agent.run("", provider=provider)
+
+        assert output.text == "You said nothing."
+
+    async def test_usage_from_final_response(self) -> None:
+        """Output usage comes from the final LLM call, not accumulated."""
+        tc = ToolCall(id="tc-1", name="greet", arguments='{"name": "Z"}')
+        provider = _multi_step_provider(
+            ModelResponse(
+                content="",
+                tool_calls=[tc],
+                usage=Usage(input_tokens=10, output_tokens=5, total_tokens=15),
+            ),
+            ModelResponse(
+                content="Done.",
+                usage=Usage(input_tokens=50, output_tokens=20, total_tokens=70),
+            ),
+        )
+        agent = Agent(name="bot", tools=[greet])
+
+        output = await agent.run("Go", provider=provider)
+
+        assert output.usage.input_tokens == 50
+        assert output.usage.output_tokens == 20
+
+    async def test_tool_with_no_arguments(self) -> None:
+        """Tool called with empty arguments dict works."""
+
+        @tool
+        def ping() -> str:
+            """Ping."""
+            return "pong"
+
+        tc = ToolCall(id="tc-1", name="ping", arguments="{}")
+        provider = _multi_step_provider(
+            ModelResponse(
+                content="",
+                tool_calls=[tc],
+                usage=Usage(input_tokens=10, output_tokens=5, total_tokens=15),
+            ),
+            ModelResponse(
+                content="Pong received.",
+                usage=Usage(input_tokens=20, output_tokens=5, total_tokens=25),
+            ),
+        )
+        agent = Agent(name="bot", tools=[ping])
+
+        output = await agent.run("Ping", provider=provider)
+
+        assert output.text == "Pong received."
+        second_call_msgs = provider.complete.call_args_list[1][0][0]
+        tool_msgs = [m for m in second_call_msgs if m.role == "tool"]
+        assert "pong" in tool_msgs[0].content
