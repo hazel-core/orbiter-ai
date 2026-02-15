@@ -884,3 +884,15 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - 1919 tests total across full suite (35 new prompt logger tests), excluding sqlite/postgres collection errors
 ---
 
+## 2026-02-15 - US-059
+- What was implemented: Eval types + base evaluator in `packages/orbiter-eval/src/orbiter/eval/base.py` (~190 lines). `EvalError` exception. `EvalStatus` (StrEnum: passed/failed/not_evaluated). `ScorerResult` (frozen dataclass: scorer_name, score, status, details). `EvalCaseResult` (frozen: case_id, input, output, scores dict). `EvalResult` (mutable: case_results, summary, pass_at_k). `EvalCriteria` (frozen: metric_name, threshold, judge() method). `EvalTarget` ABC with `predict()`. `Scorer` ABC with `score()`. `Evaluator` class with parallel execution via `asyncio.Semaphore` + `asyncio.gather()`, `repeat_times` for multiple runs per case, criteria-based pass/fail judgment, mean score summarization, and pass@k computation.
+- Files changed: `packages/orbiter-eval/src/orbiter/eval/base.py` (new, ~190 lines), `packages/orbiter-eval/tests/test_eval_base.py` (new, 36 tests in 11 classes)
+- Test coverage: EvalStatus (2), ScorerResult (3: creation, frozen, details), EvalCaseResult (2), EvalResult (2), EvalCriteria (4: defaults, judge pass/fail, frozen), EvalTarget ABC (2), Scorer ABC (2), Evaluator init (4: defaults, invalid parallel, invalid repeat_times, with criteria), Evaluator evaluate (8: single, multiple, empty, multiple scorers, criteria pass/fail, parallel, case without id), Pass@k (6: no repeats, all pass, none pass, partial, multiple cases, no criteria), Repr (1)
+- **Learnings for future iterations:**
+  - A002/A003 (builtin shadow) ruff rules are NOT enabled in this project — `# noqa: A002`/`# noqa: A003` comments are unnecessary and trigger RUF100
+  - `replace_all` in the Edit tool replaces ALL occurrences including mid-line — when removing `# noqa: ...` comments that are at end of lines followed by code on next line, the replacement merges lines. Be careful with `replace_all` on patterns that appear at line endings.
+  - Eval package already had stub (pyproject.toml, __init__.py, tests/__init__.py) — just needed base.py
+  - Pass@k groups results by consecutive position (idx // repeat_times) rather than by case_id — this ensures correct grouping when cases are evaluated with asyncio.gather preserving order
+  - 1955 tests total across full suite (36 new eval tests), excluding sqlite/postgres collection errors
+---
+
