@@ -1091,3 +1091,16 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - 2514 tests total across full suite (37 new plugin tests), excluding sqlite/postgres collection errors
 ---
 
+## 2026-02-15 - US-075
+- What was implemented: Batch execution module for Orbiter CLI — loads inputs from JSON, CSV, or JSONL files and runs an agent against each input concurrently. `BatchError` exception. `InputFormat` (StrEnum: json/csv/jsonl). `BatchItem` (frozen dataclass: id, input, metadata). `ItemResult` (dataclass: item_id, success, output, elapsed, error). `BatchResult` (aggregate: results, total, succeeded, failed, summary()). `load_batch_items()` with format auto-detection from extension, configurable input_key/id_key, metadata extraction. `batch_execute()` with semaphore-based concurrency control via `asyncio.Semaphore`, per-item error isolation via `asyncio.gather`. Output helpers: `results_to_jsonl()`, `results_to_csv()`.
+- Files changed: `packages/orbiter-cli/src/orbiter_cli/batch.py` (new, ~230 lines), `packages/orbiter-cli/tests/test_cli_batch.py` (new, 38 tests in 12 classes)
+- Test coverage: BatchError (1), InputFormat (2: values, StrEnum), BatchItem (3: creation, metadata, frozen), ItemResult (2: creation, failure), BatchResult (2: defaults, summary), LoadJSON (6: basic, with-id, auto-id, metadata, not-a-list, missing-key), LoadJSONL (4: basic, blank-lines, invalid-json, not-object), LoadCSV (2: basic, custom-input-key), FormatDetection (3: unsupported, missing-file, forced-format), BatchExecute (7: basic, multiple, failure, mixed, invalid-concurrency, empty, provider-forwarded), ResultsToJSONL (4: basic, error-included, no-error-field, empty), ResultsToCSV (2: basic, multiple)
+- **Learnings for future iterations:**
+  - `batch_execute` wraps `LocalExecutor` from executor.py — reuses existing execution infrastructure rather than calling `orbiter.runner.run` directly
+  - Semaphore-based concurrency (`asyncio.Semaphore(concurrency)`) is the standard async pattern for limiting parallel tasks
+  - `asyncio.gather(*tasks)` collects all results including from tasks that caught their own exceptions — individual failures don't crash the batch
+  - CSV loading via `csv.DictReader` returns `dict[str, str]` (all values are strings) — callers should handle type conversion if needed
+  - ruff auto-fix reformats imports and removes unused ones in one pass — always run `ruff check --fix` followed by `ruff format`
+  - 2552 tests total across full suite (38 new batch tests), excluding sqlite/postgres collection errors
+---
+
