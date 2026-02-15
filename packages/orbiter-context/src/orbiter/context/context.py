@@ -7,6 +7,13 @@ into the parent with net token calculation.
 
 from __future__ import annotations
 
+from typing import Any
+
+from orbiter.context.checkpoint import (  # pyright: ignore[reportMissingImports]
+    Checkpoint,
+    CheckpointError,
+    CheckpointStore,
+)
 from orbiter.context.config import ContextConfig  # pyright: ignore[reportMissingImports]
 from orbiter.context.state import ContextState  # pyright: ignore[reportMissingImports]
 
@@ -33,6 +40,7 @@ class Context:
     """
 
     __slots__ = (
+        "_checkpoint_store",
         "_children",
         "_config",
         "_parent",
@@ -72,6 +80,7 @@ class Context:
         # Snapshot of parent's usage at fork time for net-delta merge calculation.
         self._token_snapshot: dict[str, int] = dict(parent._token_usage) if parent else {}
         self._children: list[Context] = []
+        self._checkpoint_store = CheckpointStore(task_id)
 
     # ── Properties ────────────────────────────────────────────────────
 
@@ -150,6 +159,68 @@ class Context:
             net = child_value - snapshot_value
             if net > 0:
                 self._token_usage[key] = self._token_usage.get(key, 0) + net
+
+    # ── Checkpoint ────────────────────────────────────────────────────
+
+    @property
+    def checkpoints(self) -> CheckpointStore:
+        """Access the checkpoint store for this context."""
+        return self._checkpoint_store
+
+    def snapshot(self, *, metadata: dict[str, Any] | None = None) -> Checkpoint:
+        """Save a checkpoint of the current context state.
+
+        Captures a deep copy of state values and token usage.
+        Checkpoints are versioned per context session (monotonically increasing).
+
+        Parameters
+        ----------
+        metadata:
+            Optional metadata to attach (e.g., description, step number).
+
+        Returns
+        -------
+        The created :class:`Checkpoint`.
+        """
+        return self._checkpoint_store.save(
+            values=self._state.to_dict(),
+            token_usage=dict(self._token_usage),
+            metadata=metadata,
+        )
+
+    @classmethod
+    def restore(cls, checkpoint: Checkpoint, *, config: ContextConfig | None = None) -> Context:
+        """Restore a context from a checkpoint.
+
+        Creates a new :class:`Context` with state and token usage
+        reconstructed from the checkpoint data.
+
+        Parameters
+        ----------
+        checkpoint:
+            The checkpoint to restore from.
+        config:
+            Optional config override.  If ``None``, uses default config.
+
+        Returns
+        -------
+        A new :class:`Context` with the restored state.
+
+        Raises
+        ------
+        CheckpointError
+            If the checkpoint data is invalid.
+        """
+        if not isinstance(checkpoint, Checkpoint):
+            msg = f"Expected Checkpoint, got {type(checkpoint).__name__}"
+            raise CheckpointError(msg)
+
+        ctx = cls(checkpoint.task_id, config=config)
+        # Restore state from checkpoint values
+        ctx._state.update(checkpoint.values)
+        # Restore token usage
+        ctx._token_usage = dict(checkpoint.token_usage)
+        return ctx
 
     # ── Representation ───────────────────────────────────────────────
 
