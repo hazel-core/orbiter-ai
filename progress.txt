@@ -511,3 +511,23 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - ruff auto-fix may move `# pyright: ignore[reportMissingImports]` from the `from` line to individual import names inside parenthesized imports — the ignore must stay on the `from` line for pyright to see it
   - 1127 tests total across full suite (38 new context tools tests)
 ---
+
+## 2026-02-15 - US-035
+- What was implemented: Context package public API (`__init__.py` with 23 exports) and 26 integration tests. All exports organized in `__all__`. Agent context wiring already in place from US-003 (verified by integration tests).
+- Files changed:
+  - `packages/orbiter-context/src/orbiter/context/__init__.py` (rewritten — 23 public exports: Context, ContextConfig, ContextState, ContextError, AutomationMode, make_config, PromptBuilder, Neuron, neuron_registry, ContextProcessor, ProcessorPipeline, SummarizeProcessor, ToolResultOffloader, Workspace, ArtifactType, Checkpoint, CheckpointStore, TokenTracker, get_context_tools, get_planning_tools, get_knowledge_tools, get_file_tools)
+  - `packages/orbiter-context/tests/test_context_integration.py` (new, 26 tests in 7 test classes)
+- Integration test coverage:
+  - Public API imports (8 tests): core classes, prompt building, processors, workspace, checkpoint, config, token tracker, tool factories
+  - Context+PromptBuilder E2E (4 tests): basic prompt building, history, todos, full composition with priority ordering
+  - Context+Processor E2E (3 tests): SummarizeProcessor trigger, ToolResultOffloader, multi-processor pipeline
+  - Context+Workspace E2E (3 tests): write + knowledge search round-trip, versioning via context state, filesystem persistence
+  - Full lifecycle (3 tests): create→populate→process→build prompt→checkpoint→restore, fork/merge with workspace, context tools with workspace
+  - Custom processor (2 tests): custom processor mutates state, mixed with built-in processors
+  - Agent context wiring (3 tests): Agent accepts context, default None, describe() stability
+- **Learnings for future iterations:**
+  - TaskNeuron reads from `task_input` state key (not `input`) — use the correct state key names as defined in each neuron's docstring
+  - Agent.context is already wired as `Any` type from US-003 — no additional code changes needed in agent.py for this story
+  - The `__init__.py` pattern for namespace packages: use `# pyright: ignore[reportMissingImports]` on each `from` line since editable installs use `.pth` files
+  - 1153 tests total across full suite (26 new integration tests)
+---

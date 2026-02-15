@@ -660,8 +660,8 @@
         "Typecheck passes"
       ],
       "priority": 35,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Updated __init__.py with 23 public exports (Context, ContextConfig, ContextState, PromptBuilder, ContextProcessor, Neuron, Workspace, etc.). 26 integration tests covering: public API imports, Context+PromptBuilder E2E, Context+Processor E2E, Context+Workspace E2E, full lifecycle (create→populate→process→build→checkpoint), fork/merge with workspace, context tools with workspace, custom processors, Agent context wiring. 1153 total tests."
     },
     {
       "id": "US-036",
