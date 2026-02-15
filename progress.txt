@@ -1104,3 +1104,15 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - 2552 tests total across full suite (38 new batch tests), excluding sqlite/postgres collection errors
 ---
 
+## 2026-02-15 - US-076
+- What was implemented: FastAPI app with /chat endpoint supporting both synchronous JSON responses and streaming SSE. `ChatRequest` (message, agent_name, stream fields) and `ChatResponse` (output, agent_name, steps, usage) Pydantic models. Agent registry per-app (register_agent with default agent support). `_sse_stream()` async generator yields SSE-formatted events (text deltas, tool calls, error events, [DONE] marker). `create_app()` factory creates configured FastAPI instance.
+- Files changed: `packages/orbiter-server/src/orbiter_server/app.py` (new, ~130 lines), `packages/orbiter-server/tests/test_server_app.py` (new, 23 tests in 8 classes)
+- Test coverage: ChatRequest defaults/all-fields (2), ChatResponse defaults/data (2), RegisterAgent single/multiple/explicit-default (3), GetAgent no-agents/not-found/by-name/resolve-default/no-default-no-name (5), ChatEndpoint success/with-agent-name/no-agents-503/not-found-404/run-error-500 (5), ChatStreaming text-events/tool-call/done-marker/error-event (4), CreateApp creates/has-route (2)
+- **Learnings for future iterations:**
+  - Module-level imports are needed for `patch()` to work — lazy imports inside endpoint functions can't be patched via `patch("module.attr")` since the attribute doesn't exist at module level
+  - `_run_agent` (aliased from `orbiter.runner.run`) is the patchable reference; streaming tests patch the same ref since `_sse_stream()` uses `getattr(_run_agent, "stream", ...)`
+  - httpx `ASGITransport` + `AsyncClient` is the standard FastAPI testing pattern (no need for `TestClient` in async tests)
+  - FastAPI `StreamingResponse` with `media_type="text/event-stream"` works for SSE without needing `sse-starlette` dependency
+  - 2575 tests total across full suite (23 new server tests), excluding sqlite/postgres collection errors
+---
+
