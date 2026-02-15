@@ -1344,3 +1344,14 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - 78 lines total, all passing ruff/pyright/pytest (2848 tests)
   - Fan-out search is the natural use case for ParallelGroup — each agent queries a different source independently
 ---
+
+## 2026-02-16 - US-094
+- What was implemented: GAIA benchmark runner example with dataset loading, scoring, and CLI
+- Files changed: `examples/benchmarks/__init__.py`, `examples/benchmarks/gaia/__init__.py`, `examples/benchmarks/gaia/run.py` (~150 lines)
+- Key components: GaiaQuestion dataclass, load_dataset (JSONL parsing), normalize/score_answer, extract_answer (<answer> tag extraction), run_benchmark async loop, CLI with argparse
+- Tools: web_search (mock), read_file, python_exec — agent uses <answer> tags for final response
+- **Learnings for future iterations:**
+  - Benchmark examples follow pattern: dataclass for questions, load function, scoring, async runner, CLI entry point
+  - S102 (exec usage) ruff rule is NOT enabled — `# noqa: S102` triggers RUF100
+  - All passing: ruff/pyright/pytest (2848 tests)
+---
