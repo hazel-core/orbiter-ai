@@ -811,3 +811,14 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - `asyncio.to_thread()` wraps sync kubernetes client calls for async compatibility — this is the standard pattern for blocking I/O in async code
   - 1704 tests total across full suite (22 new kubernetes sandbox tests), excluding sqlite/postgres collection errors
 ---
+
+## 2026-02-15 - US-054
+- What was implemented: TraceConfig (Pydantic frozen model with backend selection via TraceBackend StrEnum: otlp/memory/console, endpoint, service_name, sample_rate with 0.0-1.0 validation, enabled toggle, headers, namespace, extra dict) and comprehensive semantic conventions (gen_ai.* — 21 constants for OpenTelemetry GenAI semconv; orbiter.agent.* — 7 agent observability attrs; orbiter.tool.* — 7 tool attrs; orbiter.task/session/user — 5 context attrs; 4 span name prefixes).
+- Files changed: `packages/orbiter-trace/src/orbiter/trace/config.py` (new, ~120 lines), `packages/orbiter-trace/tests/test_trace_config.py` (new, 55 tests in 10 classes)
+- Test coverage: TraceBackend (2: values, StrEnum), TraceConfigDefaults (3: defaults, frozen, repr), TraceConfigCustom (9: backend, endpoint, service_name, sample_rate, disabled, headers, namespace, extra, string-to-enum), TraceConfigValidation (5: sample_rate low/high/boundary-zero/one, invalid backend), TraceConfigSerialisation (2: model_dump, JSON roundtrip), GenAIConventions (11: system, request model/max_tokens/temperature/top_p/streaming, prompt+completion, duration, response attrs, usage tokens, operation+server), AgentConventions (6), ToolConventions (7), TaskSessionConventions (5), SpanPrefixes (5: agent/tool/llm/task, concatenation usage)
+- **Learnings for future iterations:**
+  - orbiter-trace uses `orbiter.` prefix (not `aworld.`) for namespace-scoped attributes — this is the Orbiter convention replacing old AWorld's configurable `ATTRIBUTE_NAME_SPACE` env var
+  - TraceConfig follows the same Pydantic frozen model pattern as ContextConfig (context/config.py) — use `model_validator(mode="after")` for cross-field validation
+  - The `gen_ai.*` constants follow OpenTelemetry's GenAI semantic conventions directly (no namespace prefix) — these are industry-standard attribute names
+  - 1759 tests total across full suite (55 new trace config tests), excluding sqlite/postgres collection errors
+---
