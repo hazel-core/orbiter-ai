@@ -986,3 +986,15 @@ Started: Sun Feb 15 04:58:56 PM IST 2026
   - 2220 tests total across full suite (23 new runner tests), excluding sqlite/postgres collection errors
 ---
 
+## 2026-02-15 - US-067
+- What was implemented: A2A protocol types module in `packages/orbiter-a2a/src/orbiter/a2a/types.py` (~130 lines). `TransportMode` (StrEnum: jsonrpc/grpc/websocket), `TaskState` (StrEnum: submitted/working/completed/failed/canceled), `AgentSkill` (frozen Pydantic: id, name, description, tags), `AgentCapabilities` (frozen: streaming, push_notifications, state_transition_history), `AgentCard` (frozen: name, description, version, url, capabilities, skills, input/output modes, supported transports), `ServingConfig` (frozen: host, port, endpoint, streaming, version, skills, modes, transports, extra), `ClientConfig` (frozen: streaming, timeout with >0 validation, transports, accepted_output_modes, extra), `TaskStatus` (frozen: state, reason), `TaskStatusUpdateEvent` (frozen: task_id, status), `TaskArtifactUpdateEvent` (frozen: task_id, text, last_chunk).
+- Files changed: `packages/orbiter-a2a/src/orbiter/a2a/types.py` (new, ~130 lines), `packages/orbiter-a2a/tests/__init__.py` (new), `packages/orbiter-a2a/tests/test_a2a_types.py` (new, 36 tests in 10 classes)
+- Test coverage: TransportMode (2), TaskState (2), AgentSkill (5: creation, full, frozen, coercion, serialization), AgentCapabilities (3: defaults, custom, frozen), AgentCard (5: minimal, full, frozen, JSON roundtrip, model_dump), ServingConfig (4: defaults, custom, frozen, serialization), ClientConfig (5: defaults, custom, frozen, timeout validation, serialization), TaskStatus (3: creation, reason, frozen), TaskStatusUpdateEvent (3: creation, failed, serialization), TaskArtifactUpdateEvent (4: creation, last_chunk, defaults, serialization)
+- **Learnings for future iterations:**
+  - orbiter-a2a package stub already existed (pyproject.toml, __init__.py) — just needed types.py and tests directory
+  - All Pydantic models use `frozen=True` since they're value objects — consistent with TraceConfig and ContextConfig patterns
+  - Tuple fields with `model_validator(mode="before")` for list→tuple coercion is the established pattern from ContextConfig (US-023)
+  - `from __future__ import annotations` is needed at top of file for forward reference support with frozen Pydantic models
+  - 2256 tests total across full suite (36 new A2A type tests), excluding sqlite/postgres collection errors
+---
+
