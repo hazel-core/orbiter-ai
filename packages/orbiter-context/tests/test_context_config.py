@@ -3,7 +3,11 @@
 import pytest
 from pydantic import ValidationError
 
-from orbiter.context.config import AutomationMode, ContextConfig, make_config  # pyright: ignore[reportMissingImports]
+from orbiter.context.config import (  # pyright: ignore[reportMissingImports]
+    AutomationMode,
+    ContextConfig,
+    make_config,
+)
 
 # ── Defaults ──────────────────────────────────────────────────────────
 
