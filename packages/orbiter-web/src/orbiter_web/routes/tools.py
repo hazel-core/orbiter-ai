@@ -483,6 +483,66 @@ async def generate_schema(
     return {"schema": schema, "parameters": parameters}
 
 
+class VisualSchemaCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+    project_id: str = Field(..., min_length=1)
+    description: str = ""
+    schema: dict[str, Any] = Field(default_factory=dict)
+    tool_type: str = "schema"
+    http_config: dict[str, Any] | None = None
+
+
+@router.post("/schema/save", response_model=ToolResponse, status_code=201)
+async def save_visual_schema(
+    body: VisualSchemaCreate,
+    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+) -> dict[str, Any]:
+    """Save a tool defined by a visual schema editor."""
+    tool_type = body.tool_type if body.tool_type in VALID_TOOL_TYPES else "schema"
+
+    # Merge HTTP config into schema if provided
+    schema = dict(body.schema)
+    if body.http_config:
+        schema["_http"] = body.http_config
+
+    schema_json_str = json.dumps(schema)
+
+    async with get_db() as db:
+        cursor = await db.execute(
+            "SELECT id FROM projects WHERE id = ? AND user_id = ?",
+            (body.project_id, user["id"]),
+        )
+        if await cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        tool_id = str(uuid.uuid4())
+        now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
+
+        await db.execute(
+            """
+            INSERT INTO tools (
+                id, name, description, category, schema_json, code,
+                tool_type, usage_count, project_id, user_id, created_at
+            ) VALUES (?, ?, ?, 'custom', ?, '', ?, 0, ?, ?, ?)
+            """,
+            (
+                tool_id,
+                body.name,
+                body.description,
+                schema_json_str,
+                tool_type,
+                body.project_id,
+                user["id"],
+                now,
+            ),
+        )
+        await db.commit()
+
+        cursor = await db.execute("SELECT * FROM tools WHERE id = ?", (tool_id,))
+        row = await cursor.fetchone()
+        return _row_to_dict(row)
+
+
 # ---------------------------------------------------------------------------
 # Endpoints — generic tool CRUD
 # ---------------------------------------------------------------------------
