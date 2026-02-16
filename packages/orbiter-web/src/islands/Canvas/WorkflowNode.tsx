@@ -1,6 +1,6 @@
 import { memo } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { getHandlesForNodeType, HANDLE_COLORS, type HandleSpec } from "./handleTypes";
+import { getHandlesForNodeType, HANDLE_COLORS, BRANCH_COLORS, type HandleSpec } from "./handleTypes";
 
 /* ------------------------------------------------------------------ */
 /* WorkflowNode — custom node with typed, color-coded handles          */
@@ -80,7 +80,7 @@ function WorkflowNode({ data, selected }: NodeProps) {
               key={h.id}
               style={{
                 fontSize: 10,
-                color: HANDLE_COLORS[h.dataType],
+                color: getHandleColor(h),
                 fontWeight: 500,
               }}
             >
@@ -95,8 +95,8 @@ function WorkflowNode({ data, selected }: NodeProps) {
               key={h.id}
               style={{
                 fontSize: 10,
-                color: HANDLE_COLORS[h.dataType],
-                fontWeight: 500,
+                color: getHandleColor(h),
+                fontWeight: h.label ? 700 : 500,
               }}
             >
               {h.label ?? h.dataType}
@@ -117,7 +117,7 @@ function WorkflowNode({ data, selected }: NodeProps) {
             width: 10,
             height: 10,
             borderRadius: "50%",
-            background: HANDLE_COLORS[h.dataType],
+            background: getHandleColor(h),
             border: "2px solid var(--zen-paper, #f2f0e3)",
           }}
         />
@@ -135,13 +135,20 @@ function WorkflowNode({ data, selected }: NodeProps) {
             width: 10,
             height: 10,
             borderRadius: "50%",
-            background: HANDLE_COLORS[h.dataType],
+            background: getHandleColor(h),
             border: "2px solid var(--zen-paper, #f2f0e3)",
           }}
         />
       ))}
     </div>
   );
+}
+
+/** Get display color for a handle — uses branch colors for labeled conditional outputs. */
+function getHandleColor(h: HandleSpec): string {
+  if (h.label === "True") return BRANCH_COLORS.true;
+  if (h.label === "False") return BRANCH_COLORS.false;
+  return HANDLE_COLORS[h.dataType];
 }
 
 /** Distribute handles evenly in the lower portion of the node (below the header). */

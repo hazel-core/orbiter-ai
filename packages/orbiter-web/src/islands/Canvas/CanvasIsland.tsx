@@ -4,7 +4,7 @@ import {
   ReactFlowProvider,
   Background,
   BackgroundVariant,
-  BezierEdge,
+  getBezierPath,
   MiniMap,
   Panel,
   useNodesState,
@@ -13,6 +13,7 @@ import {
   addEdge,
   type ColorMode,
   type OnConnect,
+  type Connection,
   type Node,
   type Edge,
   type EdgeProps,
@@ -22,9 +23,34 @@ import {
 import NodeSidebar, { NODE_CATEGORIES } from "./NodeSidebar";
 import NodeConfigPanel from "./NodeConfigPanel";
 import WorkflowNode from "./WorkflowNode";
-import { getHandlesForNodeType, HANDLE_COLORS } from "./handleTypes";
+import { getHandlesForNodeType, HANDLE_COLORS, areTypesCompatible, type HandleDataType } from "./handleTypes";
 
 import "@xyflow/react/dist/style.css";
+
+/* Inject edge animation styles */
+const EDGE_ANIMATION_CSS = `
+@keyframes edgeFlowDash {
+  from { stroke-dashoffset: 20; }
+  to { stroke-dashoffset: 0; }
+}
+.edge-flow-animation {
+  animation: edgeFlowDash 0.6s linear infinite;
+}
+.react-flow__edge.invalid-connection path {
+  stroke: #ef4444 !important;
+  stroke-dasharray: 4 4;
+}
+`;
+
+if (typeof document !== "undefined") {
+  const id = "orbiter-edge-anim";
+  if (!document.getElementById(id)) {
+    const style = document.createElement("style");
+    style.id = id;
+    style.textContent = EDGE_ANIMATION_CSS;
+    document.head.appendChild(style);
+  }
+}
 
 /* ------------------------------------------------------------------ */
 /* Custom node types                                                    */
@@ -36,13 +62,92 @@ const nodeTypes = { workflow: WorkflowNode };
 /* Custom edge with handle-type coloring                                */
 /* ------------------------------------------------------------------ */
 
+interface TypedEdgeData {
+  color?: string;
+  animated?: boolean;
+  label?: string;
+}
+
 function TypedBezierEdge(props: EdgeProps) {
-  const color = (props.data as { color?: string } | undefined)?.color ?? "var(--zen-muted, #999)";
+  const edgeData = props.data as TypedEdgeData | undefined;
+  const color = edgeData?.color ?? "var(--zen-muted, #999)";
+  const isAnimated = edgeData?.animated ?? false;
+  const dataLabel = edgeData?.label ?? "data";
+  const [hovered, setHovered] = useState(false);
+
+  const [edgePath, labelX, labelY] = getBezierPath({
+    sourceX: props.sourceX,
+    sourceY: props.sourceY,
+    sourcePosition: props.sourcePosition,
+    targetX: props.targetX,
+    targetY: props.targetY,
+    targetPosition: props.targetPosition,
+  });
+
   return (
-    <BezierEdge
-      {...props}
-      style={{ ...props.style, stroke: color, strokeWidth: 2 }}
-    />
+    <g
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      {/* Invisible wide path for easier hover detection */}
+      <path
+        d={edgePath}
+        fill="none"
+        stroke="transparent"
+        strokeWidth={16}
+      />
+      {/* Visible edge */}
+      <path
+        d={edgePath}
+        fill="none"
+        stroke={color}
+        strokeWidth={2}
+        className={isAnimated ? "edge-animated" : undefined}
+        markerEnd={props.markerEnd}
+      />
+      {/* Animated overlay when executing */}
+      {isAnimated && (
+        <path
+          d={edgePath}
+          fill="none"
+          stroke={color}
+          strokeWidth={3}
+          strokeDasharray="6 4"
+          className="edge-flow-animation"
+          style={{ opacity: 0.8 }}
+        />
+      )}
+      {/* Hover label */}
+      {hovered && (
+        <foreignObject
+          x={labelX - 40}
+          y={labelY - 14}
+          width={80}
+          height={28}
+          style={{ pointerEvents: "none", overflow: "visible" }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "3px 8px",
+              borderRadius: 6,
+              fontSize: 10,
+              fontWeight: 500,
+              fontFamily: "'Bricolage Grotesque', sans-serif",
+              background: "var(--zen-paper, #f2f0e3)",
+              border: `1px solid ${color}`,
+              color: "var(--zen-dark, #2e2e2e)",
+              boxShadow: "0 1px 4px rgba(0,0,0,0.12)",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {dataLabel}
+          </div>
+        </foreignObject>
+      )}
+    </g>
   );
 }
 
@@ -317,19 +422,23 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
             ? { ...n, type: "workflow" }
             : n,
         );
-        /* Migrate edges to typed Bezier and add color data */
+        /* Migrate edges to typed Bezier and add color + label data */
         const nodeMap = new Map(loadedNodes.map((n) => [n.id, n]));
         const loadedEdges = rawEdges.map((e) => {
           if (e.type === "typed" && (e.data as { color?: string } | undefined)?.color) return e;
           const srcNode = nodeMap.get(e.source);
           let color = HANDLE_COLORS.any;
+          let label: string = "any";
           if (srcNode) {
             const nt = (srcNode.data as { nodeType?: string }).nodeType ?? "default";
             const handles = getHandlesForNodeType(nt);
             const h = handles.find((h) => h.id === (e.sourceHandle ?? "output"));
-            if (h) color = HANDLE_COLORS[h.dataType];
+            if (h) {
+              color = HANDLE_COLORS[h.dataType];
+              label = h.dataType;
+            }
           }
-          return { ...e, type: "typed" as const, data: { ...((e.data ?? {}) as Record<string, unknown>), color } };
+          return { ...e, type: "typed" as const, data: { ...((e.data ?? {}) as Record<string, unknown>), color, label } };
         });
         setNodes(loadedNodes);
         setEdges(loadedEdges);
@@ -380,17 +489,37 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
     ? nodes.find((n) => n.id === selectedNodeId) ?? null
     : null;
 
+  /* Resolve handle data type for a node+handle pair */
+  const getHandleDataType = useCallback(
+    (nodeId: string, handleId: string | null, fallbackType: "source" | "target"): HandleDataType => {
+      const node = nodes.find((n) => n.id === nodeId);
+      if (!node) return "any";
+      const nodeType = (node.data as { nodeType?: string }).nodeType ?? "default";
+      const handles = getHandlesForNodeType(nodeType);
+      const defaultId = fallbackType === "source" ? "output" : "input";
+      const handle = handles.find((h) => h.id === (handleId ?? defaultId));
+      return handle?.dataType ?? "any";
+    },
+    [nodes],
+  );
+
   /* Look up the data type of a source handle for edge coloring */
   const getSourceHandleColor = useCallback(
     (sourceId: string, sourceHandle: string | null): string => {
-      const node = nodes.find((n) => n.id === sourceId);
-      if (!node) return HANDLE_COLORS.any;
-      const nodeType = (node.data as { nodeType?: string }).nodeType ?? "default";
-      const handles = getHandlesForNodeType(nodeType);
-      const handle = handles.find((h) => h.id === (sourceHandle ?? "output"));
-      return handle ? HANDLE_COLORS[handle.dataType] : HANDLE_COLORS.any;
+      const dt = getHandleDataType(sourceId, sourceHandle, "source");
+      return HANDLE_COLORS[dt];
     },
-    [nodes],
+    [getHandleDataType],
+  );
+
+  /* Validate connections: check data type compatibility */
+  const isValidConnection = useCallback(
+    (connection: Edge | Connection): boolean => {
+      const sourceType = getHandleDataType(connection.source, connection.sourceHandle ?? null, "source");
+      const targetType = getHandleDataType(connection.target, connection.targetHandle ?? null, "target");
+      return areTypesCompatible(sourceType, targetType);
+    },
+    [getHandleDataType],
   );
 
   /* Record state before connection changes */
@@ -398,14 +527,15 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
     (params) => {
       record();
       const color = getSourceHandleColor(params.source, params.sourceHandle ?? null);
+      const sourceDataType = getHandleDataType(params.source, params.sourceHandle ?? null, "source");
       setEdges((eds) =>
         addEdge(
-          { ...params, type: "typed", data: { color } },
+          { ...params, type: "typed", data: { color, label: sourceDataType } },
           eds,
         ),
       );
     },
-    [setEdges, record, getSourceHandleColor],
+    [setEdges, record, getSourceHandleColor, getHandleDataType],
   );
 
   /* Wrap onNodesChange to record history on structural changes */
@@ -582,6 +712,7 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
       onNodesChange={handleNodesChange}
       onEdgesChange={handleEdgesChange}
       onConnect={onConnect}
+      isValidConnection={isValidConnection}
       onMoveEnd={onMoveEnd}
       onDragOver={onDragOver}
       onDrop={onDrop}

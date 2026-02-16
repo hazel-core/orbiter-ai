@@ -21,6 +21,12 @@ export const HANDLE_COLORS: Record<HandleDataType, string> = {
   any: "#999999", // gray
 };
 
+/** Distinct colors for conditional branch handles (not tied to data type). */
+export const BRANCH_COLORS = {
+  true: "#22c55e", // green
+  false: "#ef4444", // red
+} as const;
+
 /** Specification of a single handle on a node. */
 export interface HandleSpec {
   id: string;
@@ -35,6 +41,18 @@ export function getHandlesForNodeType(nodeType: string): HandleSpec[] {
   if (spec) return spec;
   // Default: one input, one output, both "any"
   return DEFAULT_HANDLES;
+}
+
+/**
+ * Check if two handle data types are compatible for connection.
+ * "any" type is compatible with everything.
+ */
+export function areTypesCompatible(
+  sourceType: HandleDataType,
+  targetType: HandleDataType,
+): boolean {
+  if (sourceType === "any" || targetType === "any") return true;
+  return sourceType === targetType;
 }
 
 /* ------------------------------------------------------------------ */
