@@ -471,12 +471,16 @@ export default function NodeSidebar({ collapsed, onToggle }: NodeSidebarProps) {
   );
 
   const filteredCategories = search.trim()
-    ? NODE_CATEGORIES.map((cat) => ({
-        ...cat,
-        types: cat.types.filter((t) =>
-          t.label.toLowerCase().includes(search.toLowerCase()),
-        ),
-      })).filter((cat) => cat.types.length > 0)
+    ? NODE_CATEGORIES.map((cat) => {
+        const q = search.toLowerCase();
+        const categoryMatch = cat.label.toLowerCase().includes(q);
+        return {
+          ...cat,
+          types: categoryMatch
+            ? cat.types
+            : cat.types.filter((t) => t.label.toLowerCase().includes(q)),
+        };
+      }).filter((cat) => cat.types.length > 0)
     : NODE_CATEGORIES;
 
   if (collapsed) {
