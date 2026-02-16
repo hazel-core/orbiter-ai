@@ -159,7 +159,7 @@
         "Pyright passes"
       ],
       "priority": 8,
-      "passes": false,
+      "passes": true,
       "notes": "New module — no existing code to port. Use stdlib only (resource module for RSS, asyncio for event loop lag). Keep it simple: protocol-based HealthCheck, dataclass HealthResult, registry pattern."
     },
     {

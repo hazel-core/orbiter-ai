@@ -139,3 +139,23 @@ Started: Mon Feb 16 2026
   - This module has no cross-namespace dependencies — it's self-contained with only stdlib imports
   - The `register_span_consumer` dual-use (direct call + decorator) pattern is worth preserving for future registry APIs
 ---
+
+## 2026-02-16 - US-008
+- Implemented health check system at `packages/orbiter-observability/src/orbiter/observability/health.py` (~210 lines)
+- New module — no existing code to port, designed from scratch
+- `HealthStatus` enum: HEALTHY, DEGRADED, UNHEALTHY
+- `HealthResult` frozen dataclass with `to_dict()` for JSON-serializable output
+- `HealthCheck` runtime-checkable Protocol: `name` property + `check()` method
+- Built-in checks: `MemoryUsageCheck` (RSS threshold via `resource.getrusage`), `EventLoopCheck` (asyncio loop lag threshold)
+- `HealthRegistry`: register/unregister, run/run_all, aggregate_status (worst-of), list_checks, clear
+- Aggregate logic: UNHEALTHY if any check UNHEALTHY, DEGRADED if any DEGRADED, else HEALTHY
+- Module-level convenience: `get_registry()`, `get_health_summary()` (JSON-serializable report), `reset()`
+- 38 tests covering: HealthStatus values, HealthResult (creation/metadata/frozen/to_dict/utc), protocol compliance, MemoryUsageCheck (healthy/unhealthy/degraded with mocked thresholds), EventLoopCheck (no loop/with loop/custom threshold), HealthRegistry (register/unregister/run/run_all/clear/overwrite), aggregate status (all healthy/degraded/unhealthy/empty/explicit results), module functions (singleton/summary/reset/serializable)
+- Files changed: packages/orbiter-observability/src/orbiter/observability/health.py, packages/orbiter-observability/tests/test_obs_health.py, prd.json
+- **Learnings for future iterations:**
+  - `resource.getrusage(RUSAGE_SELF).ru_maxrss` returns KB on Linux — divide by 1024 for MB
+  - `runtime_checkable` Protocol allows `isinstance()` checks at runtime — useful for protocol conformance tests
+  - MemoryUsageCheck uses 80% threshold for DEGRADED status as an early warning
+  - `asyncio.get_running_loop()` raises `RuntimeError` when no loop running — handle gracefully
+  - Aggregate status pattern: `max(results, key=lambda r: priority[r.status])` is clean for worst-of logic
+---
