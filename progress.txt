@@ -1498,3 +1498,24 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - `effective-config` endpoint merges agent's own tools_json with generated sub-agent tool entries and appends sub-agent descriptions to instructions
   - Routing rules stored as JSON text, parsed on-demand — flexible schema for future expansion
 ---
+
+## 2026-02-17 - US-090
+- What was implemented: Supervisor wizard UI at /agents/new/supervisor — 3-step wizard for creating supervisor agents with sub-agent delegation
+- Files changed:
+  - packages/orbiter-web/src/pages/agents/new/supervisor.astro (new — 922 lines)
+- Features implemented:
+  - Step 1: Select existing agent or create new agent as supervisor
+  - Step 2: Browse/search available agents, toggle selection for sub-agents, live selected list with remove
+  - Visual hierarchy preview: supervisor node (coral) with connection lines to sub-agent nodes (blue)
+  - Step 3: Review configuration with routing rules (optional text per sub-agent), final hierarchy preview
+  - Create button: creates agent if new, adds sub-agent relationships via POST /api/agents/:id/sub-agents, updates hooks_json._delegates_to for graph view
+  - Test in Playground button: opens playground with supervisor agent pre-selected
+  - Step indicators with completion state (coral active, green completed)
+  - Toast notifications for success/error/warning feedback
+- **Learnings for future iterations:**
+  - Multi-step wizard pattern: use step-panel divs with hidden class, step indicators with 3 states (pending/active/completed)
+  - Supervisor sub-agent relationships stored in `agent_relationships` table, hooks_json._delegates_to tracks delegates for graph view
+  - Delegation shows in playground as tool calls (delegate_to_<agent_name>), no special trace UI needed
+  - agents/new/ directory is for wizard-style creation flows (vs [id]/edit.astro for editing)
+  - CSS hierarchy preview: vertical lines + horizontal connector + branch items, no SVG/ReactFlow needed for simple tree viz
+---

@@ -1571,7 +1571,7 @@
         "Verify in browser using dev-browser skill"
       ],
       "priority": 90,
-      "passes": false,
+      "passes": true,
       "notes": "From PRD US-037"
     },
     {
@@ -2677,6 +2677,26 @@
       "priority": 153,
       "passes": false,
       "notes": "From PRD US-077"
+    },
+    {
+      "id": "US-154",
+      "title": "CLI user registration command",
+      "description": "As an admin, I need a CLI command to create user accounts so that the first user can log in to the platform. The auth system has login but no registration flow, making the platform unusable on fresh installs.",
+      "acceptanceCriteria": [
+        "CLI command: python -m orbiter_web.cli create-user --email <email> --password <password>",
+        "Command creates user record in SQLite users table with bcrypt-hashed password",
+        "Command generates a UUID for user ID",
+        "Error if email already exists (clear error message, no crash)",
+        "Success message prints created user email and ID",
+        "Optional --admin flag for future role-based access (stores is_admin boolean, defaults to false)",
+        "Migration adds is_admin column to users table if not present",
+        "Works with existing database path from ORBITER_DATABASE_URL env var",
+        "CLI module: src/orbiter_web/cli.py",
+        "Typecheck passes"
+      ],
+      "priority": 18,
+      "passes": false,
+      "notes": "Gap fill: auth system has login (US-018) but no way to create the first user"
     }
   ]
 }
