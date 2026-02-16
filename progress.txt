@@ -1688,3 +1688,15 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - No migration needed since the `projects` table already has `user_id TEXT NOT NULL REFERENCES users(id)` — the column was correct, just the route was bypassing auth
   - The `# noqa: B008` comment is required on `Depends()` default parameters to suppress ruff's B008 rule
 ---
+
+## 2026-02-17 - US-159
+- What was implemented: CORS middleware configuration for FastAPI
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/config.py (added `cors_origins` field + `__post_init__` to parse ORBITER_CORS_ORIGINS env var)
+  - packages/orbiter-web/src/orbiter_web/app.py (added CORSMiddleware import + conditional middleware registration)
+- **Learnings for future iterations:**
+  - CORS middleware is only added when `ORBITER_CORS_ORIGINS` is set (comma-separated list) — defaults to empty/same-origin for security
+  - `__post_init__` on a `@dataclass` is a clean way to compute derived fields from env vars
+  - CORSMiddleware must be added before route registration for correct middleware ordering
+  - Credentials=true is needed for cookie-based session auth (orbiter_session cookie)
+---

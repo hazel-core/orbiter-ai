@@ -2791,7 +2791,7 @@
         "Typecheck passes"
       ],
       "priority": 19,
-      "passes": false,
+      "passes": true,
       "notes": "Gap fill: no CORS middleware configured. Required for US-137 (embeddable widget) and security"
     },
     {
