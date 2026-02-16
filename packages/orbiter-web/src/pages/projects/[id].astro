@@ -15,6 +15,7 @@ const breadcrumbs = [
 const editIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
 const trashIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>';
 const backIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>';
+const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
 ---
 
 <PageLayout
@@ -48,6 +49,10 @@ const backIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
           All Projects
         </a>
         <div class="flex items-center gap-2">
+          <Button variant="primary" id="new-app-btn" class="text-sm">
+            <span set:html={plusIcon} />
+            New Application
+          </Button>
           <Button variant="default" id="rename-btn" class="text-sm">
             <span set:html={editIcon} />
             Rename
@@ -149,6 +154,151 @@ const backIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
         </Button>
         <Button variant="primary" id="delete-confirm-btn" class="bg-coral hover:bg-coral/90 text-paper">
           Delete Project
+        </Button>
+      </div>
+    </div>
+  </Modal>
+
+  <!-- New Application Dialog -->
+  <Modal id="new-app-modal" title="New Application" class="max-w-2xl">
+    <div class="flex flex-col gap-5">
+      <p class="text-sm text-muted">Choose an application type to get started.</p>
+
+      <!-- Application type cards grid -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" id="app-type-grid">
+        <!-- Chatbot -->
+        <button
+          type="button"
+          data-app-type="chatbot"
+          class="app-type-card group text-left rounded-xl border-2 border-dark/[0.08] p-4 transition-all duration-200 hover:border-coral/40 hover:bg-coral/[0.03] cursor-pointer"
+        >
+          <div class="flex items-start gap-3">
+            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-coral/10 text-coral">
+              <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+              </svg>
+            </div>
+            <div class="min-w-0">
+              <h3 class="text-sm font-semibold text-dark">Chatbot</h3>
+              <p class="text-xs text-muted mt-0.5 leading-relaxed">Single-agent conversational app with memory</p>
+              <p class="text-xs text-muted/60 mt-1.5 italic">Customer support, Q&A bot, personal assistant</p>
+            </div>
+          </div>
+        </button>
+
+        <!-- Chatflow -->
+        <button
+          type="button"
+          data-app-type="chatflow"
+          class="app-type-card group text-left rounded-xl border-2 border-dark/[0.08] p-4 transition-all duration-200 hover:border-zen-blue/40 hover:bg-zen-blue/[0.03] cursor-pointer"
+        >
+          <div class="flex items-start gap-3">
+            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-zen-blue/10 text-zen-blue">
+              <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+              </svg>
+            </div>
+            <div class="min-w-0">
+              <h3 class="text-sm font-semibold text-dark">Chatflow</h3>
+              <p class="text-xs text-muted mt-0.5 leading-relaxed">Multi-turn conversational workflow with branching</p>
+              <p class="text-xs text-muted/60 mt-1.5 italic">Lead qualification, onboarding flows, guided troubleshooting</p>
+            </div>
+          </div>
+        </button>
+
+        <!-- Workflow -->
+        <button
+          type="button"
+          data-app-type="workflow"
+          class="app-type-card group text-left rounded-xl border-2 border-dark/[0.08] p-4 transition-all duration-200 hover:border-zen-green/40 hover:bg-zen-green/[0.03] cursor-pointer"
+        >
+          <div class="flex items-start gap-3">
+            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-zen-green/10 text-zen-green">
+              <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="7" height="7"/>
+                <rect x="14" y="3" width="7" height="7"/>
+                <rect x="14" y="14" width="7" height="7"/>
+                <rect x="3" y="14" width="7" height="7"/>
+              </svg>
+            </div>
+            <div class="min-w-0">
+              <h3 class="text-sm font-semibold text-dark">Workflow</h3>
+              <p class="text-xs text-muted mt-0.5 leading-relaxed">DAG-based automation pipeline (no chat interface)</p>
+              <p class="text-xs text-muted/60 mt-1.5 italic">Data processing, ETL pipelines, batch operations</p>
+            </div>
+          </div>
+        </button>
+
+        <!-- Agent -->
+        <button
+          type="button"
+          data-app-type="agent"
+          class="app-type-card group text-left rounded-xl border-2 border-dark/[0.08] p-4 transition-all duration-200 hover:border-purple-500/40 hover:bg-purple-500/[0.03] cursor-pointer"
+        >
+          <div class="flex items-start gap-3">
+            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-purple-500/10 text-purple-500">
+              <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2a4 4 0 0 1 4 4c0 1.95-1.4 3.58-3.25 3.93L12 22"/>
+                <path d="M12 2a4 4 0 0 0-4 4c0 1.95 1.4 3.58 3.25 3.93"/>
+                <path d="M5 15a2.5 2.5 0 1 0 0-5"/>
+                <path d="M19 15a2.5 2.5 0 1 1 0-5"/>
+              </svg>
+            </div>
+            <div class="min-w-0">
+              <h3 class="text-sm font-semibold text-dark">Agent</h3>
+              <p class="text-xs text-muted mt-0.5 leading-relaxed">Autonomous agent with tools and reasoning</p>
+              <p class="text-xs text-muted/60 mt-1.5 italic">Research assistant, code review, task automation</p>
+            </div>
+          </div>
+        </button>
+
+        <!-- Text Generator (full width) -->
+        <button
+          type="button"
+          data-app-type="text_generator"
+          class="app-type-card group text-left rounded-xl border-2 border-dark/[0.08] p-4 transition-all duration-200 hover:border-amber-500/40 hover:bg-amber-500/[0.03] cursor-pointer sm:col-span-2"
+        >
+          <div class="flex items-start gap-3">
+            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 text-amber-500">
+              <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+                <line x1="16" y1="13" x2="8" y2="13"/>
+                <line x1="16" y1="17" x2="8" y2="17"/>
+              </svg>
+            </div>
+            <div class="min-w-0">
+              <h3 class="text-sm font-semibold text-dark">Text Generator</h3>
+              <p class="text-xs text-muted mt-0.5 leading-relaxed">Single-shot text generation with templates</p>
+              <p class="text-xs text-muted/60 mt-1.5 italic">Email drafting, content generation, report summaries</p>
+            </div>
+          </div>
+        </button>
+      </div>
+
+      <!-- Application name input (shown after type selection) -->
+      <div id="app-name-section" class="hidden">
+        <div class="flex items-center gap-2 mb-3">
+          <span id="selected-type-badge" class="text-xs font-medium px-2 py-0.5 rounded-full"></span>
+          <button type="button" id="change-type-btn" class="text-xs text-muted hover:text-dark transition-colors cursor-pointer">Change</button>
+        </div>
+        <Input
+          label="Application Name"
+          name="app_name"
+          id="new-app-name"
+          placeholder="My Application"
+          required
+        />
+      </div>
+
+      <div id="new-app-error" class="text-sm text-coral hidden"></div>
+
+      <div class="flex justify-end gap-3 mt-1">
+        <Button variant="default" type="button" data-modal-close="new-app-modal">
+          Cancel
+        </Button>
+        <Button variant="primary" id="create-app-btn" class="hidden">
+          Create Application
         </Button>
       </div>
     </div>
@@ -386,6 +536,143 @@ const backIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
             deleteConfirmBtn.textContent = "Delete Project";
           });
       });
+    }
+
+    /* --- New Application Dialog --- */
+    var newAppBtn = document.getElementById("new-app-btn");
+    var newAppModal = document.getElementById("new-app-modal");
+    var appTypeGrid = document.getElementById("app-type-grid");
+    var appNameSection = document.getElementById("app-name-section");
+    var newAppNameInput = document.getElementById("new-app-name");
+    var selectedTypeBadge = document.getElementById("selected-type-badge");
+    var changeTypeBtn = document.getElementById("change-type-btn");
+    var createAppBtn = document.getElementById("create-app-btn");
+    var newAppError = document.getElementById("new-app-error");
+
+    var selectedAppType = null;
+
+    var typeColors = {
+      chatbot: { bg: "bg-coral/10", text: "text-coral", label: "Chatbot" },
+      chatflow: { bg: "bg-zen-blue/10", text: "text-zen-blue", label: "Chatflow" },
+      workflow: { bg: "bg-zen-green/10", text: "text-zen-green", label: "Workflow" },
+      agent: { bg: "bg-purple-500/10", text: "text-purple-500", label: "Agent" },
+      text_generator: { bg: "bg-amber-500/10", text: "text-amber-500", label: "Text Generator" },
+    };
+
+    function resetNewAppDialog() {
+      selectedAppType = null;
+      if (appTypeGrid) appTypeGrid.classList.remove("hidden");
+      if (appNameSection) appNameSection.classList.add("hidden");
+      if (createAppBtn) createAppBtn.classList.add("hidden");
+      if (newAppError) newAppError.classList.add("hidden");
+      if (newAppNameInput) newAppNameInput.value = "";
+
+      // Remove selection ring from all cards
+      document.querySelectorAll(".app-type-card").forEach(function (card) {
+        card.classList.remove("border-coral", "border-zen-blue", "border-zen-green", "border-purple-500", "border-amber-500", "bg-coral/[0.03]", "bg-zen-blue/[0.03]", "bg-zen-green/[0.03]", "bg-purple-500/[0.03]", "bg-amber-500/[0.03]");
+      });
+    }
+
+    if (newAppBtn) {
+      newAppBtn.addEventListener("click", function () {
+        if (!currentProject) return;
+        resetNewAppDialog();
+        newAppModal.showModal();
+      });
+    }
+
+    // Type card selection
+    document.querySelectorAll(".app-type-card").forEach(function (card) {
+      card.addEventListener("click", function () {
+        var type = card.getAttribute("data-app-type");
+        selectedAppType = type;
+
+        // Show name input, hide grid
+        appTypeGrid.classList.add("hidden");
+        appNameSection.classList.remove("hidden");
+        createAppBtn.classList.remove("hidden");
+
+        // Update badge
+        var tc = typeColors[type] || { bg: "bg-dark/10", text: "text-dark", label: type };
+        selectedTypeBadge.className = "text-xs font-medium px-2 py-0.5 rounded-full " + tc.bg + " " + tc.text;
+        selectedTypeBadge.textContent = tc.label;
+
+        // Focus name input
+        setTimeout(function () { newAppNameInput.focus(); }, 100);
+      });
+    });
+
+    // Change type button
+    if (changeTypeBtn) {
+      changeTypeBtn.addEventListener("click", function () {
+        resetNewAppDialog();
+        appTypeGrid.classList.remove("hidden");
+      });
+    }
+
+    // Create application
+    if (createAppBtn) {
+      createAppBtn.addEventListener("click", function () {
+        newAppError.classList.add("hidden");
+
+        var name = newAppNameInput.value.trim();
+        if (!name) {
+          newAppError.textContent = "Application name is required";
+          newAppError.classList.remove("hidden");
+          return;
+        }
+
+        if (!selectedAppType) {
+          newAppError.textContent = "Please select an application type";
+          newAppError.classList.remove("hidden");
+          return;
+        }
+
+        createAppBtn.disabled = true;
+        createAppBtn.textContent = "Creating...";
+
+        fetch("/api/applications", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: name,
+            type: selectedAppType,
+            project_id: projectId,
+          }),
+        })
+          .then(function (res) {
+            if (!res.ok) return res.json().then(function (d) { throw new Error(d.detail || "Failed to create application"); });
+            return res.json();
+          })
+          .then(function (app) {
+            newAppModal.close();
+            // Navigate to the application builder
+            window.location.href = "/applications/" + app.id;
+          })
+          .catch(function (err) {
+            newAppError.textContent = err.message;
+            newAppError.classList.remove("hidden");
+          })
+          .finally(function () {
+            createAppBtn.disabled = false;
+            createAppBtn.textContent = "Create Application";
+          });
+      });
+    }
+
+    // Handle Enter key in name input
+    if (newAppNameInput) {
+      newAppNameInput.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          createAppBtn.click();
+        }
+      });
+    }
+
+    // Reset dialog when closed
+    if (newAppModal) {
+      newAppModal.addEventListener("close", resetNewAppDialog);
     }
 
     // Initial load
