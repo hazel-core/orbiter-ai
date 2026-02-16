@@ -11,6 +11,9 @@ interface WorkflowNodeData {
   nodeType?: string;
   categoryColor?: string;
   _relTint?: "root" | "upstream" | "downstream" | null;
+  _missingConfig?: boolean;
+  _unreachable?: boolean;
+  _disconnectedInputs?: string[];
   [key: string]: unknown;
 }
 
@@ -20,6 +23,10 @@ function WorkflowNode({ data, selected }: NodeProps) {
   const categoryColor = d.categoryColor ?? "#999";
   const label = d.label ?? nodeType;
   const relTint = d._relTint ?? null;
+
+  const hasMissingConfig = d._missingConfig ?? false;
+  const isUnreachable = d._unreachable ?? false;
+  const disconnectedInputs = new Set(d._disconnectedInputs ?? []);
 
   const handles = getHandlesForNodeType(nodeType);
   const inputs = handles.filter((h) => h.type === "target");
@@ -53,7 +60,7 @@ function WorkflowNode({ data, selected }: NodeProps) {
       style={{
         minWidth: 160,
         background: "var(--zen-paper, #f2f0e3)",
-        border: `2px solid ${borderColor}`,
+        border: `2px ${isUnreachable ? "dashed" : "solid"} ${borderColor}`,
         borderRadius: 10,
         fontFamily: "'Bricolage Grotesque', sans-serif",
         position: "relative",
@@ -61,6 +68,33 @@ function WorkflowNode({ data, selected }: NodeProps) {
         boxShadow: shadow,
       }}
     >
+      {/* Warning badge for missing config (top-right corner) */}
+      {hasMissingConfig && (
+        <div
+          title="Missing required configuration"
+          style={{
+            position: "absolute",
+            top: -8,
+            right: -8,
+            width: 20,
+            height: 20,
+            borderRadius: "50%",
+            background: "#f59e0b",
+            color: "#fff",
+            fontSize: 12,
+            fontWeight: 700,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 10,
+            boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+            lineHeight: 1,
+          }}
+        >
+          !
+        </div>
+      )}
+
       {/* Header bar with category color */}
       <div
         style={{
@@ -129,22 +163,26 @@ function WorkflowNode({ data, selected }: NodeProps) {
       </div>
 
       {/* Input handles (left side) */}
-      {inputs.map((h, i) => (
-        <Handle
-          key={h.id}
-          type="target"
-          position={Position.Left}
-          id={h.id}
-          style={{
-            top: computeHandleTop(i, inputs.length),
-            width: 10,
-            height: 10,
-            borderRadius: "50%",
-            background: getHandleColor(h),
-            border: "2px solid var(--zen-paper, #f2f0e3)",
-          }}
-        />
-      ))}
+      {inputs.map((h, i) => {
+        const isDisconnected = disconnectedInputs.has(h.id);
+        return (
+          <Handle
+            key={h.id}
+            type="target"
+            position={Position.Left}
+            id={h.id}
+            style={{
+              top: computeHandleTop(i, inputs.length),
+              width: 10,
+              height: 10,
+              borderRadius: "50%",
+              background: isDisconnected ? "#ef4444" : getHandleColor(h),
+              border: `2px solid ${isDisconnected ? "#ef4444" : "var(--zen-paper, #f2f0e3)"}`,
+              boxShadow: isDisconnected ? "0 0 0 2px rgba(239, 68, 68, 0.3)" : undefined,
+            }}
+          />
+        );
+      })}
 
       {/* Output handles (right side) */}
       {outputs.map((h, i) => (

@@ -22,8 +22,10 @@ import {
 
 import NodeSidebar, { NODE_CATEGORIES } from "./NodeSidebar";
 import NodeConfigPanel from "./NodeConfigPanel";
+import ValidationPanel from "./ValidationPanel";
 import WorkflowNode from "./WorkflowNode";
 import { getHandlesForNodeType, HANDLE_COLORS, areTypesCompatible, type HandleDataType } from "./handleTypes";
+import { validateWorkflow, type ValidationResult } from "./validation";
 
 import "@xyflow/react/dist/style.css";
 
@@ -39,6 +41,10 @@ const EDGE_ANIMATION_CSS = `
 .react-flow__edge.invalid-connection path {
   stroke: #ef4444 !important;
   stroke-dasharray: 4 4;
+}
+.react-flow__edge.cycle-edge path {
+  stroke: #ef4444 !important;
+  stroke-width: 3px;
 }
 /* Relationships mode: fade unrelated nodes and edges */
 .relationships-mode .react-flow__node {
@@ -169,6 +175,7 @@ function TypedBezierEdge(props: EdgeProps) {
 const edgeTypes = { typed: TypedBezierEdge };
 
 const SAVE_DEBOUNCE_MS = 2000;
+const VALIDATION_DEBOUNCE_MS = 1000;
 
 const GRID_SIZE = 20;
 const SNAP_GRID: [number, number] = [GRID_SIZE, GRID_SIZE];
@@ -349,6 +356,11 @@ const icons = {
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
     </svg>
   ),
+  validate: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+    </svg>
+  ),
 };
 
 /* ------------------------------------------------------------------ */
@@ -501,6 +513,9 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [relationshipNodeId, setRelationshipNodeId] = useState<string | null>(null);
+  const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
+  const [validationPanelOpen, setValidationPanelOpen] = useState(false);
+  const validationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /* History tracking */
   const { past, future, record, canUndo, canRedo, skipRecord } =
@@ -530,6 +545,22 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
 
   /* Auto-save */
   const { scheduleSave, saveNow, saveStatus } = useAutoSave(workflowId, nodes, edges, viewportRef, loaded);
+
+  /* Navigate to a node (used by validation panel) */
+  const navigateToNode = useCallback(
+    (nodeId: string) => {
+      const node = nodes.find((n) => n.id === nodeId);
+      if (!node) return;
+      // Center viewport on the node and select it
+      setSelectedNodeId(nodeId);
+      fitView({
+        nodes: [{ id: nodeId }],
+        padding: 0.5,
+        duration: 400,
+      });
+    },
+    [nodes, fitView],
+  );
 
   /* Export workflow as JSON download */
   const exportWorkflow = useCallback(() => {
@@ -613,6 +644,18 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
     if (loaded) scheduleSave();
   }, [nodes, edges, loaded, scheduleSave]);
 
+  /* Debounced validation on canvas changes */
+  useEffect(() => {
+    if (!loaded) return;
+    if (validationTimerRef.current) clearTimeout(validationTimerRef.current);
+    validationTimerRef.current = setTimeout(() => {
+      setValidationResult(validateWorkflow(nodes, edges));
+    }, VALIDATION_DEBOUNCE_MS);
+    return () => {
+      if (validationTimerRef.current) clearTimeout(validationTimerRef.current);
+    };
+  }, [nodes, edges, loaded]);
+
   /* Track viewport changes */
   const onMoveEnd = useCallback(
     (_event: unknown, vp: Viewport) => {
@@ -628,30 +671,47 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
     return computeRelationships(relationshipNodeId, edges);
   }, [relationshipNodeId, edges]);
 
-  /* Apply relationship classes to nodes and edges */
+  /* Apply relationship classes + validation decorations to nodes and edges */
   const displayNodes = useMemo(() => {
-    if (!relationships || !relationshipNodeId) return nodes;
     return nodes.map((n) => {
-      const isRoot = n.id === relationshipNodeId;
-      const isUpstream = relationships.upstream.has(n.id);
-      const isDownstream = relationships.downstream.has(n.id);
+      // Relationship mode
+      const isRoot = relationshipNodeId ? n.id === relationshipNodeId : false;
+      const isUpstream = relationships?.upstream.has(n.id) ?? false;
+      const isDownstream = relationships?.downstream.has(n.id) ?? false;
       const isHighlighted = isRoot || isUpstream || isDownstream;
       const tint = isRoot ? "root" : isUpstream ? "upstream" : isDownstream ? "downstream" : null;
+      const relClass = relationshipNodeId ? (isHighlighted ? "rel-highlighted" : undefined) : undefined;
+
+      // Validation decorations
+      const hasMissingConfig = validationResult?.missingConfig.has(n.id) ?? false;
+      const isUnreachable = validationResult?.unreachableNodes.has(n.id) ?? false;
+      const disconnectedHandles = validationResult?.disconnectedInputs.get(n.id);
+      const disconnectedArr = disconnectedHandles ? [...disconnectedHandles] : [];
+
       return {
         ...n,
-        className: isHighlighted ? "rel-highlighted" : undefined,
-        data: { ...n.data, _relTint: tint },
+        className: relClass,
+        data: {
+          ...n.data,
+          _relTint: tint,
+          _missingConfig: hasMissingConfig,
+          _unreachable: isUnreachable,
+          _disconnectedInputs: disconnectedArr,
+        },
       };
     });
-  }, [nodes, relationships, relationshipNodeId]);
+  }, [nodes, relationships, relationshipNodeId, validationResult]);
 
   const displayEdges = useMemo(() => {
-    if (!relationships) return edges;
-    return edges.map((e) => ({
-      ...e,
-      className: relationships.connectedEdges.has(e.id) ? "rel-highlighted" : undefined,
-    }));
-  }, [edges, relationships]);
+    return edges.map((e) => {
+      const relClass = relationships
+        ? (relationships.connectedEdges.has(e.id) ? "rel-highlighted" : undefined)
+        : undefined;
+      const cycleClass = validationResult?.cycleEdges.has(e.id) ? "cycle-edge" : undefined;
+      const cls = [relClass, cycleClass].filter(Boolean).join(" ") || undefined;
+      return { ...e, className: cls };
+    });
+  }, [edges, relationships, validationResult]);
 
   /* Node selection — open config panel, Shift+click for relationships mode */
   const onNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
@@ -1125,6 +1185,31 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
               </ToolbarButton>
             </>
           )}
+
+          <Separator />
+          <ToolbarButton
+            onClick={() => setValidationPanelOpen((v) => !v)}
+            title="Toggle Validation Panel"
+            active={validationPanelOpen}
+          >
+            {icons.validate}
+          </ToolbarButton>
+          {validationResult && validationResult.issues.length > 0 && (
+            <span
+              className="nodrag nopan"
+              style={{
+                fontSize: 10,
+                fontWeight: 600,
+                fontFamily: "'Bricolage Grotesque', sans-serif",
+                color: validationResult.issues.some((i) => i.severity === "error")
+                  ? "#ef4444"
+                  : "#f59e0b",
+                padding: "0 2px",
+              }}
+            >
+              {validationResult.issues.length}
+            </span>
+          )}
         </div>
       </Panel>
 
@@ -1133,6 +1218,14 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
         pannable
         zoomable
         style={{ width: 160, height: 120 }}
+      />
+
+      {/* Validation summary panel */}
+      <ValidationPanel
+        issues={validationResult?.issues ?? []}
+        open={validationPanelOpen}
+        onToggle={() => setValidationPanelOpen((v) => !v)}
+        onNavigateToNode={navigateToNode}
       />
 
       {/* Node config panel */}
