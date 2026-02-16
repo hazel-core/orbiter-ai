@@ -12,7 +12,6 @@ members = [
     "packages/orbiter-memory",
     "packages/orbiter-mcp",
     "packages/orbiter-sandbox",
-    "packages/orbiter-trace",
     "packages/orbiter-observability",
     "packages/orbiter-eval",
     "packages/orbiter-a2a",
@@ -30,7 +29,6 @@ dev = [
     "orbiter-memory",
     "orbiter-mcp",
     "orbiter-sandbox",
-    "orbiter-trace",
     "orbiter-observability",
     "orbiter-eval",
     "orbiter-a2a",
@@ -38,6 +36,8 @@ dev = [
     "orbiter-server",
     "orbiter-train",
     "orbiter-ai",
+    "opentelemetry-api>=1.20",
+    "opentelemetry-sdk>=1.20",
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
     "ruff>=0.8",
@@ -51,7 +51,6 @@ orbiter-context = { workspace = true }
 orbiter-memory = { workspace = true }
 orbiter-mcp = { workspace = true }
 orbiter-sandbox = { workspace = true }
-orbiter-trace = { workspace = true }
 orbiter-observability = { workspace = true }
 orbiter-eval = { workspace = true }
 orbiter-a2a = { workspace = true }

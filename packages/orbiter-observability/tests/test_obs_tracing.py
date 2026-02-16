@@ -102,8 +102,8 @@ class TestNullSpan:
             assert s is ns
 
     def test_is_singleton_like(self) -> None:
-        from orbiter.observability.tracing import (
-            _NULL_SPAN,  # pyright: ignore[reportMissingImports]
+        from orbiter.observability.tracing import (  # pyright: ignore[reportMissingImports]
+            _NULL_SPAN,
         )
 
         assert isinstance(_NULL_SPAN, NullSpan)
