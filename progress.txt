@@ -582,3 +582,21 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Scoped `<style>` block in Astro for `.prompt-variable` keeps highlighting styles local to the editor page
   - Manual browser verification needed (no browser testing tool available)
 ---
+
+## 2026-02-17 09:00 - US-036
+- What was implemented: Prompt template library with save/load/delete, test prompt against models, and import/export as JSON
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/migrations/009_create_prompt_templates.sql (new — prompt_templates table with name, content, variables_json, user_id, timestamps)
+  - packages/orbiter-web/src/orbiter_web/routes/prompt_templates.py (new — CRUD endpoints + test prompt endpoint that sends to provider APIs)
+  - packages/orbiter-web/src/orbiter_web/app.py (updated — registered prompt_templates_router)
+  - packages/orbiter-web/src/pages/agents/[id]/edit.astro (major update — added Save/Load/Test/Import/Export buttons above instructions editor, save template modal, load template modal with search+delete, test result panel below editor, import via file input, export as JSON download)
+- **Learnings for future iterations:**
+  - Template buttons row uses compact `text-[11px]` sizing with subtle bg to stay visually secondary to the main editor
+  - Test prompt endpoint reuses provider key resolution pattern from provider test (try provider-level key, fall back to provider_keys table)
+  - Test prompt fills `{{variable}}` with default values from detectedVariables, falling back to `[name]` placeholder
+  - Import/Export uses FileReader + Blob/URL.createObjectURL for client-side file I/O — no server round-trip needed
+  - Load template modal includes inline delete buttons (trash icon) with confirm() dialog — no separate delete modal needed for lightweight items
+  - Test result panel sits between editor and variables panel, using `max-h-64 overflow-y-auto` for long outputs
+  - Provider-specific API call patterns: OpenAI uses /v1/chat/completions, Anthropic uses /v1/messages with x-api-key header, Gemini uses generateContent with key param, Ollama uses /api/generate
+  - Manual browser verification needed (no browser testing tool available)
+---
