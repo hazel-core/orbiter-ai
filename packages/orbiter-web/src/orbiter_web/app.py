@@ -10,6 +10,7 @@ from fastapi import FastAPI
 from orbiter_web.config import settings
 from orbiter_web.database import run_migrations
 from orbiter_web.routes.auth import router as auth_router
+from orbiter_web.routes.models import router as models_router
 from orbiter_web.routes.projects import router as projects_router
 from orbiter_web.routes.provider_keys import router as provider_keys_router
 from orbiter_web.routes.providers import router as providers_router
@@ -31,6 +32,7 @@ app = FastAPI(
 
 
 app.include_router(auth_router)
+app.include_router(models_router)
 app.include_router(projects_router)
 app.include_router(provider_keys_router)
 app.include_router(providers_router)
