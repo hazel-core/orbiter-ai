@@ -514,3 +514,19 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - temperature is REAL (float), max_tokens and max_steps are INTEGER — all nullable for optional config
   - Agent belongs to both a project (project_id FK) and a user (user_id FK) — same ownership pattern as applications
 ---
+
+## 2026-02-17 06:30 - US-032
+- What was implemented: Agent builder page at /agents/:id/edit with tabbed form (Basic + Model tabs)
+- Files changed:
+  - packages/orbiter-web/src/pages/agents/[id]/edit.astro (new — agent builder with tab switching, Basic tab for name/description/instructions, Model tab for provider/model selectors + temperature slider + max_tokens)
+- **Learnings for future iterations:**
+  - Agent builder uses dynamic route `[id]/edit.astro` — Astro supports nested dynamic segments
+  - Provider selector populated from `/api/providers`, model selector from `/api/models?provider_id=X` — cascading dropdowns pattern
+  - Agent stores `model_provider` as provider_type string (e.g., "openai"), not provider ID — need `findProviderIdByName()` to resolve on load
+  - Model preview shows `providerName:modelName` format string below the selectors
+  - Temperature slider uses native `<input type="range">` with `accent-coral` and live numeric display via `input` event
+  - Ctrl/Cmd+S keyboard shortcut for save — `e.preventDefault()` blocks browser's default save dialog
+  - Tab switching: toggle `hidden` class on panels, swap `border-coral`/`text-dark` on active tab button
+  - Save sends only changed fields; PUT /api/agents/:id handles partial updates via `model_dump(exclude_none=True)`
+  - Manual browser verification needed (no browser testing tool available)
+---

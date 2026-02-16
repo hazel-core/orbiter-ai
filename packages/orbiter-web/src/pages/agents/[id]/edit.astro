@@ -1,0 +1,523 @@
+---
+import PageLayout from "../../../layouts/PageLayout.astro";
+import Button from "../../../components/Button.astro";
+
+const { id } = Astro.params;
+
+const breadcrumbs = [
+  { label: "Agents", href: "/agents" },
+  { label: "Loading..." },
+  { label: "Edit" },
+];
+
+/* Icons */
+const backIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>';
+const saveIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>';
+---
+
+<PageLayout
+  title="Edit Agent"
+  description="Configure agent settings"
+  activeSection="agents"
+  breadcrumbs={breadcrumbs}
+>
+  <div class="p-6 max-w-3xl mx-auto">
+    <!-- Loading state -->
+    <div id="loading-state" class="flex items-center justify-center py-20">
+      <p class="text-sm text-muted">Loading agent...</p>
+    </div>
+
+    <!-- Error state -->
+    <div id="error-state" class="hidden flex flex-col items-center justify-center py-20 text-center">
+      <p class="text-lg font-semibold text-dark mb-2">Agent not found</p>
+      <p class="text-sm text-muted mb-6">This agent may have been deleted.</p>
+      <Button href="/agents" variant="bordered">
+        <span set:html={backIcon} />
+        Back to Agents
+      </Button>
+    </div>
+
+    <!-- Agent editor (hidden until loaded) -->
+    <div id="editor-content" class="hidden">
+      <!-- Back + Save row -->
+      <div class="flex items-center justify-between mb-6">
+        <a id="back-link" href="/agents" class="flex items-center gap-2 text-sm text-muted hover:text-dark transition-colors">
+          <span set:html={backIcon} />
+          Back
+        </a>
+        <div class="flex items-center gap-3">
+          <span id="save-status" class="text-xs text-muted hidden"></span>
+          <Button variant="primary" id="save-btn" class="text-sm">
+            <span set:html={saveIcon} />
+            Save
+          </Button>
+        </div>
+      </div>
+
+      <!-- Agent name heading -->
+      <h1 id="agent-name-heading" class="text-2xl font-semibold text-dark mb-6"></h1>
+
+      <!-- Tabs -->
+      <div class="border-b border-dark/[0.08] mb-6">
+        <nav class="flex gap-6" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-selected="true"
+            data-tab="basic"
+            class="tab-btn relative pb-3 text-sm font-medium text-dark border-b-2 border-coral transition-colors"
+          >
+            Basic
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected="false"
+            data-tab="model"
+            class="tab-btn relative pb-3 text-sm font-medium text-muted border-b-2 border-transparent hover:text-dark transition-colors"
+          >
+            Model
+          </button>
+        </nav>
+      </div>
+
+      <!-- Tab panels -->
+      <!-- Basic tab -->
+      <div id="panel-basic" class="tab-panel" role="tabpanel">
+        <div class="flex flex-col gap-5">
+          <!-- Name -->
+          <div class="flex flex-col gap-1.5">
+            <label for="agent-name" class="text-sm font-medium text-dark">
+              Name <span class="text-coral">*</span>
+            </label>
+            <input
+              type="text"
+              id="agent-name"
+              name="name"
+              required
+              class="w-full bg-paper border border-dark/[0.08] rounded-lg px-3 py-2 text-dark placeholder:text-muted/60 transition-all duration-200 outline-none focus:border-coral focus:ring-2 focus:ring-coral/20"
+              placeholder="My Agent"
+            />
+            <p id="name-error" class="text-xs text-coral hidden">Name is required</p>
+          </div>
+
+          <!-- Description -->
+          <div class="flex flex-col gap-1.5">
+            <label for="agent-description" class="text-sm font-medium text-dark">Description</label>
+            <input
+              type="text"
+              id="agent-description"
+              name="description"
+              class="w-full bg-paper border border-dark/[0.08] rounded-lg px-3 py-2 text-dark placeholder:text-muted/60 transition-all duration-200 outline-none focus:border-coral focus:ring-2 focus:ring-coral/20"
+              placeholder="A brief description of this agent"
+            />
+          </div>
+
+          <!-- Instructions / System Prompt -->
+          <div class="flex flex-col gap-1.5">
+            <label for="agent-instructions" class="text-sm font-medium text-dark">Instructions (System Prompt)</label>
+            <textarea
+              id="agent-instructions"
+              name="instructions"
+              rows="12"
+              class="w-full bg-paper border border-dark/[0.08] rounded-lg px-3 py-2 text-dark placeholder:text-muted/60 transition-all duration-200 outline-none focus:border-coral focus:ring-2 focus:ring-coral/20 resize-y font-mono text-sm leading-relaxed"
+              placeholder="You are a helpful assistant..."
+            ></textarea>
+            <p class="text-xs text-muted">The system prompt that guides the agent's behavior.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Model tab -->
+      <div id="panel-model" class="tab-panel hidden" role="tabpanel">
+        <div class="flex flex-col gap-5">
+          <!-- Provider selector -->
+          <div class="flex flex-col gap-1.5">
+            <label for="model-provider" class="text-sm font-medium text-dark">Provider</label>
+            <select
+              id="model-provider"
+              name="model_provider"
+              class="w-full bg-paper border border-dark/[0.08] rounded-lg px-3 py-2 text-dark transition-all duration-200 outline-none focus:border-coral focus:ring-2 focus:ring-coral/20 appearance-none cursor-pointer"
+            >
+              <option value="">Select a provider...</option>
+            </select>
+            <p class="text-xs text-muted">Choose from your configured providers.</p>
+          </div>
+
+          <!-- Model selector -->
+          <div class="flex flex-col gap-1.5">
+            <label for="model-name" class="text-sm font-medium text-dark">Model</label>
+            <select
+              id="model-name"
+              name="model_name"
+              disabled
+              class="w-full bg-paper border border-dark/[0.08] rounded-lg px-3 py-2 text-dark transition-all duration-200 outline-none focus:border-coral focus:ring-2 focus:ring-coral/20 appearance-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <option value="">Select a provider first...</option>
+            </select>
+          </div>
+
+          <!-- Model preview -->
+          <div id="model-preview" class="hidden rounded-lg bg-subtle/80 border border-dark/[0.08] px-4 py-3">
+            <span class="text-xs text-muted">Selected model</span>
+            <p id="model-preview-text" class="text-sm font-medium text-dark mt-0.5 font-mono"></p>
+          </div>
+
+          <!-- Divider -->
+          <hr class="border-dark/[0.06]" />
+
+          <!-- Temperature slider -->
+          <div class="flex flex-col gap-1.5">
+            <div class="flex items-center justify-between">
+              <label for="model-temperature" class="text-sm font-medium text-dark">Temperature</label>
+              <span id="temperature-value" class="text-sm font-mono text-muted tabular-nums">0.7</span>
+            </div>
+            <input
+              type="range"
+              id="model-temperature"
+              name="temperature"
+              min="0"
+              max="2"
+              step="0.1"
+              value="0.7"
+              class="w-full h-2 bg-dark/[0.08] rounded-lg appearance-none cursor-pointer accent-coral"
+            />
+            <div class="flex justify-between text-xs text-muted/60">
+              <span>Precise (0.0)</span>
+              <span>Creative (2.0)</span>
+            </div>
+          </div>
+
+          <!-- Max tokens -->
+          <div class="flex flex-col gap-1.5">
+            <label for="model-max-tokens" class="text-sm font-medium text-dark">Max Tokens</label>
+            <input
+              type="number"
+              id="model-max-tokens"
+              name="max_tokens"
+              min="1"
+              class="w-full bg-paper border border-dark/[0.08] rounded-lg px-3 py-2 text-dark placeholder:text-muted/60 transition-all duration-200 outline-none focus:border-coral focus:ring-2 focus:ring-coral/20"
+              placeholder="Leave blank for model default"
+            />
+            <p class="text-xs text-muted">Maximum number of tokens the model can generate.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</PageLayout>
+
+<script is:inline define:vars={{ agentId: id }}>
+  (function () {
+    var loadingState = document.getElementById("loading-state");
+    var errorState = document.getElementById("error-state");
+    var editorContent = document.getElementById("editor-content");
+
+    var agentNameHeading = document.getElementById("agent-name-heading");
+    var saveBtn = document.getElementById("save-btn");
+    var saveStatus = document.getElementById("save-status");
+
+    /* Basic tab fields */
+    var nameInput = document.getElementById("agent-name");
+    var nameError = document.getElementById("name-error");
+    var descriptionInput = document.getElementById("agent-description");
+    var instructionsInput = document.getElementById("agent-instructions");
+
+    /* Model tab fields */
+    var providerSelect = document.getElementById("model-provider");
+    var modelSelect = document.getElementById("model-name");
+    var modelPreview = document.getElementById("model-preview");
+    var modelPreviewText = document.getElementById("model-preview-text");
+    var temperatureSlider = document.getElementById("model-temperature");
+    var temperatureValue = document.getElementById("temperature-value");
+    var maxTokensInput = document.getElementById("model-max-tokens");
+
+    var currentAgent = null;
+    var allProviders = [];
+
+    /* ------------------------------------------------------------------ */
+    /* Tab switching                                                       */
+    /* ------------------------------------------------------------------ */
+    var tabButtons = document.querySelectorAll(".tab-btn");
+    var tabPanels = document.querySelectorAll(".tab-panel");
+
+    tabButtons.forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var tabId = btn.getAttribute("data-tab");
+
+        tabButtons.forEach(function (b) {
+          b.classList.remove("text-dark", "border-coral");
+          b.classList.add("text-muted", "border-transparent");
+          b.setAttribute("aria-selected", "false");
+        });
+        btn.classList.remove("text-muted", "border-transparent");
+        btn.classList.add("text-dark", "border-coral");
+        btn.setAttribute("aria-selected", "true");
+
+        tabPanels.forEach(function (p) {
+          p.classList.add("hidden");
+        });
+        var panel = document.getElementById("panel-" + tabId);
+        if (panel) panel.classList.remove("hidden");
+      });
+    });
+
+    /* ------------------------------------------------------------------ */
+    /* Temperature slider                                                  */
+    /* ------------------------------------------------------------------ */
+    if (temperatureSlider) {
+      temperatureSlider.addEventListener("input", function () {
+        temperatureValue.textContent = parseFloat(temperatureSlider.value).toFixed(1);
+      });
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Provider / Model selectors                                          */
+    /* ------------------------------------------------------------------ */
+    function updateModelPreview() {
+      var provider = providerSelect.value;
+      var model = modelSelect.value;
+
+      if (provider && model) {
+        modelPreview.classList.remove("hidden");
+        /* Find provider name */
+        var provName = provider;
+        for (var i = 0; i < allProviders.length; i++) {
+          if (allProviders[i].id === provider) {
+            provName = allProviders[i].name || allProviders[i].provider_type;
+            break;
+          }
+        }
+        modelPreviewText.textContent = provName + ":" + model;
+      } else {
+        modelPreview.classList.add("hidden");
+      }
+    }
+
+    function populateModels(providerId, selectedModelName) {
+      if (!providerId) {
+        modelSelect.innerHTML = '<option value="">Select a provider first...</option>';
+        modelSelect.disabled = true;
+        updateModelPreview();
+        return;
+      }
+
+      modelSelect.innerHTML = '<option value="">Loading models...</option>';
+      modelSelect.disabled = true;
+
+      fetch("/api/models?provider_id=" + encodeURIComponent(providerId))
+        .then(function (res) { return res.ok ? res.json() : []; })
+        .then(function (models) {
+          allModels = models;
+          modelSelect.innerHTML = '<option value="">Select a model...</option>';
+          models.forEach(function (m) {
+            var opt = document.createElement("option");
+            opt.value = m.model_name;
+            opt.textContent = m.model_name;
+            modelSelect.appendChild(opt);
+          });
+          modelSelect.disabled = false;
+          if (selectedModelName) {
+            modelSelect.value = selectedModelName;
+          }
+          updateModelPreview();
+        })
+        .catch(function () {
+          modelSelect.innerHTML = '<option value="">Failed to load models</option>';
+          modelSelect.disabled = true;
+        });
+    }
+
+    if (providerSelect) {
+      providerSelect.addEventListener("change", function () {
+        populateModels(providerSelect.value, "");
+      });
+    }
+
+    if (modelSelect) {
+      modelSelect.addEventListener("change", updateModelPreview);
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Load agent data                                                     */
+    /* ------------------------------------------------------------------ */
+    function findProviderIdByName(providerName) {
+      /* The agent stores model_provider as a string (provider name/type).
+         We need to find the matching provider ID for the dropdown. */
+      if (!providerName) return "";
+      for (var i = 0; i < allProviders.length; i++) {
+        if (allProviders[i].provider_type === providerName ||
+            allProviders[i].name === providerName ||
+            allProviders[i].id === providerName) {
+          return allProviders[i].id;
+        }
+      }
+      return "";
+    }
+
+    function showAgent(agent) {
+      currentAgent = agent;
+      loadingState.classList.add("hidden");
+      editorContent.classList.remove("hidden");
+
+      agentNameHeading.textContent = agent.name;
+
+      /* Basic tab */
+      nameInput.value = agent.name;
+      descriptionInput.value = agent.description || "";
+      instructionsInput.value = agent.instructions || "";
+
+      /* Model tab */
+      if (agent.temperature != null) {
+        temperatureSlider.value = agent.temperature;
+        temperatureValue.textContent = parseFloat(agent.temperature).toFixed(1);
+      }
+      if (agent.max_tokens != null) {
+        maxTokensInput.value = agent.max_tokens;
+      }
+
+      /* Populate providers, then models.
+         We need providers loaded first to resolve model_provider. */
+      fetch("/api/providers")
+        .then(function (res) { return res.ok ? res.json() : []; })
+        .then(function (providers) {
+          allProviders = providers;
+          providerSelect.innerHTML = '<option value="">Select a provider...</option>';
+          providers.forEach(function (p) {
+            var opt = document.createElement("option");
+            opt.value = p.id;
+            opt.textContent = p.name + " (" + p.provider_type + ")";
+            providerSelect.appendChild(opt);
+          });
+
+          /* Try to match the agent's model_provider to a provider ID */
+          var matchedId = findProviderIdByName(agent.model_provider);
+          if (matchedId) {
+            providerSelect.value = matchedId;
+            populateModels(matchedId, agent.model_name);
+          }
+        })
+        .catch(function () {});
+
+      /* Update breadcrumb */
+      var allSpans = document.querySelectorAll("nav span");
+      allSpans.forEach(function (span) {
+        if (span.textContent.trim() === "Loading...") {
+          span.textContent = agent.name;
+        }
+      });
+    }
+
+    function showError() {
+      loadingState.classList.add("hidden");
+      errorState.classList.remove("hidden");
+    }
+
+    function fetchAgent() {
+      fetch("/api/agents/" + agentId)
+        .then(function (res) {
+          if (!res.ok) throw new Error("Not found");
+          return res.json();
+        })
+        .then(showAgent)
+        .catch(showError);
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Save agent                                                          */
+    /* ------------------------------------------------------------------ */
+    if (saveBtn) {
+      saveBtn.addEventListener("click", function () {
+        nameError.classList.add("hidden");
+
+        var name = nameInput.value.trim();
+        if (!name) {
+          nameError.classList.remove("hidden");
+          /* Switch to basic tab */
+          document.querySelector('[data-tab="basic"]').click();
+          nameInput.focus();
+          return;
+        }
+
+        /* Resolve provider ID back to provider_type for storage */
+        var provId = providerSelect.value;
+        var modelProvider = "";
+        for (var i = 0; i < allProviders.length; i++) {
+          if (allProviders[i].id === provId) {
+            modelProvider = allProviders[i].provider_type;
+            break;
+          }
+        }
+
+        var body = {
+          name: name,
+          description: descriptionInput.value.trim(),
+          instructions: instructionsInput.value,
+          model_provider: modelProvider,
+          model_name: modelSelect.value || "",
+          temperature: parseFloat(temperatureSlider.value),
+        };
+
+        var maxTokens = maxTokensInput.value.trim();
+        if (maxTokens !== "") {
+          body.max_tokens = parseInt(maxTokens, 10);
+        }
+
+        saveBtn.disabled = true;
+        saveStatus.textContent = "Saving...";
+        saveStatus.classList.remove("hidden", "text-zen-green", "text-coral");
+        saveStatus.classList.add("text-muted");
+
+        fetch("/api/agents/" + agentId, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        })
+          .then(function (res) {
+            if (!res.ok) return res.json().then(function (d) { throw new Error(d.detail || "Failed to save"); });
+            return res.json();
+          })
+          .then(function (agent) {
+            currentAgent = agent;
+            agentNameHeading.textContent = agent.name;
+
+            saveStatus.textContent = "Saved";
+            saveStatus.classList.remove("text-muted", "text-coral");
+            saveStatus.classList.add("text-zen-green");
+            setTimeout(function () { saveStatus.classList.add("hidden"); }, 2000);
+
+            /* Update breadcrumb */
+            var allSpans = document.querySelectorAll("nav span");
+            allSpans.forEach(function (span) {
+              if (span.textContent.trim() === currentAgent.name || span.textContent.trim() === "Loading...") {
+                span.textContent = agent.name;
+              }
+            });
+          })
+          .catch(function (err) {
+            saveStatus.textContent = err.message;
+            saveStatus.classList.remove("text-muted", "text-zen-green");
+            saveStatus.classList.add("text-coral");
+          })
+          .finally(function () {
+            saveBtn.disabled = false;
+          });
+      });
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Keyboard shortcut: Ctrl/Cmd + S to save                             */
+    /* ------------------------------------------------------------------ */
+    document.addEventListener("keydown", function (e) {
+      if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+        e.preventDefault();
+        if (saveBtn && !saveBtn.disabled) saveBtn.click();
+      }
+    });
+
+    /* ------------------------------------------------------------------ */
+    /* Init                                                                */
+    /* ------------------------------------------------------------------ */
+    fetchAgent();
+  })();
+</script>
