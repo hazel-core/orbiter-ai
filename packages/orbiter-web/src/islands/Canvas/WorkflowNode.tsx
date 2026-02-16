@@ -1,0 +1,158 @@
+import { memo } from "react";
+import { Handle, Position, type NodeProps } from "@xyflow/react";
+import { getHandlesForNodeType, HANDLE_COLORS, type HandleSpec } from "./handleTypes";
+
+/* ------------------------------------------------------------------ */
+/* WorkflowNode — custom node with typed, color-coded handles          */
+/* ------------------------------------------------------------------ */
+
+interface WorkflowNodeData {
+  label?: string;
+  nodeType?: string;
+  categoryColor?: string;
+  [key: string]: unknown;
+}
+
+function WorkflowNode({ data, selected }: NodeProps) {
+  const d = data as WorkflowNodeData;
+  const nodeType = d.nodeType ?? "default";
+  const categoryColor = d.categoryColor ?? "#999";
+  const label = d.label ?? nodeType;
+
+  const handles = getHandlesForNodeType(nodeType);
+  const inputs = handles.filter((h) => h.type === "target");
+  const outputs = handles.filter((h) => h.type === "source");
+
+  return (
+    <div
+      style={{
+        minWidth: 160,
+        background: "var(--zen-paper, #f2f0e3)",
+        border: `2px solid ${selected ? "var(--zen-coral, #F76F53)" : "var(--zen-subtle, #e0ddd0)"}`,
+        borderRadius: 10,
+        fontFamily: "'Bricolage Grotesque', sans-serif",
+        position: "relative",
+        transition: "border-color 150ms, box-shadow 150ms",
+        boxShadow: selected
+          ? "0 0 0 2px rgba(247, 111, 83, 0.25)"
+          : "0 1px 3px rgba(0,0,0,0.06)",
+      }}
+    >
+      {/* Header bar with category color */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          padding: "8px 12px",
+          borderBottom: "1px solid var(--zen-subtle, #e0ddd0)",
+        }}
+      >
+        <div
+          style={{
+            width: 10,
+            height: 10,
+            borderRadius: "50%",
+            background: categoryColor,
+            flexShrink: 0,
+          }}
+        />
+        <span
+          style={{
+            fontSize: 12,
+            fontWeight: 600,
+            color: "var(--zen-dark, #2e2e2e)",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          {label}
+        </span>
+      </div>
+
+      {/* Handle labels area */}
+      <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 12px" }}>
+        {/* Input labels */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          {inputs.map((h) => (
+            <div
+              key={h.id}
+              style={{
+                fontSize: 10,
+                color: HANDLE_COLORS[h.dataType],
+                fontWeight: 500,
+              }}
+            >
+              {h.dataType}
+            </div>
+          ))}
+        </div>
+        {/* Output labels */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-end" }}>
+          {outputs.map((h) => (
+            <div
+              key={h.id}
+              style={{
+                fontSize: 10,
+                color: HANDLE_COLORS[h.dataType],
+                fontWeight: 500,
+              }}
+            >
+              {h.label ?? h.dataType}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Input handles (left side) */}
+      {inputs.map((h, i) => (
+        <Handle
+          key={h.id}
+          type="target"
+          position={Position.Left}
+          id={h.id}
+          style={{
+            top: computeHandleTop(i, inputs.length),
+            width: 10,
+            height: 10,
+            borderRadius: "50%",
+            background: HANDLE_COLORS[h.dataType],
+            border: "2px solid var(--zen-paper, #f2f0e3)",
+          }}
+        />
+      ))}
+
+      {/* Output handles (right side) */}
+      {outputs.map((h, i) => (
+        <Handle
+          key={h.id}
+          type="source"
+          position={Position.Right}
+          id={h.id}
+          style={{
+            top: computeHandleTop(i, outputs.length),
+            width: 10,
+            height: 10,
+            borderRadius: "50%",
+            background: HANDLE_COLORS[h.dataType],
+            border: "2px solid var(--zen-paper, #f2f0e3)",
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+/** Distribute handles evenly in the lower portion of the node (below the header). */
+function computeHandleTop(index: number, total: number): string {
+  // Header is ~37px, the handle labels area starts after.
+  // Place handles in the zone 50%–90% of node height.
+  if (total === 1) return "60%";
+  const start = 45;
+  const end = 90;
+  const step = (end - start) / (total - 1);
+  return `${start + step * index}%`;
+}
+
+export default memo(WorkflowNode);

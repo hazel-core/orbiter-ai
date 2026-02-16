@@ -4,6 +4,7 @@ import {
   ReactFlowProvider,
   Background,
   BackgroundVariant,
+  BezierEdge,
   MiniMap,
   Panel,
   useNodesState,
@@ -14,13 +15,38 @@ import {
   type OnConnect,
   type Node,
   type Edge,
+  type EdgeProps,
   type Viewport,
 } from "@xyflow/react";
 
 import NodeSidebar, { NODE_CATEGORIES } from "./NodeSidebar";
 import NodeConfigPanel from "./NodeConfigPanel";
+import WorkflowNode from "./WorkflowNode";
+import { getHandlesForNodeType, HANDLE_COLORS } from "./handleTypes";
 
 import "@xyflow/react/dist/style.css";
+
+/* ------------------------------------------------------------------ */
+/* Custom node types                                                    */
+/* ------------------------------------------------------------------ */
+
+const nodeTypes = { workflow: WorkflowNode };
+
+/* ------------------------------------------------------------------ */
+/* Custom edge with handle-type coloring                                */
+/* ------------------------------------------------------------------ */
+
+function TypedBezierEdge(props: EdgeProps) {
+  const color = (props.data as { color?: string } | undefined)?.color ?? "var(--zen-muted, #999)";
+  return (
+    <BezierEdge
+      {...props}
+      style={{ ...props.style, stroke: color, strokeWidth: 2 }}
+    />
+  );
+}
+
+const edgeTypes = { typed: TypedBezierEdge };
 
 const SAVE_DEBOUNCE_MS = 500;
 
@@ -280,11 +306,31 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
         return res.json();
       })
       .then((data) => {
-        const loadedNodes: Node[] = JSON.parse(data.nodes_json || "[]");
-        const loadedEdges: Edge[] = JSON.parse(data.edges_json || "[]");
+        const rawNodes: Node[] = JSON.parse(data.nodes_json || "[]");
+        const rawEdges: Edge[] = JSON.parse(data.edges_json || "[]");
         const vp: Viewport = JSON.parse(
           data.viewport_json || '{"x":0,"y":0,"zoom":1}',
         );
+        /* Migrate older nodes to workflow type */
+        const loadedNodes = rawNodes.map((n) =>
+          n.type === "default" && (n.data as { nodeType?: string }).nodeType
+            ? { ...n, type: "workflow" }
+            : n,
+        );
+        /* Migrate edges to typed Bezier and add color data */
+        const nodeMap = new Map(loadedNodes.map((n) => [n.id, n]));
+        const loadedEdges = rawEdges.map((e) => {
+          if (e.type === "typed" && (e.data as { color?: string } | undefined)?.color) return e;
+          const srcNode = nodeMap.get(e.source);
+          let color = HANDLE_COLORS.any;
+          if (srcNode) {
+            const nt = (srcNode.data as { nodeType?: string }).nodeType ?? "default";
+            const handles = getHandlesForNodeType(nt);
+            const h = handles.find((h) => h.id === (e.sourceHandle ?? "output"));
+            if (h) color = HANDLE_COLORS[h.dataType];
+          }
+          return { ...e, type: "typed" as const, data: { ...((e.data ?? {}) as Record<string, unknown>), color } };
+        });
         setNodes(loadedNodes);
         setEdges(loadedEdges);
         viewportRef.current = vp;
@@ -334,13 +380,32 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
     ? nodes.find((n) => n.id === selectedNodeId) ?? null
     : null;
 
+  /* Look up the data type of a source handle for edge coloring */
+  const getSourceHandleColor = useCallback(
+    (sourceId: string, sourceHandle: string | null): string => {
+      const node = nodes.find((n) => n.id === sourceId);
+      if (!node) return HANDLE_COLORS.any;
+      const nodeType = (node.data as { nodeType?: string }).nodeType ?? "default";
+      const handles = getHandlesForNodeType(nodeType);
+      const handle = handles.find((h) => h.id === (sourceHandle ?? "output"));
+      return handle ? HANDLE_COLORS[handle.dataType] : HANDLE_COLORS.any;
+    },
+    [nodes],
+  );
+
   /* Record state before connection changes */
   const onConnect: OnConnect = useCallback(
     (params) => {
       record();
-      setEdges((eds) => addEdge(params, eds));
+      const color = getSourceHandleColor(params.source, params.sourceHandle ?? null);
+      setEdges((eds) =>
+        addEdge(
+          { ...params, type: "typed", data: { color } },
+          eds,
+        ),
+      );
     },
-    [setEdges, record],
+    [setEdges, record, getSourceHandleColor],
   );
 
   /* Wrap onNodesChange to record history on structural changes */
@@ -494,7 +559,7 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
       record();
       const newNode: Node = {
         id: `${nodeType}_${Date.now()}`,
-        type: "default",
+        type: "workflow",
         position,
         data: {
           label,
@@ -511,6 +576,9 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
     <ReactFlow
       nodes={nodes}
       edges={edges}
+      nodeTypes={nodeTypes}
+      edgeTypes={edgeTypes}
+      defaultEdgeOptions={{ type: "typed" }}
       onNodesChange={handleNodesChange}
       onEdgesChange={handleEdgesChange}
       onConnect={onConnect}
