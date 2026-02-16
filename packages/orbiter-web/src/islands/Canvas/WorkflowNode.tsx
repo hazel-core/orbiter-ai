@@ -15,6 +15,8 @@ interface WorkflowNodeData {
   _unreachable?: boolean;
   _disconnectedInputs?: string[];
   _execStatus?: "running" | "completed" | "failed" | null;
+  _debugPaused?: boolean;
+  _hasBreakpoint?: boolean;
   [key: string]: unknown;
 }
 
@@ -29,6 +31,8 @@ function WorkflowNode({ data, selected }: NodeProps) {
   const isUnreachable = d._unreachable ?? false;
   const disconnectedInputs = new Set(d._disconnectedInputs ?? []);
   const execStatus = d._execStatus ?? null;
+  const debugPaused = d._debugPaused ?? false;
+  const hasBreakpoint = d._hasBreakpoint ?? false;
 
   const handles = getHandlesForNodeType(nodeType);
   const inputs = handles.filter((h) => h.type === "target");
@@ -54,18 +58,21 @@ function WorkflowNode({ data, selected }: NodeProps) {
 
   /* Execution status overrides relationship tinting */
   const execBorder =
-    execStatus === "running"
-      ? "var(--zen-coral, #F76F53)"
-      : execStatus === "completed"
-        ? "var(--zen-green, #63f78b)"
-        : execStatus === "failed"
-          ? "#ef4444"
-          : null;
+    debugPaused
+      ? "#a855f7"
+      : execStatus === "running"
+        ? "var(--zen-coral, #F76F53)"
+        : execStatus === "completed"
+          ? "var(--zen-green, #63f78b)"
+          : execStatus === "failed"
+            ? "#ef4444"
+            : null;
 
   const borderColor =
     execBorder ?? tintBorder ?? (selected ? "var(--zen-coral, #F76F53)" : "var(--zen-subtle, #e0ddd0)");
+  const debugShadow = debugPaused ? "0 0 0 4px rgba(168, 85, 247, 0.35)" : null;
   const shadow =
-    tintShadow ?? (selected ? "0 0 0 2px rgba(247, 111, 83, 0.25)" : "0 1px 3px rgba(0,0,0,0.06)");
+    debugShadow ?? tintShadow ?? (selected ? "0 0 0 2px rgba(247, 111, 83, 0.25)" : "0 1px 3px rgba(0,0,0,0.06)");
 
   return (
     <div
@@ -136,8 +143,57 @@ function WorkflowNode({ data, selected }: NodeProps) {
         </div>
       )}
 
+      {/* Debug paused badge */}
+      {debugPaused && (
+        <div
+          title="Paused"
+          style={{
+            position: "absolute",
+            top: -8,
+            right: -8,
+            width: 20,
+            height: 20,
+            borderRadius: "50%",
+            background: "#a855f7",
+            color: "#fff",
+            fontSize: 13,
+            fontWeight: 700,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 10,
+            boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+            lineHeight: 1,
+          }}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+            <rect x="6" y="4" width="4" height="16" rx="1" />
+            <rect x="14" y="4" width="4" height="16" rx="1" />
+          </svg>
+        </div>
+      )}
+
+      {/* Breakpoint indicator (red dot on left) */}
+      {hasBreakpoint && (
+        <div
+          title="Breakpoint"
+          style={{
+            position: "absolute",
+            top: -6,
+            left: -6,
+            width: 14,
+            height: 14,
+            borderRadius: "50%",
+            background: "#ef4444",
+            border: "2px solid var(--zen-paper, #f2f0e3)",
+            zIndex: 10,
+            boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+          }}
+        />
+      )}
+
       {/* Warning badge for missing config (top-right corner, hidden during execution) */}
-      {hasMissingConfig && !execStatus && (
+      {hasMissingConfig && !execStatus && !debugPaused && (
         <div
           title="Missing required configuration"
           style={{

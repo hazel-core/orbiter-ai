@@ -70,6 +70,14 @@ const EDGE_ANIMATION_CSS = `
 .exec-running {
   animation: execPulse 1.5s ease-in-out infinite;
 }
+/* Debug paused: pulsing purple border */
+@keyframes debugPausePulse {
+  0%, 100% { box-shadow: 0 0 0 4px rgba(168, 85, 247, 0.35); }
+  50% { box-shadow: 0 0 0 8px rgba(168, 85, 247, 0.15); }
+}
+.debug-paused {
+  animation: debugPausePulse 1.5s ease-in-out infinite;
+}
 `;
 
 if (typeof document !== "undefined") {
@@ -380,6 +388,14 @@ const icons = {
       <rect x="5" y="5" width="14" height="14" rx="2" />
     </svg>
   ),
+  debug: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 2a4 4 0 0 0-4 4v2" /><path d="M16 8V6a4 4 0 0 0-4-4" />
+      <rect x="6" y="8" width="12" height="12" rx="3" />
+      <line x1="6" y1="14" x2="4" y2="14" /><line x1="20" y1="14" x2="18" y2="14" />
+      <line x1="12" y1="8" x2="12" y2="20" />
+    </svg>
+  ),
 };
 
 /* ------------------------------------------------------------------ */
@@ -612,6 +628,211 @@ function useWorkflowExecution(workflowId: string | undefined, totalNodes: number
 }
 
 /* ------------------------------------------------------------------ */
+/* Debug execution state                                               */
+/* ------------------------------------------------------------------ */
+
+interface DebugState {
+  active: boolean;
+  runId: string | null;
+  pausedNodeId: string | null;
+  variables: Record<string, unknown>;
+  breakpoints: Set<string>;
+  nodeStatuses: Record<string, NodeExecStatus>;
+  completedCount: number;
+  totalNodes: number;
+  status: "idle" | "pending" | "paused" | "running" | "completed" | "failed" | "cancelled";
+}
+
+const INITIAL_DEBUG_STATE: DebugState = {
+  active: false,
+  runId: null,
+  pausedNodeId: null,
+  variables: {},
+  breakpoints: new Set(),
+  nodeStatuses: {},
+  completedCount: 0,
+  totalNodes: 0,
+  status: "idle",
+};
+
+function useDebugExecution(workflowId: string | undefined, totalNodes: number) {
+  const [dbg, setDbg] = useState<DebugState>(INITIAL_DEBUG_STATE);
+  const wsRef = useRef<WebSocket | null>(null);
+  const [elapsed, setElapsed] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const clearTimer = useCallback(() => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  }, []);
+
+  /** Start a debug session. */
+  const startDebug = useCallback(async () => {
+    if (!workflowId) return;
+
+    setDbg({
+      ...INITIAL_DEBUG_STATE,
+      active: true,
+      status: "pending",
+      totalNodes,
+    });
+    setElapsed(0);
+
+    try {
+      const res = await fetch(`/api/workflows/${workflowId}/debug`, { method: "POST" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: "Failed to start debug" }));
+        setDbg((s) => ({ ...s, status: "failed" }));
+        alert(err.detail || "Failed to start debug session");
+        return;
+      }
+      const { run_id } = await res.json();
+
+      setDbg((s) => ({ ...s, runId: run_id, status: "running" }));
+
+      // Start elapsed timer
+      timerRef.current = setInterval(() => {
+        setElapsed((e) => e + 1);
+      }, 1000);
+
+      // Connect debug WebSocket
+      const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const ws = new WebSocket(`${proto}//${window.location.host}/api/workflows/${workflowId}/runs/${run_id}/debug`);
+      wsRef.current = ws;
+
+      ws.onmessage = (ev) => {
+        const event = JSON.parse(ev.data);
+        if (event.type === "debug_paused") {
+          setDbg((s) => ({
+            ...s,
+            status: "paused",
+            pausedNodeId: event.node_id,
+            variables: event.variables ?? s.variables,
+            breakpoints: new Set(event.breakpoints ?? []),
+          }));
+        } else if (event.type === "node_started") {
+          setDbg((s) => ({
+            ...s,
+            status: "running",
+            pausedNodeId: null,
+            nodeStatuses: { ...s.nodeStatuses, [event.node_id]: "running" },
+          }));
+        } else if (event.type === "node_completed") {
+          setDbg((s) => ({
+            ...s,
+            nodeStatuses: { ...s.nodeStatuses, [event.node_id]: "completed" },
+            variables: event.variables ?? s.variables,
+            completedCount: s.completedCount + 1,
+          }));
+        } else if (event.type === "node_failed") {
+          setDbg((s) => ({
+            ...s,
+            nodeStatuses: { ...s.nodeStatuses, [event.node_id]: "failed" },
+            completedCount: s.completedCount + 1,
+          }));
+        } else if (event.type === "node_skipped") {
+          setDbg((s) => ({
+            ...s,
+            nodeStatuses: { ...s.nodeStatuses, [event.node_id]: "completed" },
+            completedCount: s.completedCount + 1,
+          }));
+        } else if (event.type === "execution_completed") {
+          setDbg((s) => ({
+            ...s,
+            status: (event.status ?? "completed") as DebugState["status"],
+            pausedNodeId: null,
+            variables: event.variables ?? s.variables,
+          }));
+          clearTimer();
+          ws.close();
+        }
+      };
+
+      ws.onerror = () => {
+        setDbg((s) => ({ ...s, status: "failed" }));
+        clearTimer();
+      };
+    } catch {
+      setDbg((s) => ({ ...s, status: "failed" }));
+      clearTimer();
+    }
+  }, [workflowId, totalNodes, clearTimer]);
+
+  /** Send a debug command. */
+  const sendCommand = useCallback((cmd: Record<string, unknown>) => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify(cmd));
+    }
+  }, []);
+
+  const continueExec = useCallback(() => sendCommand({ action: "continue" }), [sendCommand]);
+  const skipNode = useCallback(() => sendCommand({ action: "skip" }), [sendCommand]);
+  const stopDebug = useCallback(() => {
+    sendCommand({ action: "stop" });
+    clearTimer();
+    setDbg((s) => ({ ...s, status: "cancelled", pausedNodeId: null }));
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+  }, [sendCommand, clearTimer]);
+
+  const toggleBreakpoint = useCallback((nodeId: string) => {
+    sendCommand({ action: "set_breakpoint", node_id: nodeId });
+    setDbg((s) => {
+      const next = new Set(s.breakpoints);
+      if (next.has(nodeId)) next.delete(nodeId);
+      else next.add(nodeId);
+      return { ...s, breakpoints: next };
+    });
+  }, [sendCommand]);
+
+  const setVariable = useCallback((name: string, value: unknown) => {
+    sendCommand({ action: "set_variable", name, value });
+    setDbg((s) => ({
+      ...s,
+      variables: { ...s.variables, [name]: value },
+    }));
+  }, [sendCommand]);
+
+  /** Reset back to idle. */
+  const resetDebug = useCallback(() => {
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+    clearTimer();
+    setDbg(INITIAL_DEBUG_STATE);
+    setElapsed(0);
+  }, [clearTimer]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (wsRef.current) wsRef.current.close();
+      clearTimer();
+    };
+  }, [clearTimer]);
+
+  const isDebugging = dbg.active && dbg.status !== "idle";
+
+  return {
+    dbg,
+    debugElapsed: elapsed,
+    isDebugging,
+    startDebug,
+    continueExec,
+    skipNode,
+    stopDebug,
+    toggleBreakpoint,
+    setVariable,
+    resetDebug,
+  };
+}
+
+/* ------------------------------------------------------------------ */
 /* Relationships mode — BFS to find upstream/downstream nodes          */
 /* ------------------------------------------------------------------ */
 
@@ -676,6 +897,196 @@ function computeRelationships(
 /* Canvas flow component                                               */
 /* ------------------------------------------------------------------ */
 
+/* ------------------------------------------------------------------ */
+/* Debug variable inspector panel                                      */
+/* ------------------------------------------------------------------ */
+
+function DebugVariablePanel({
+  variables,
+  onSetVariable,
+  nodes,
+}: {
+  variables: Record<string, unknown>;
+  onSetVariable: (name: string, value: unknown) => void;
+  nodes: Node[];
+}) {
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState("");
+
+  const nodeLabels = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const n of nodes) {
+      const d = n.data as { label?: string; nodeType?: string };
+      map[n.id] = d.label ?? d.nodeType ?? n.id;
+    }
+    return map;
+  }, [nodes]);
+
+  const startEdit = (key: string, val: unknown) => {
+    setEditingKey(key);
+    setEditValue(typeof val === "string" ? val : JSON.stringify(val));
+  };
+
+  const commitEdit = () => {
+    if (editingKey === null) return;
+    let parsed: unknown = editValue;
+    try {
+      parsed = JSON.parse(editValue);
+    } catch {
+      // keep as string
+    }
+    onSetVariable(editingKey, parsed);
+    setEditingKey(null);
+    setEditValue("");
+  };
+
+  const cancelEdit = () => {
+    setEditingKey(null);
+    setEditValue("");
+  };
+
+  return (
+    <div
+      style={{
+        maxWidth: 480,
+        maxHeight: 200,
+        overflowY: "auto",
+        padding: "8px 12px",
+        borderRadius: 8,
+        background: "var(--zen-paper, #f2f0e3)",
+        border: "1px solid var(--zen-subtle, #e0ddd0)",
+        boxShadow: "0 1px 4px rgba(0,0,0,0.08)",
+        fontFamily: "'Bricolage Grotesque', sans-serif",
+        fontSize: 11,
+      }}
+    >
+      <div
+        style={{
+          fontWeight: 600,
+          fontSize: 11,
+          color: "#a855f7",
+          marginBottom: 6,
+          textTransform: "uppercase",
+          letterSpacing: "0.05em",
+        }}
+      >
+        Variables
+      </div>
+      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <tbody>
+          {Object.entries(variables).map(([key, val]) => (
+            <tr key={key} style={{ borderBottom: "1px solid var(--zen-subtle, #e0ddd0)" }}>
+              <td
+                style={{
+                  padding: "4px 8px 4px 0",
+                  fontWeight: 600,
+                  color: "var(--zen-dark, #2e2e2e)",
+                  whiteSpace: "nowrap",
+                  verticalAlign: "top",
+                }}
+                title={key}
+              >
+                {nodeLabels[key] ?? key}
+              </td>
+              <td style={{ padding: "4px 0", color: "var(--zen-muted, #999)", wordBreak: "break-all" }}>
+                {editingKey === key ? (
+                  <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                    <input
+                      autoFocus
+                      value={editValue}
+                      onChange={(e) => setEditValue(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") commitEdit();
+                        if (e.key === "Escape") cancelEdit();
+                      }}
+                      style={{
+                        flex: 1,
+                        padding: "2px 4px",
+                        fontSize: 11,
+                        border: "1px solid #a855f7",
+                        borderRadius: 4,
+                        background: "var(--zen-paper, #f2f0e3)",
+                        color: "var(--zen-dark, #2e2e2e)",
+                        fontFamily: "monospace",
+                        outline: "none",
+                      }}
+                    />
+                    <button
+                      onClick={commitEdit}
+                      style={{
+                        padding: "1px 6px",
+                        fontSize: 10,
+                        borderRadius: 4,
+                        border: "1px solid var(--zen-green, #63f78b)",
+                        background: "var(--zen-green, #63f78b)",
+                        color: "#fff",
+                        cursor: "pointer",
+                      }}
+                    >
+                      OK
+                    </button>
+                    <button
+                      onClick={cancelEdit}
+                      style={{
+                        padding: "1px 6px",
+                        fontSize: 10,
+                        borderRadius: 4,
+                        border: "1px solid var(--zen-subtle, #e0ddd0)",
+                        background: "transparent",
+                        color: "var(--zen-dark, #2e2e2e)",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Esc
+                    </button>
+                  </div>
+                ) : (
+                  <span
+                    onClick={() => startEdit(key, val)}
+                    title="Click to edit"
+                    style={{ cursor: "pointer", fontFamily: "monospace" }}
+                  >
+                    {typeof val === "string"
+                      ? val.length > 80
+                        ? val.slice(0, 80) + "\u2026"
+                        : val
+                      : JSON.stringify(val).slice(0, 80)}
+                  </span>
+                )}
+              </td>
+              <td style={{ padding: "4px 0 4px 4px", width: 24 }}>
+                <button
+                  title="Copy value"
+                  onClick={() => {
+                    const text = typeof val === "string" ? val : JSON.stringify(val, null, 2);
+                    navigator.clipboard.writeText(text);
+                  }}
+                  style={{
+                    padding: 2,
+                    border: "none",
+                    background: "transparent",
+                    cursor: "pointer",
+                    color: "var(--zen-muted, #999)",
+                    fontSize: 11,
+                  }}
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                  </svg>
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Canvas flow component                                               */
+/* ------------------------------------------------------------------ */
+
 function CanvasFlow({ workflowId }: { workflowId?: string }) {
   const colorMode = useThemeColorMode();
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
@@ -699,6 +1110,12 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
   /* Execution state */
   const { exec, elapsed, isRunning, startRun, cancelRun, resetExec } =
     useWorkflowExecution(workflowId, nodes.length);
+
+  /* Debug execution state */
+  const {
+    dbg, debugElapsed, isDebugging, startDebug, continueExec, skipNode,
+    stopDebug, toggleBreakpoint, setVariable, resetDebug,
+  } = useDebugExecution(workflowId, nodes.length);
 
   /* Workflow metadata (name, description) */
   const [workflowName, setWorkflowName] = useState("");
@@ -867,9 +1284,17 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
       const disconnectedHandles = validationResult?.disconnectedInputs.get(n.id);
       const disconnectedArr = disconnectedHandles ? [...disconnectedHandles] : [];
 
-      // Execution status
-      const execStatus = exec.nodeStatuses[n.id] ?? null;
-      const execClass = execStatus === "running" ? "exec-running" : undefined;
+      // Execution status (use debug statuses when debugging)
+      const execStatus = isDebugging
+        ? (dbg.nodeStatuses[n.id] ?? null)
+        : (exec.nodeStatuses[n.id] ?? null);
+      const isDebugPaused = isDebugging && dbg.pausedNodeId === n.id;
+      const hasBreakpoint = isDebugging && dbg.breakpoints.has(n.id);
+      const execClass = isDebugPaused
+        ? "debug-paused"
+        : execStatus === "running"
+          ? "exec-running"
+          : undefined;
       const cls = [relClass, execClass].filter(Boolean).join(" ") || undefined;
 
       return {
@@ -882,10 +1307,12 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
           _unreachable: isUnreachable,
           _disconnectedInputs: disconnectedArr,
           _execStatus: execStatus,
+          _debugPaused: isDebugPaused,
+          _hasBreakpoint: hasBreakpoint,
         },
       };
     });
-  }, [nodes, relationships, relationshipNodeId, validationResult, exec.nodeStatuses]);
+  }, [nodes, relationships, relationshipNodeId, validationResult, exec.nodeStatuses, isDebugging, dbg.nodeStatuses, dbg.pausedNodeId, dbg.breakpoints]);
 
   const displayEdges = useMemo(() => {
     return edges.map((e) => {
@@ -896,8 +1323,9 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
       const cls = [relClass, cycleClass].filter(Boolean).join(" ") || undefined;
 
       // Animate edges where source is completed and target is running
-      const srcStatus = exec.nodeStatuses[e.source];
-      const tgtStatus = exec.nodeStatuses[e.target];
+      const nodeStatuses = isDebugging ? dbg.nodeStatuses : exec.nodeStatuses;
+      const srcStatus = nodeStatuses[e.source];
+      const tgtStatus = nodeStatuses[e.target];
       const execAnimated = srcStatus === "completed" && tgtStatus === "running";
 
       const edgeData = (e.data ?? {}) as Record<string, unknown>;
@@ -910,7 +1338,7 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
         },
       };
     });
-  }, [edges, relationships, validationResult, exec.nodeStatuses]);
+  }, [edges, relationships, validationResult, exec.nodeStatuses, isDebugging, dbg.nodeStatuses]);
 
   /* Track whether execution has finished (data available to inspect) */
   const hasExecutionData = exec.runId !== null && !isRunning;
@@ -921,6 +1349,11 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
       setRelationshipNodeId((prev) => (prev === node.id ? null : node.id));
       return;
     }
+    /* Alt+click toggles breakpoint in debug mode */
+    if (_event.altKey && isDebugging) {
+      toggleBreakpoint(node.id);
+      return;
+    }
     /* If execution data available and this node was executed, show inspection panel */
     if (hasExecutionData && exec.nodeStatuses[node.id]) {
       setInspectedNodeId(node.id);
@@ -929,7 +1362,7 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
       setSelectedNodeId(node.id);
       setInspectedNodeId(null);
     }
-  }, [hasExecutionData, exec.nodeStatuses]);
+  }, [hasExecutionData, exec.nodeStatuses, isDebugging, toggleBreakpoint]);
 
   const onPaneClick = useCallback(() => {
     setSelectedNodeId(null);
@@ -1436,14 +1869,27 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
                 <ToolbarButton onClick={cancelRun} title="Cancel Execution">
                   {icons.stop}
                 </ToolbarButton>
-              ) : (
-                <ToolbarButton
-                  onClick={startRun}
-                  title="Run Workflow"
-                  disabled={nodes.length === 0}
-                >
-                  {icons.play}
+              ) : isDebugging ? (
+                <ToolbarButton onClick={stopDebug} title="Stop Debug">
+                  {icons.stop}
                 </ToolbarButton>
+              ) : (
+                <>
+                  <ToolbarButton
+                    onClick={startRun}
+                    title="Run Workflow"
+                    disabled={nodes.length === 0}
+                  >
+                    {icons.play}
+                  </ToolbarButton>
+                  <ToolbarButton
+                    onClick={startDebug}
+                    title="Debug Workflow"
+                    disabled={nodes.length === 0}
+                  >
+                    {icons.debug}
+                  </ToolbarButton>
+                </>
               )}
             </>
           )}
@@ -1548,6 +1994,152 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
         </Panel>
       )}
 
+      {/* Debug control bar — shown above status bar when debugging */}
+      {isDebugging && (
+        <Panel position="bottom-center">
+          <div
+            className="nodrag nopan"
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 8,
+              marginBottom: 8,
+            }}
+          >
+            {/* Debug controls */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "8px 16px",
+                borderRadius: 10,
+                background: "var(--zen-paper, #f2f0e3)",
+                border: "1px solid #a855f7",
+                boxShadow: "0 -1px 8px rgba(168, 85, 247, 0.15)",
+                fontFamily: "'Bricolage Grotesque', sans-serif",
+                fontSize: 12,
+                fontWeight: 500,
+              }}
+            >
+              {/* Status indicator */}
+              <div
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: "50%",
+                  background: dbg.status === "paused" ? "#a855f7" : "var(--zen-coral, #F76F53)",
+                  animation: dbg.status === "paused" ? undefined : "execPulse 1.5s ease-in-out infinite",
+                  flexShrink: 0,
+                }}
+              />
+
+              <span style={{ color: "var(--zen-dark, #2e2e2e)", textTransform: "capitalize" }}>
+                {dbg.status === "paused" ? `Paused at ${dbg.pausedNodeId ?? "node"}` : dbg.status}
+              </span>
+
+              <div style={{ width: 1, height: 14, background: "var(--zen-muted, #ccc)", opacity: 0.3 }} />
+
+              <span style={{ color: "var(--zen-muted, #999)" }}>
+                {Math.floor(debugElapsed / 60)}:{String(debugElapsed % 60).padStart(2, "0")}
+              </span>
+
+              <div style={{ width: 1, height: 14, background: "var(--zen-muted, #ccc)", opacity: 0.3 }} />
+
+              <span style={{ color: "var(--zen-muted, #999)" }}>
+                {dbg.completedCount}/{dbg.totalNodes} steps
+              </span>
+
+              <div style={{ width: 1, height: 14, background: "var(--zen-muted, #ccc)", opacity: 0.3 }} />
+
+              {/* Flow control buttons */}
+              {dbg.status === "paused" && (
+                <>
+                  <button
+                    onClick={continueExec}
+                    style={{
+                      padding: "4px 12px",
+                      fontSize: 11,
+                      fontWeight: 600,
+                      borderRadius: 6,
+                      border: "1px solid var(--zen-green, #63f78b)",
+                      background: "var(--zen-green, #63f78b)",
+                      color: "#fff",
+                      cursor: "pointer",
+                      fontFamily: "'Bricolage Grotesque', sans-serif",
+                    }}
+                  >
+                    Continue
+                  </button>
+                  <button
+                    onClick={skipNode}
+                    style={{
+                      padding: "4px 12px",
+                      fontSize: 11,
+                      fontWeight: 600,
+                      borderRadius: 6,
+                      border: "1px solid var(--zen-blue, #6287f5)",
+                      background: "var(--zen-blue, #6287f5)",
+                      color: "#fff",
+                      cursor: "pointer",
+                      fontFamily: "'Bricolage Grotesque', sans-serif",
+                    }}
+                  >
+                    Skip
+                  </button>
+                </>
+              )}
+              <button
+                onClick={stopDebug}
+                style={{
+                  padding: "4px 12px",
+                  fontSize: 11,
+                  fontWeight: 600,
+                  borderRadius: 6,
+                  border: "1px solid #ef4444",
+                  background: "#ef4444",
+                  color: "#fff",
+                  cursor: "pointer",
+                  fontFamily: "'Bricolage Grotesque', sans-serif",
+                }}
+              >
+                Stop
+              </button>
+
+              {/* Dismiss when done */}
+              {(dbg.status === "completed" || dbg.status === "failed" || dbg.status === "cancelled") && (
+                <button
+                  onClick={resetDebug}
+                  style={{
+                    marginLeft: 4,
+                    padding: "2px 8px",
+                    fontSize: 11,
+                    borderRadius: 6,
+                    border: "1px solid var(--zen-subtle, #e0ddd0)",
+                    background: "transparent",
+                    color: "var(--zen-dark, #2e2e2e)",
+                    cursor: "pointer",
+                    fontFamily: "'Bricolage Grotesque', sans-serif",
+                  }}
+                >
+                  Dismiss
+                </button>
+              )}
+            </div>
+
+            {/* Variable inspector panel — visible when paused */}
+            {dbg.status === "paused" && Object.keys(dbg.variables).length > 0 && (
+              <DebugVariablePanel
+                variables={dbg.variables}
+                onSetVariable={setVariable}
+                nodes={nodes}
+              />
+            )}
+          </div>
+        </Panel>
+      )}
+
       {/* Node config panel */}
       <NodeConfigPanel
         node={selectedNode}
@@ -1555,12 +2147,12 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
         onNodeUpdate={handleNodeDataUpdate}
       />
 
-      {/* Node inspection panel (post-execution) */}
-      {workflowId && exec.runId && (
+      {/* Node inspection panel (post-execution or debug) */}
+      {workflowId && (exec.runId || dbg.runId) && (
         <NodeInspectionPanel
           node={inspectedNode}
           workflowId={workflowId}
-          runId={exec.runId}
+          runId={(exec.runId || dbg.runId)!}
           onClose={() => setInspectedNodeId(null)}
         />
       )}
