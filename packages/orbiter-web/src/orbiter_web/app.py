@@ -14,6 +14,7 @@ from orbiter_web.routes.applications import router as applications_router
 from orbiter_web.routes.auth import router as auth_router
 from orbiter_web.routes.conversations import router as conversations_router
 from orbiter_web.routes.costs import router as costs_router
+from orbiter_web.routes.crews import router as crews_router
 from orbiter_web.routes.models import router as models_router
 from orbiter_web.routes.playground import router as playground_router
 from orbiter_web.routes.plugins import router as plugins_router
@@ -46,6 +47,7 @@ app.include_router(agents_router)
 app.include_router(applications_router)
 app.include_router(conversations_router)
 app.include_router(costs_router)
+app.include_router(crews_router)
 app.include_router(auth_router)
 app.include_router(models_router)
 app.include_router(playground_router)
