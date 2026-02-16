@@ -1756,3 +1756,15 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Existing sessions without csrf_token are backfilled by migration using hex(randomblob(24))
   - React islands can import getCsrfToken from utils/csrf.ts, but their fetch calls also go through the patched window.fetch so it's optional
 ---
+
+## 2026-02-17 04:37 - US-097
+- What was implemented: Knowledge base schema (migration 028) and REST API with 5 CRUD endpoints
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/migrations/028_create_knowledge_bases.sql (new — knowledge_bases table with indexes)
+  - packages/orbiter-web/src/orbiter_web/routes/knowledge_bases.py (new — APIRouter with KnowledgeBaseCreate, KnowledgeBaseUpdate, KnowledgeBaseResponse models, 5 endpoints with project_id filter)
+  - packages/orbiter-web/src/orbiter_web/app.py (updated — include knowledge_bases_router)
+- **Learnings for future iterations:**
+  - Knowledge bases table follows the same CRUD pattern as projects — use projects.py as the template
+  - knowledge_bases has both user_id (ownership) and optional project_id (scoping) — filter by both when project_id is provided
+  - Next migration number is 029
+---
