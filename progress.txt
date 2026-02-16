@@ -82,6 +82,7 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
 - Marketplace catalog: static `MARKETPLACE_CATALOG` list in plugins.py; marketplace endpoints before /{id} routes; categories: Models, Tools, Agent Strategies, Extensions, Bundles
 - Service layer: `orbiter_web/services/` directory for business logic separate from routes; AgentService bridges DB configs to live orbiter Agent objects
 - orbiter-web depends on orbiter-core + orbiter-models via workspace deps in pyproject.toml + `[tool.uv.sources]`
+- Rate limiting: custom in-memory `_SlidingWindow` in `middleware/rate_limit.py`; config via ORBITER_RATE_LIMIT_AUTH/GENERAL/AGENT env vars in settings
 - Agent runtime: `get_provider("provider:model", api_key=..., base_url=...)` creates ModelProvider; `Agent.run(input=..., messages=..., provider=...)` executes the tool loop
 - Agent node execution: `_execute_agent_node()` in engine.py handles both DB-referenced and inline agents; inject `_user_id` into node data for provider resolution
 - Upstream context: `_gather_upstream_inputs(node_id, edges, variables)` collects text from all upstream nodes — use for agent node input
@@ -1781,4 +1782,23 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Follow the projects page pattern: loading state → empty state → grid with template cloning
   - Delete buttons on cards: use `data-action="delete"` with event delegation on the grid container, `e.stopPropagation()` to prevent card link navigation
   - `define:vars={{ kbId: id }}` passes Astro params into `is:inline` scripts — same pattern as projects/[id].astro
+---
+
+## 2026-02-17 - US-161
+- What was implemented: In-memory sliding window rate limiting middleware with three tiers
+  - Auth endpoints (POST /api/auth/login): 5/min per IP
+  - Agent execution endpoints (workflow /run, /debug): 10/min per user (configurable via ORBITER_RATE_LIMIT_AGENT)
+  - General API: 60/min per user/session
+  - X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset headers on all API responses
+  - 429 response with Retry-After header when limit exceeded
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/middleware/rate_limit.py (new — RateLimitMiddleware with _SlidingWindow counter)
+  - packages/orbiter-web/src/orbiter_web/config.py (added rate_limit_auth, rate_limit_general, rate_limit_agent settings)
+  - packages/orbiter-web/src/orbiter_web/app.py (added RateLimitMiddleware import and registration)
+- **Learnings for future iterations:**
+  - Middleware ordering in Starlette: last added = outermost. RateLimitMiddleware added after CSRFMiddleware so it runs first (before CSRF check)
+  - Custom in-memory sliding window avoids extra dependency (slowapi/redis) — sufficient for single-process SQLite deployments
+  - User identification: prefer session cookie over IP for authenticated users; fall back to IP for unauthenticated
+  - Agent execution paths identified by prefix (/api/workflows/) + suffix (/run, /debug)
+  - Config: use `int(os.getenv(...))` pattern consistent with session_expiry_hours
 ---

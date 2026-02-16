@@ -2826,7 +2826,7 @@
         "Typecheck passes"
       ],
       "priority": 19,
-      "passes": false,
+      "passes": true,
       "notes": "Gap fill: no rate limiting anywhere. Login brute-forceable, LLM calls (which cost money) unthrottled"
     },
     {
