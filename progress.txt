@@ -1275,3 +1275,21 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Type detection uses typeof + Array.isArray for determining variable types (string, number, boolean, array, object, null)
   - Manual browser verification needed (no browser testing tool available)
 ---
+
+## 2026-02-17 02:05 - US-077
+- What was implemented: Run history schema and REST API
+  - Migration 018: added trigger_type, input_json, step_count, total_tokens, total_cost columns to workflow_runs
+  - GET /api/workflows/:id/runs — paginated list with filters (status, trigger_type, start_date, end_date)
+  - GET /api/workflows/:id/runs/:runId — full run detail with all node_executions (JSON fields auto-parsed)
+  - Engine updated: _compute_run_aggregates() calculates step_count and total_tokens from workflow_run_logs on run completion
+  - Both execute_workflow and execute_workflow_debug now populate aggregate fields at finalization
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/migrations/018_extend_workflow_runs.sql (new)
+  - packages/orbiter-web/src/orbiter_web/routes/workflow_runs.py (added 2 GET endpoints + Query import)
+  - packages/orbiter-web/src/orbiter_web/engine.py (added _compute_run_aggregates, extended _update_run_status)
+- **Learnings for future iterations:**
+  - Run-level aggregates (step_count, total_tokens, total_cost) are computed from workflow_run_logs at finalization time via _compute_run_aggregates()
+  - token_usage_json in workflow_run_logs contains {prompt_tokens, completion_tokens, total_tokens} — aggregate total_tokens across all nodes
+  - Route ordering: GET /{workflow_id}/runs must be defined BEFORE any /{workflow_id}/runs/{run_id} routes to avoid path conflicts in FastAPI
+  - The Query import from fastapi is used for list endpoints with pagination params (limit, offset, ge/le constraints)
+---
