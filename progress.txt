@@ -910,3 +910,17 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Canvas toolbar export button added alongside save — uses same icons object pattern
   - Manual browser verification needed (no browser testing tool available)
 ---
+
+## 2026-02-16 - US-056
+- What was implemented: Relationships mode for workflow canvas — Shift+click a node to highlight its data flow graph with upstream (zen-blue) and downstream (zen-green) tinting, coral accent on the selected root node, and 20% opacity fade on unrelated nodes/edges
+- Files changed:
+  - packages/orbiter-web/src/islands/Canvas/CanvasIsland.tsx (added relationships-mode CSS, relationshipNodeId state, computeRelationships BFS helper, displayNodes/displayEdges memos with className injection, Shift+click handler, pane click exits mode)
+  - packages/orbiter-web/src/islands/Canvas/WorkflowNode.tsx (added _relTint data prop, tint-aware border and box-shadow rendering for root/upstream/downstream nodes)
+- **Learnings for future iterations:**
+  - ReactFlow applies `className` from node/edge data to the wrapper DOM elements — use `.react-flow__node.rel-highlighted` CSS to override parent opacity
+  - BFS traversal on edges needs two passes: one following edges backward (target→source) for upstream, one forward (source→target) for downstream
+  - `useMemo` for displayNodes/displayEdges avoids re-computing on every render; depends on `[nodes, relationships, relationshipNodeId]`
+  - Shift+click detection via `_event.shiftKey` in onNodeClick — toggling same node exits relationships mode
+  - CSS `opacity` transitions on `.react-flow__node` and `.react-flow__edge` give smooth fade effect when entering/exiting relationships mode
+  - Manual browser verification needed (no browser testing tool available)
+---

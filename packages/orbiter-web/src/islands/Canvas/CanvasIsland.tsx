@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -39,6 +39,21 @@ const EDGE_ANIMATION_CSS = `
 .react-flow__edge.invalid-connection path {
   stroke: #ef4444 !important;
   stroke-dasharray: 4 4;
+}
+/* Relationships mode: fade unrelated nodes and edges */
+.relationships-mode .react-flow__node {
+  opacity: 0.2;
+  transition: opacity 200ms ease;
+}
+.relationships-mode .react-flow__node.rel-highlighted {
+  opacity: 1;
+}
+.relationships-mode .react-flow__edge {
+  opacity: 0.2;
+  transition: opacity 200ms ease;
+}
+.relationships-mode .react-flow__edge.rel-highlighted {
+  opacity: 1;
 }
 `;
 
@@ -411,6 +426,67 @@ function useAutoSave(
 }
 
 /* ------------------------------------------------------------------ */
+/* Relationships mode — BFS to find upstream/downstream nodes          */
+/* ------------------------------------------------------------------ */
+
+interface RelationshipSets {
+  upstream: Set<string>;
+  downstream: Set<string>;
+  connectedEdges: Set<string>;
+}
+
+function computeRelationships(
+  rootId: string,
+  edges: Edge[],
+): RelationshipSets {
+  const upstream = new Set<string>();
+  const downstream = new Set<string>();
+  const connectedEdges = new Set<string>();
+
+  // Build adjacency lists
+  const childrenOf = new Map<string, { nodeId: string; edgeId: string }[]>();
+  const parentsOf = new Map<string, { nodeId: string; edgeId: string }[]>();
+  for (const e of edges) {
+    if (!childrenOf.has(e.source)) childrenOf.set(e.source, []);
+    childrenOf.get(e.source)!.push({ nodeId: e.target, edgeId: e.id });
+    if (!parentsOf.has(e.target)) parentsOf.set(e.target, []);
+    parentsOf.get(e.target)!.push({ nodeId: e.source, edgeId: e.id });
+  }
+
+  // BFS upstream (ancestors)
+  const queue: string[] = [rootId];
+  const visited = new Set<string>([rootId]);
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    for (const { nodeId, edgeId } of parentsOf.get(current) ?? []) {
+      connectedEdges.add(edgeId);
+      if (!visited.has(nodeId)) {
+        visited.add(nodeId);
+        upstream.add(nodeId);
+        queue.push(nodeId);
+      }
+    }
+  }
+
+  // BFS downstream (descendants)
+  const queue2: string[] = [rootId];
+  const visited2 = new Set<string>([rootId]);
+  while (queue2.length > 0) {
+    const current = queue2.shift()!;
+    for (const { nodeId, edgeId } of childrenOf.get(current) ?? []) {
+      connectedEdges.add(edgeId);
+      if (!visited2.has(nodeId)) {
+        visited2.add(nodeId);
+        downstream.add(nodeId);
+        queue2.push(nodeId);
+      }
+    }
+  }
+
+  return { upstream, downstream, connectedEdges };
+}
+
+/* ------------------------------------------------------------------ */
 /* Canvas flow component                                               */
 /* ------------------------------------------------------------------ */
 
@@ -424,6 +500,7 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
   const viewportRef = useRef<Viewport>({ x: 0, y: 0, zoom: 1 });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [relationshipNodeId, setRelationshipNodeId] = useState<string | null>(null);
 
   /* History tracking */
   const { past, future, record, canUndo, canRedo, skipRecord } =
@@ -545,13 +622,49 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
     [scheduleSave],
   );
 
-  /* Node selection — open config panel */
+  /* Compute relationship sets when in relationships mode */
+  const relationships = useMemo(() => {
+    if (!relationshipNodeId) return null;
+    return computeRelationships(relationshipNodeId, edges);
+  }, [relationshipNodeId, edges]);
+
+  /* Apply relationship classes to nodes and edges */
+  const displayNodes = useMemo(() => {
+    if (!relationships || !relationshipNodeId) return nodes;
+    return nodes.map((n) => {
+      const isRoot = n.id === relationshipNodeId;
+      const isUpstream = relationships.upstream.has(n.id);
+      const isDownstream = relationships.downstream.has(n.id);
+      const isHighlighted = isRoot || isUpstream || isDownstream;
+      const tint = isRoot ? "root" : isUpstream ? "upstream" : isDownstream ? "downstream" : null;
+      return {
+        ...n,
+        className: isHighlighted ? "rel-highlighted" : undefined,
+        data: { ...n.data, _relTint: tint },
+      };
+    });
+  }, [nodes, relationships, relationshipNodeId]);
+
+  const displayEdges = useMemo(() => {
+    if (!relationships) return edges;
+    return edges.map((e) => ({
+      ...e,
+      className: relationships.connectedEdges.has(e.id) ? "rel-highlighted" : undefined,
+    }));
+  }, [edges, relationships]);
+
+  /* Node selection — open config panel, Shift+click for relationships mode */
   const onNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
+    if (_event.shiftKey) {
+      setRelationshipNodeId((prev) => (prev === node.id ? null : node.id));
+      return;
+    }
     setSelectedNodeId(node.id);
   }, []);
 
   const onPaneClick = useCallback(() => {
     setSelectedNodeId(null);
+    setRelationshipNodeId(null);
   }, []);
 
   /* Update a node's data (used by config panel) */
@@ -900,10 +1013,10 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
       )}
 
       {/* Canvas */}
-      <div style={{ flex: 1, minHeight: 0 }}>
+      <div style={{ flex: 1, minHeight: 0 }} className={relationshipNodeId ? "relationships-mode" : undefined}>
     <ReactFlow
-      nodes={nodes}
-      edges={edges}
+      nodes={displayNodes}
+      edges={displayEdges}
       nodeTypes={nodeTypes}
       edgeTypes={edgeTypes}
       defaultEdgeOptions={{ type: "typed" }}

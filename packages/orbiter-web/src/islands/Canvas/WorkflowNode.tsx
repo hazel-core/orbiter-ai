@@ -10,6 +10,7 @@ interface WorkflowNodeData {
   label?: string;
   nodeType?: string;
   categoryColor?: string;
+  _relTint?: "root" | "upstream" | "downstream" | null;
   [key: string]: unknown;
 }
 
@@ -18,24 +19,46 @@ function WorkflowNode({ data, selected }: NodeProps) {
   const nodeType = d.nodeType ?? "default";
   const categoryColor = d.categoryColor ?? "#999";
   const label = d.label ?? nodeType;
+  const relTint = d._relTint ?? null;
 
   const handles = getHandlesForNodeType(nodeType);
   const inputs = handles.filter((h) => h.type === "target");
   const outputs = handles.filter((h) => h.type === "source");
+
+  /* Relationship mode tinting */
+  const tintBorder =
+    relTint === "root"
+      ? "var(--zen-coral, #F76F53)"
+      : relTint === "upstream"
+        ? "var(--zen-blue, #6287f5)"
+        : relTint === "downstream"
+          ? "var(--zen-green, #63f78b)"
+          : null;
+  const tintShadow =
+    relTint === "root"
+      ? "0 0 0 3px rgba(247, 111, 83, 0.3)"
+      : relTint === "upstream"
+        ? "0 0 0 3px rgba(98, 135, 245, 0.25)"
+        : relTint === "downstream"
+          ? "0 0 0 3px rgba(99, 247, 139, 0.25)"
+          : null;
+
+  const borderColor =
+    tintBorder ?? (selected ? "var(--zen-coral, #F76F53)" : "var(--zen-subtle, #e0ddd0)");
+  const shadow =
+    tintShadow ?? (selected ? "0 0 0 2px rgba(247, 111, 83, 0.25)" : "0 1px 3px rgba(0,0,0,0.06)");
 
   return (
     <div
       style={{
         minWidth: 160,
         background: "var(--zen-paper, #f2f0e3)",
-        border: `2px solid ${selected ? "var(--zen-coral, #F76F53)" : "var(--zen-subtle, #e0ddd0)"}`,
+        border: `2px solid ${borderColor}`,
         borderRadius: 10,
         fontFamily: "'Bricolage Grotesque', sans-serif",
         position: "relative",
-        transition: "border-color 150ms, box-shadow 150ms",
-        boxShadow: selected
-          ? "0 0 0 2px rgba(247, 111, 83, 0.25)"
-          : "0 1px 3px rgba(0,0,0,0.06)",
+        transition: "border-color 150ms, box-shadow 150ms, opacity 200ms",
+        boxShadow: shadow,
       }}
     >
       {/* Header bar with category color */}
