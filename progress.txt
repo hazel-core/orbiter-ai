@@ -51,6 +51,8 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
 - Agent meta config (variables, memory, context toggles) stored as `_` prefixed keys in `hooks_json` to avoid schema changes
 - Version tracking pattern: auto-create version on template save via `_create_version()` helper; use COALESCE(MAX(version_number), 0) + 1 for auto-incrementing within a template
 - Shared model API helper: `_send_prompt_to_model()` returns dict with optional `error` field (doesn't raise) — safe for asyncio.gather parallel calls
+- React islands: use `client:only="react"` for DOM-heavy components (e.g., ReactFlow); requires @astrojs/react integration + tsconfig jsx settings
+- Canvas island lives at `src/islands/Canvas/CanvasIsland.tsx`; sync theme via MutationObserver on `data-theme` attribute
 
 ---
 
@@ -665,5 +667,24 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Enter key in textarea submits (Shift+Enter for newline) — same pattern as chat inputs
   - After agent creation, navigates to `/agents/:id/edit` so user can further customize
   - generatedTools tracked as a JS array alongside the DOM — re-render on every change (add/remove)
+  - Manual browser verification needed (no browser testing tool available)
+---
+
+## 2026-02-17 14:00 - US-041
+- What was implemented: Xyflow React island setup — React 19 + @xyflow/react installed, @astrojs/react integration added, CanvasIsland.tsx component with ReactFlowProvider and dark mode sync, workflow canvas page
+- Files changed:
+  - packages/orbiter-web/package.json (added react@19, react-dom@19, @xyflow/react, @astrojs/react)
+  - packages/orbiter-web/package-lock.json (updated)
+  - packages/orbiter-web/astro.config.mjs (added @astrojs/react integration)
+  - packages/orbiter-web/tsconfig.json (added jsx: react-jsx, jsxImportSource: react)
+  - packages/orbiter-web/src/islands/Canvas/CanvasIsland.tsx (new — ReactFlowProvider wrapper, CanvasFlow with dark mode sync via MutationObserver on data-theme)
+  - packages/orbiter-web/src/pages/workflows/canvas.astro (new — workflow canvas page using PageLayout + CanvasIsland with client:only="react")
+- **Learnings for future iterations:**
+  - React islands in Astro: use `client:only="react"` for components that need browser-only APIs (ReactFlow uses DOM extensively)
+  - @astrojs/react integration: add to `integrations` array in astro.config.mjs, and set `jsx: "react-jsx"` + `jsxImportSource: "react"` in tsconfig.json
+  - ReactFlow `colorMode` prop accepts "light", "dark", or "system" — sync with app theme via MutationObserver on `document.documentElement.dataset.theme`
+  - Canvas needs full-height container: use `!overflow-hidden flex flex-col` on PageLayout's class + `flex-1 min-h-0` wrapper div
+  - ReactFlow CSS must be imported in the component: `import "@xyflow/react/dist/style.css"`
+  - `useThemeColorMode()` custom hook: watches `data-theme` attribute mutations to keep ReactFlow colorMode in sync with the app's theme toggle
   - Manual browser verification needed (no browser testing tool available)
 ---
