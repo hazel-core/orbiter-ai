@@ -24,6 +24,7 @@ import NodeSidebar, { NODE_CATEGORIES } from "./NodeSidebar";
 import NodeConfigPanel from "./NodeConfigPanel";
 import NodeInspectionPanel from "./NodeInspectionPanel";
 import ValidationPanel from "./ValidationPanel";
+import VariableInspectPanel from "./VariableInspectPanel";
 import WorkflowNode from "./WorkflowNode";
 import { getHandlesForNodeType, HANDLE_COLORS, areTypesCompatible, type HandleDataType } from "./handleTypes";
 import { validateWorkflow, type ValidationResult } from "./validation";
@@ -396,6 +397,11 @@ const icons = {
       <line x1="12" y1="8" x2="12" y2="20" />
     </svg>
   ),
+  variables: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="18" height="18" rx="2" /><line x1="3" y1="9" x2="21" y2="9" /><line x1="3" y1="15" x2="21" y2="15" /><line x1="9" y1="3" x2="9" y2="21" />
+    </svg>
+  ),
 };
 
 /* ------------------------------------------------------------------ */
@@ -486,6 +492,7 @@ interface ExecutionState {
   startTime: number | null;
   completedCount: number;
   totalNodes: number;
+  variables: Record<string, unknown>;
 }
 
 const INITIAL_EXEC_STATE: ExecutionState = {
@@ -495,6 +502,7 @@ const INITIAL_EXEC_STATE: ExecutionState = {
   startTime: null,
   completedCount: 0,
   totalNodes: 0,
+  variables: {},
 };
 
 function useWorkflowExecution(workflowId: string | undefined, totalNodes: number) {
@@ -521,6 +529,7 @@ function useWorkflowExecution(workflowId: string | undefined, totalNodes: number
       startTime: Date.now(),
       completedCount: 0,
       totalNodes,
+      variables: {},
     });
     setElapsed(0);
 
@@ -558,6 +567,7 @@ function useWorkflowExecution(workflowId: string | undefined, totalNodes: number
             ...s,
             nodeStatuses: { ...s.nodeStatuses, [event.node_id]: "completed" },
             completedCount: s.completedCount + 1,
+            variables: event.variables ?? s.variables,
           }));
         } else if (event.type === "node_failed") {
           setExec((s) => ({
@@ -569,6 +579,7 @@ function useWorkflowExecution(workflowId: string | undefined, totalNodes: number
           setExec((s) => ({
             ...s,
             status: event.status as RunStatus,
+            variables: event.variables ?? s.variables,
           }));
           clearTimer();
           ws.close();
@@ -897,196 +908,6 @@ function computeRelationships(
 /* Canvas flow component                                               */
 /* ------------------------------------------------------------------ */
 
-/* ------------------------------------------------------------------ */
-/* Debug variable inspector panel                                      */
-/* ------------------------------------------------------------------ */
-
-function DebugVariablePanel({
-  variables,
-  onSetVariable,
-  nodes,
-}: {
-  variables: Record<string, unknown>;
-  onSetVariable: (name: string, value: unknown) => void;
-  nodes: Node[];
-}) {
-  const [editingKey, setEditingKey] = useState<string | null>(null);
-  const [editValue, setEditValue] = useState("");
-
-  const nodeLabels = useMemo(() => {
-    const map: Record<string, string> = {};
-    for (const n of nodes) {
-      const d = n.data as { label?: string; nodeType?: string };
-      map[n.id] = d.label ?? d.nodeType ?? n.id;
-    }
-    return map;
-  }, [nodes]);
-
-  const startEdit = (key: string, val: unknown) => {
-    setEditingKey(key);
-    setEditValue(typeof val === "string" ? val : JSON.stringify(val));
-  };
-
-  const commitEdit = () => {
-    if (editingKey === null) return;
-    let parsed: unknown = editValue;
-    try {
-      parsed = JSON.parse(editValue);
-    } catch {
-      // keep as string
-    }
-    onSetVariable(editingKey, parsed);
-    setEditingKey(null);
-    setEditValue("");
-  };
-
-  const cancelEdit = () => {
-    setEditingKey(null);
-    setEditValue("");
-  };
-
-  return (
-    <div
-      style={{
-        maxWidth: 480,
-        maxHeight: 200,
-        overflowY: "auto",
-        padding: "8px 12px",
-        borderRadius: 8,
-        background: "var(--zen-paper, #f2f0e3)",
-        border: "1px solid var(--zen-subtle, #e0ddd0)",
-        boxShadow: "0 1px 4px rgba(0,0,0,0.08)",
-        fontFamily: "'Bricolage Grotesque', sans-serif",
-        fontSize: 11,
-      }}
-    >
-      <div
-        style={{
-          fontWeight: 600,
-          fontSize: 11,
-          color: "#a855f7",
-          marginBottom: 6,
-          textTransform: "uppercase",
-          letterSpacing: "0.05em",
-        }}
-      >
-        Variables
-      </div>
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
-        <tbody>
-          {Object.entries(variables).map(([key, val]) => (
-            <tr key={key} style={{ borderBottom: "1px solid var(--zen-subtle, #e0ddd0)" }}>
-              <td
-                style={{
-                  padding: "4px 8px 4px 0",
-                  fontWeight: 600,
-                  color: "var(--zen-dark, #2e2e2e)",
-                  whiteSpace: "nowrap",
-                  verticalAlign: "top",
-                }}
-                title={key}
-              >
-                {nodeLabels[key] ?? key}
-              </td>
-              <td style={{ padding: "4px 0", color: "var(--zen-muted, #999)", wordBreak: "break-all" }}>
-                {editingKey === key ? (
-                  <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-                    <input
-                      autoFocus
-                      value={editValue}
-                      onChange={(e) => setEditValue(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") commitEdit();
-                        if (e.key === "Escape") cancelEdit();
-                      }}
-                      style={{
-                        flex: 1,
-                        padding: "2px 4px",
-                        fontSize: 11,
-                        border: "1px solid #a855f7",
-                        borderRadius: 4,
-                        background: "var(--zen-paper, #f2f0e3)",
-                        color: "var(--zen-dark, #2e2e2e)",
-                        fontFamily: "monospace",
-                        outline: "none",
-                      }}
-                    />
-                    <button
-                      onClick={commitEdit}
-                      style={{
-                        padding: "1px 6px",
-                        fontSize: 10,
-                        borderRadius: 4,
-                        border: "1px solid var(--zen-green, #63f78b)",
-                        background: "var(--zen-green, #63f78b)",
-                        color: "#fff",
-                        cursor: "pointer",
-                      }}
-                    >
-                      OK
-                    </button>
-                    <button
-                      onClick={cancelEdit}
-                      style={{
-                        padding: "1px 6px",
-                        fontSize: 10,
-                        borderRadius: 4,
-                        border: "1px solid var(--zen-subtle, #e0ddd0)",
-                        background: "transparent",
-                        color: "var(--zen-dark, #2e2e2e)",
-                        cursor: "pointer",
-                      }}
-                    >
-                      Esc
-                    </button>
-                  </div>
-                ) : (
-                  <span
-                    onClick={() => startEdit(key, val)}
-                    title="Click to edit"
-                    style={{ cursor: "pointer", fontFamily: "monospace" }}
-                  >
-                    {typeof val === "string"
-                      ? val.length > 80
-                        ? val.slice(0, 80) + "\u2026"
-                        : val
-                      : JSON.stringify(val).slice(0, 80)}
-                  </span>
-                )}
-              </td>
-              <td style={{ padding: "4px 0 4px 4px", width: 24 }}>
-                <button
-                  title="Copy value"
-                  onClick={() => {
-                    const text = typeof val === "string" ? val : JSON.stringify(val, null, 2);
-                    navigator.clipboard.writeText(text);
-                  }}
-                  style={{
-                    padding: 2,
-                    border: "none",
-                    background: "transparent",
-                    cursor: "pointer",
-                    color: "var(--zen-muted, #999)",
-                    fontSize: 11,
-                  }}
-                >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                  </svg>
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* Canvas flow component                                               */
-/* ------------------------------------------------------------------ */
-
 function CanvasFlow({ workflowId }: { workflowId?: string }) {
   const colorMode = useThemeColorMode();
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
@@ -1101,6 +922,7 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
   const [relationshipNodeId, setRelationshipNodeId] = useState<string | null>(null);
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
   const [validationPanelOpen, setValidationPanelOpen] = useState(false);
+  const [variablePanelOpen, setVariablePanelOpen] = useState(false);
   const validationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /* History tracking */
@@ -1624,6 +1446,13 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
       if (meta && e.key === "s") {
         e.preventDefault();
         saveNow();
+        return;
+      }
+
+      /* Cmd+J — toggle variable inspect panel */
+      if (meta && e.key === "j") {
+        e.preventDefault();
+        setVariablePanelOpen((v) => !v);
       }
     };
 
@@ -1931,6 +1760,14 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
             </span>
           )}
 
+          <ToolbarButton
+            onClick={() => setVariablePanelOpen((v) => !v)}
+            title={`Variables (${mod}J)`}
+            active={variablePanelOpen}
+          >
+            {icons.variables}
+          </ToolbarButton>
+
           {workflowId && (
             <>
               <Separator />
@@ -2197,14 +2034,21 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
               )}
             </div>
 
-            {/* Variable inspector panel — visible when paused */}
-            {dbg.status === "paused" && Object.keys(dbg.variables).length > 0 && (
-              <DebugVariablePanel
-                variables={dbg.variables}
-                onSetVariable={setVariable}
-                nodes={nodes}
-              />
-            )}
+          </div>
+        </Panel>
+      )}
+
+      {/* Variable inspect panel — toggle with Cmd+J, works in both exec and debug modes */}
+      {variablePanelOpen && (
+        <Panel position="bottom-center">
+          <div style={{ marginBottom: isDebugging ? 8 : isRunning || exec.status !== "idle" ? 8 : 0 }}>
+            <VariableInspectPanel
+              variables={isDebugging ? dbg.variables : exec.variables}
+              nodes={nodes}
+              isDebugMode={isDebugging}
+              onSetVariable={isDebugging ? setVariable : undefined}
+              onNavigateToNode={navigateToNode}
+            />
           </div>
         </Panel>
       )}

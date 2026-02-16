@@ -254,6 +254,7 @@ async def execute_workflow(
     await _update_run_status(run_id, "running", started_at=now)
 
     final_status = "completed"
+    variables: dict[str, Any] = {}
 
     for layer in layers:
         # Check cancellation before each layer.
@@ -304,7 +305,8 @@ async def execute_workflow(
                     )
                     await db.commit()
 
-                await emit({"type": "node_completed", "node_id": nid, "output": output})
+                variables[nid] = output.get("result", "")
+                await emit({"type": "node_completed", "node_id": nid, "output": output, "variables": variables})
 
             except asyncio.CancelledError:
                 async with get_db() as db:
@@ -346,7 +348,7 @@ async def execute_workflow(
         )
         await db.commit()
 
-    await emit({"type": "execution_completed", "status": final_status})
+    await emit({"type": "execution_completed", "status": final_status, "variables": variables})
     _unregister_run(run_id)
     return final_status
 
