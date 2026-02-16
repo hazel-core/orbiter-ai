@@ -67,3 +67,24 @@ Started: Mon Feb 16 2026
   - Test pattern for convention modules: check types, no dupes, naming patterns, group completeness, exact values
   - semconv.py has zero imports (except `__future__` annotations) — keeps it dependency-free
 ---
+
+## 2026-02-16 - US-004
+- Implemented distributed tracing module at `packages/orbiter-observability/src/orbiter/observability/tracing.py` (~280 lines)
+- Ported from `packages/orbiter-trace/src/orbiter/trace/decorator.py` with key enhancement: optional OTel support
+- `HAS_OTEL` flag via `try/except ImportError` pattern — when OTel absent, everything is no-op
+- `NullSpan` stub class: `set_attribute()`, `record_exception()`, `set_status()` all no-ops, works as context manager
+- `span()` sync context manager and `aspan()` async context manager — yield real OTel spans or NullSpan
+- `@traced` decorator: supports sync, async, sync generators, async generators — passthrough when no OTel
+- `extract_metadata()`: qualname, module, lineno, filepath, parameters extraction from callables
+- `is_user_code()` / `get_user_frame()`: user-code frame filtering for call stack analysis
+- `extract_args=True` option records call arguments as span attributes
+- Exception recording on spans (record_exception)
+- 50 tests covering: NullSpan, is_user_code, get_user_frame, extract_metadata, span/aspan with and without OTel, @traced for all 4 function types with and without OTel, edge cases (nested, list flattening, custom name+attrs)
+- Files changed: packages/orbiter-observability/src/orbiter/observability/tracing.py, packages/orbiter-observability/tests/test_obs_tracing.py
+- **Learnings for future iterations:**
+  - Pyright requires `_otel_trace` to be narrowed from `None | module` — use a `_get_tracer()` helper with `assert _otel_trace is not None`
+  - When `HAS_OTEL` is False, `@traced` returns the original function directly (no wrapper overhead)
+  - OTel test fixture must reset `trace._TRACER_PROVIDER_SET_ONCE._done = False` and `trace._TRACER_PROVIDER = None` before each test
+  - Use `unittest.mock.patch("orbiter.observability.tracing.HAS_OTEL", False)` to test no-OTel path
+  - Ruff SIM117: combine nested `with` statements into single `with` using comma syntax
+---

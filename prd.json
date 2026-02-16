@@ -80,7 +80,7 @@
         "Pyright passes"
       ],
       "priority": 4,
-      "passes": false,
+      "passes": true,
       "notes": "Port from packages/orbiter-trace/src/orbiter/trace/decorator.py (~210 lines). Key change: add NullSpan fallback and try/except import pattern for OTel. Use HAS_OTEL = bool to gate real vs stub behavior. Port tests from test_trace_decorator.py."
     },
     {
