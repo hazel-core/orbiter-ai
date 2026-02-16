@@ -2493,6 +2493,7 @@ source = { editable = "packages/orbiter-web" }
 dependencies = [
     { name = "aiosqlite" },
     { name = "bcrypt" },
+    { name = "cryptography" },
     { name = "fastapi" },
     { name = "uvicorn" },
 ]
@@ -2501,6 +2502,7 @@ dependencies = [
 requires-dist = [
     { name = "aiosqlite", specifier = ">=0.20" },
     { name = "bcrypt", specifier = ">=4.0" },
+    { name = "cryptography", specifier = ">=42.0" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "uvicorn", specifier = ">=0.30" },
 ]

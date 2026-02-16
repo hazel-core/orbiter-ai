@@ -36,6 +36,8 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
 - Modal integration: reuse `Modal.astro` component, open with `.showModal()`, `data-modal-close` handles closing automatically
 - App pages use `PageLayout` (not `BaseLayout`) for sidebar + top bar + breadcrumbs
 - Ruff B008: use `# noqa: B008` for FastAPI `Depends()` in function defaults — it's the standard DI pattern
+- Auth redirect lives in PageLayout — all app pages are protected automatically; standalone pages (login) use BaseLayout directly
+- Login page uses BaseLayout, not PageLayout, since it doesn't need sidebar/topbar chrome
 - Auth middleware: `get_current_user` from `routes/auth.py` is a FastAPI `Depends()` — use in any protected route
 
 ---
@@ -302,4 +304,35 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Session expiry checked in SQL: `WHERE s.expires_at > datetime('now')` — no Python datetime comparison needed
   - `response.set_cookie(httponly=True, samesite="lax")` for secure session cookies
   - `_hash_password` and `_verify_password` helpers keep bcrypt encoding details in one place
+---
+
+## 2026-02-16 21:15 - US-019
+- What was implemented: Login page at /login with email/password form; client-side auth redirect for protected pages; Settings page at /settings with Profile, Appearance, API Keys, and Workspace sections
+- Files changed:
+  - packages/orbiter-web/src/pages/login.astro (new — standalone login form using BaseLayout, calls POST /api/auth/login, redirects to /projects on success)
+  - packages/orbiter-web/src/pages/settings.astro (new — tabbed settings page with Profile (user info + logout), Appearance (light/dark/system theme), API Keys (placeholder), Workspace (default provider + concurrent run limit))
+  - packages/orbiter-web/src/layouts/PageLayout.astro (added auth check script — fetches /api/auth/me, redirects to /login on 401)
+- **Learnings for future iterations:**
+  - Login page uses BaseLayout (not PageLayout) since it's a standalone page without sidebar navigation
+  - Auth redirect is in PageLayout so ALL app pages get protection automatically — no per-page auth code needed
+  - `fetch("/api/auth/me", { credentials: "same-origin" })` is the client-side auth check pattern — include credentials for cookies
+  - Settings tab switching uses `data-settings-tab` attributes + `classList` manipulation — same pattern as Tabs.astro but simpler inline
+  - Theme "system" option removes localStorage key and applies `prefers-color-scheme` media query result
+  - Workspace settings (default_provider, concurrent_limit) stored in localStorage for now — will migrate to server-side when provider API exists
+  - Login form checks `GET /api/auth/me` on load — if already authenticated, redirects to /projects immediately
+  - Manual browser verification needed (no browser testing tool available)
+---
+
+## 2026-02-16 21:30 - US-020
+- What was implemented: Provider database schema with encrypted API key storage using Fernet symmetric encryption
+- Files changed:
+  - packages/orbiter-web/pyproject.toml (added cryptography>=42.0 dependency)
+  - packages/orbiter-web/src/orbiter_web/migrations/004_create_providers.sql (new — providers table with CHECK constraint on provider_type, FK to users, index on user_id)
+  - packages/orbiter-web/src/orbiter_web/crypto.py (new — Fernet encrypt/decrypt helpers using SHA-256 key derivation from app secret_key)
+  - uv.lock (updated with cryptography dependency)
+- **Learnings for future iterations:**
+  - Fernet requires a 32-byte URL-safe base64-encoded key — derive from secret_key using `hashlib.sha256().digest()` then `base64.urlsafe_b64encode()`
+  - SQLite CHECK constraints enforce enum-like values: `CHECK (provider_type IN ('openai', 'anthropic', ...))`
+  - `encrypt_api_key()` / `decrypt_api_key()` in `orbiter_web/crypto.py` — use for any sensitive field storage
+  - cryptography package was already transitively installed; adding explicit dependency ensures it's always available
 ---
