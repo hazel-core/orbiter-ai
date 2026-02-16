@@ -97,6 +97,24 @@ const saveIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
           >
             Handoffs
           </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected="false"
+            data-tab="hooks"
+            class="tab-btn relative pb-3 text-sm font-medium text-muted border-b-2 border-transparent hover:text-dark transition-colors"
+          >
+            Hooks
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected="false"
+            data-tab="advanced"
+            class="tab-btn relative pb-3 text-sm font-medium text-muted border-b-2 border-transparent hover:text-dark transition-colors"
+          >
+            Advanced
+          </button>
         </nav>
       </div>
 
@@ -280,6 +298,197 @@ const saveIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
           </div>
         </div>
       </div>
+
+      <!-- Hooks tab -->
+      <div id="panel-hooks" class="tab-panel hidden" role="tabpanel">
+        <div class="flex flex-col gap-5">
+          <div>
+            <h3 class="text-sm font-medium text-dark">Lifecycle Hooks</h3>
+            <p class="text-xs text-muted mt-0.5">Attach functions to agent lifecycle events. Each hook point runs before or after a specific stage.</p>
+          </div>
+
+          <!-- Hook points (populated by JS with initial structure) -->
+          <div id="hooks-list" class="flex flex-col gap-3">
+            <!-- before_model_call -->
+            <div class="hook-row rounded-lg border border-dark/[0.08] bg-paper px-4 py-3" data-hook="before_model_call">
+              <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                  <span class="flex h-6 w-6 items-center justify-center rounded bg-zen-blue/10 text-zen-blue">
+                    <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="13 17 18 12 13 7"/><polyline points="6 17 11 12 6 7"/></svg>
+                  </span>
+                  <span class="text-sm font-medium text-dark">before_model_call</span>
+                </div>
+                <span class="text-[10px] font-medium text-muted uppercase tracking-wider">Pre-LLM</span>
+              </div>
+              <input
+                type="text"
+                data-hook-input="before_model_call"
+                placeholder="Function name or module path (e.g. my_hooks.log_prompt)"
+                class="w-full bg-subtle/50 border border-dark/[0.06] rounded-md px-3 py-1.5 text-sm text-dark placeholder:text-muted/50 font-mono outline-none focus:border-coral focus:ring-2 focus:ring-coral/20 transition-all"
+              />
+            </div>
+
+            <!-- after_model_call -->
+            <div class="hook-row rounded-lg border border-dark/[0.08] bg-paper px-4 py-3" data-hook="after_model_call">
+              <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                  <span class="flex h-6 w-6 items-center justify-center rounded bg-zen-green/10 text-zen-green">
+                    <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="13 17 18 12 13 7"/><polyline points="6 17 11 12 6 7"/></svg>
+                  </span>
+                  <span class="text-sm font-medium text-dark">after_model_call</span>
+                </div>
+                <span class="text-[10px] font-medium text-muted uppercase tracking-wider">Post-LLM</span>
+              </div>
+              <input
+                type="text"
+                data-hook-input="after_model_call"
+                placeholder="Function name or module path (e.g. my_hooks.validate_output)"
+                class="w-full bg-subtle/50 border border-dark/[0.06] rounded-md px-3 py-1.5 text-sm text-dark placeholder:text-muted/50 font-mono outline-none focus:border-coral focus:ring-2 focus:ring-coral/20 transition-all"
+              />
+            </div>
+
+            <!-- before_tool_call -->
+            <div class="hook-row rounded-lg border border-dark/[0.08] bg-paper px-4 py-3" data-hook="before_tool_call">
+              <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                  <span class="flex h-6 w-6 items-center justify-center rounded bg-coral/10 text-coral">
+                    <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+                  </span>
+                  <span class="text-sm font-medium text-dark">before_tool_call</span>
+                </div>
+                <span class="text-[10px] font-medium text-muted uppercase tracking-wider">Pre-Tool</span>
+              </div>
+              <input
+                type="text"
+                data-hook-input="before_tool_call"
+                placeholder="Function name or module path (e.g. my_hooks.authorize_tool)"
+                class="w-full bg-subtle/50 border border-dark/[0.06] rounded-md px-3 py-1.5 text-sm text-dark placeholder:text-muted/50 font-mono outline-none focus:border-coral focus:ring-2 focus:ring-coral/20 transition-all"
+              />
+            </div>
+
+            <!-- after_tool_call -->
+            <div class="hook-row rounded-lg border border-dark/[0.08] bg-paper px-4 py-3" data-hook="after_tool_call">
+              <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                  <span class="flex h-6 w-6 items-center justify-center rounded bg-coral/10 text-coral">
+                    <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+                  </span>
+                  <span class="text-sm font-medium text-dark">after_tool_call</span>
+                </div>
+                <span class="text-[10px] font-medium text-muted uppercase tracking-wider">Post-Tool</span>
+              </div>
+              <input
+                type="text"
+                data-hook-input="after_tool_call"
+                placeholder="Function name or module path (e.g. my_hooks.log_tool_result)"
+                class="w-full bg-subtle/50 border border-dark/[0.06] rounded-md px-3 py-1.5 text-sm text-dark placeholder:text-muted/50 font-mono outline-none focus:border-coral focus:ring-2 focus:ring-coral/20 transition-all"
+              />
+            </div>
+
+            <!-- on_error -->
+            <div class="hook-row rounded-lg border border-dark/[0.08] bg-paper px-4 py-3" data-hook="on_error">
+              <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                  <span class="flex h-6 w-6 items-center justify-center rounded bg-coral/10 text-coral">
+                    <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                  </span>
+                  <span class="text-sm font-medium text-dark">on_error</span>
+                </div>
+                <span class="text-[10px] font-medium text-muted uppercase tracking-wider">Error</span>
+              </div>
+              <input
+                type="text"
+                data-hook-input="on_error"
+                placeholder="Function name or module path (e.g. my_hooks.handle_error)"
+                class="w-full bg-subtle/50 border border-dark/[0.06] rounded-md px-3 py-1.5 text-sm text-dark placeholder:text-muted/50 font-mono outline-none focus:border-coral focus:ring-2 focus:ring-coral/20 transition-all"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Advanced tab -->
+      <div id="panel-advanced" class="tab-panel hidden" role="tabpanel">
+        <div class="flex flex-col gap-6">
+          <!-- Max Steps -->
+          <div class="flex flex-col gap-1.5">
+            <div class="flex items-center justify-between">
+              <label for="advanced-max-steps" class="text-sm font-medium text-dark">Max Steps</label>
+              <span id="max-steps-value" class="text-sm font-mono text-muted tabular-nums">10</span>
+            </div>
+            <input
+              type="range"
+              id="advanced-max-steps"
+              name="max_steps"
+              min="1"
+              max="100"
+              step="1"
+              value="10"
+              class="w-full h-2 bg-dark/[0.08] rounded-lg appearance-none cursor-pointer accent-coral"
+            />
+            <div class="flex justify-between text-xs text-muted/60">
+              <span>1 step</span>
+              <span>100 steps</span>
+            </div>
+            <p class="text-xs text-muted">Maximum number of tool-call loops the agent can execute.</p>
+          </div>
+
+          <hr class="border-dark/[0.06]" />
+
+          <!-- Output Type (JSON Schema) -->
+          <div class="flex flex-col gap-1.5">
+            <label for="advanced-output-type" class="text-sm font-medium text-dark">Output Type (JSON Schema)</label>
+            <textarea
+              id="advanced-output-type"
+              name="output_type_json"
+              rows="8"
+              class="w-full bg-paper border border-dark/[0.08] rounded-lg px-3 py-2 text-dark placeholder:text-muted/60 transition-all duration-200 outline-none focus:border-coral focus:ring-2 focus:ring-coral/20 resize-y font-mono text-sm leading-relaxed"
+              placeholder='{"type": "object", "properties": {...}}'
+            ></textarea>
+            <p id="output-type-error" class="text-xs text-coral hidden">Invalid JSON. Please check your syntax.</p>
+            <p class="text-xs text-muted">Define a JSON Schema for structured agent output. Leave as <code class="bg-subtle/80 px-1 py-0.5 rounded text-[11px]">{}</code> for free-form text.</p>
+          </div>
+
+          <hr class="border-dark/[0.06]" />
+
+          <!-- Toggles -->
+          <div class="flex flex-col gap-4">
+            <!-- Memory toggle -->
+            <div class="flex items-center justify-between rounded-lg border border-dark/[0.08] bg-paper px-4 py-3">
+              <div>
+                <p class="text-sm font-medium text-dark">Memory</p>
+                <p class="text-xs text-muted mt-0.5">Enable persistent memory across conversations.</p>
+              </div>
+              <button
+                type="button"
+                id="toggle-memory"
+                role="switch"
+                aria-checked="false"
+                class="relative h-6 w-11 rounded-full bg-dark/[0.12] transition-colors cursor-pointer"
+              >
+                <span class="toggle-dot absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform"></span>
+              </button>
+            </div>
+
+            <!-- Context toggle -->
+            <div class="flex items-center justify-between rounded-lg border border-dark/[0.08] bg-paper px-4 py-3">
+              <div>
+                <p class="text-sm font-medium text-dark">Context Engine</p>
+                <p class="text-xs text-muted mt-0.5">Enable the context engine for RAG and artifact management.</p>
+              </div>
+              <button
+                type="button"
+                id="toggle-context"
+                role="switch"
+                aria-checked="false"
+                class="relative h-6 w-11 rounded-full bg-dark/[0.12] transition-colors cursor-pointer"
+              >
+                <span class="toggle-dot absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform"></span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -355,6 +564,21 @@ const saveIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
     var handoffSelectorList = document.getElementById("handoff-selector-list");
     var handoffSearch = document.getElementById("handoff-search");
 
+    /* Hooks tab */
+    var hookPoints = ["before_model_call", "after_model_call", "before_tool_call", "after_tool_call", "on_error"];
+
+    /* Advanced tab */
+    var maxStepsSlider = document.getElementById("advanced-max-steps");
+    var maxStepsValue = document.getElementById("max-steps-value");
+    var outputTypeTextarea = document.getElementById("advanced-output-type");
+    var outputTypeError = document.getElementById("output-type-error");
+    var toggleMemory = document.getElementById("toggle-memory");
+    var toggleContext = document.getElementById("toggle-context");
+
+    /* Toggle state */
+    var memoryEnabled = false;
+    var contextEnabled = false;
+
     var currentAgent = null;
     var allProviders = [];
     var allModels = [];
@@ -403,6 +627,74 @@ const saveIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
     if (temperatureSlider) {
       temperatureSlider.addEventListener("input", function () {
         temperatureValue.textContent = parseFloat(temperatureSlider.value).toFixed(1);
+      });
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Max Steps slider                                                    */
+    /* ------------------------------------------------------------------ */
+    if (maxStepsSlider) {
+      maxStepsSlider.addEventListener("input", function () {
+        maxStepsValue.textContent = maxStepsSlider.value;
+      });
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Output type JSON validation                                         */
+    /* ------------------------------------------------------------------ */
+    if (outputTypeTextarea) {
+      outputTypeTextarea.addEventListener("blur", function () {
+        validateOutputTypeJson();
+      });
+    }
+
+    function validateOutputTypeJson() {
+      var val = outputTypeTextarea.value.trim();
+      if (!val || val === "{}") {
+        outputTypeError.classList.add("hidden");
+        outputTypeTextarea.classList.remove("border-coral");
+        return true;
+      }
+      try {
+        JSON.parse(val);
+        outputTypeError.classList.add("hidden");
+        outputTypeTextarea.classList.remove("border-coral");
+        return true;
+      } catch (e) {
+        outputTypeError.classList.remove("hidden");
+        outputTypeTextarea.classList.add("border-coral");
+        return false;
+      }
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Toggle switches                                                     */
+    /* ------------------------------------------------------------------ */
+    function setToggle(btn, on) {
+      var dot = btn.querySelector(".toggle-dot");
+      if (on) {
+        btn.classList.remove("bg-dark/[0.12]");
+        btn.classList.add("bg-coral");
+        btn.setAttribute("aria-checked", "true");
+        dot.classList.add("translate-x-5");
+      } else {
+        btn.classList.remove("bg-coral");
+        btn.classList.add("bg-dark/[0.12]");
+        btn.setAttribute("aria-checked", "false");
+        dot.classList.remove("translate-x-5");
+      }
+    }
+
+    if (toggleMemory) {
+      toggleMemory.addEventListener("click", function () {
+        memoryEnabled = !memoryEnabled;
+        setToggle(toggleMemory, memoryEnabled);
+      });
+    }
+    if (toggleContext) {
+      toggleContext.addEventListener("click", function () {
+        contextEnabled = !contextEnabled;
+        setToggle(toggleContext, contextEnabled);
       });
     }
 
@@ -805,6 +1097,50 @@ const saveIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
       }
       renderHandoffsList();
 
+      /* Hooks tab — parse hooks_json */
+      try {
+        var hooks = JSON.parse(agent.hooks_json || "{}");
+        if (hooks && typeof hooks === "object") {
+          hookPoints.forEach(function (hp) {
+            var input = document.querySelector('[data-hook-input="' + hp + '"]');
+            if (input && hooks[hp]) {
+              input.value = hooks[hp];
+            }
+          });
+        }
+      } catch (e) {
+        /* ignore parse errors */
+      }
+
+      /* Advanced tab */
+      if (agent.max_steps != null) {
+        maxStepsSlider.value = agent.max_steps;
+        maxStepsValue.textContent = agent.max_steps;
+      }
+
+      if (agent.output_type_json && agent.output_type_json !== "{}") {
+        try {
+          outputTypeTextarea.value = JSON.stringify(JSON.parse(agent.output_type_json), null, 2);
+        } catch (e) {
+          outputTypeTextarea.value = agent.output_type_json;
+        }
+      }
+
+      /* Memory and context toggles — stored in hooks_json as meta flags */
+      try {
+        var hooksData = JSON.parse(agent.hooks_json || "{}");
+        if (hooksData._memory_enabled) {
+          memoryEnabled = true;
+          setToggle(toggleMemory, true);
+        }
+        if (hooksData._context_enabled) {
+          contextEnabled = true;
+          setToggle(toggleContext, true);
+        }
+      } catch (e) {
+        /* ignore */
+      }
+
       /* Populate providers, then models. */
       fetch("/api/providers")
         .then(function (res) { return res.ok ? res.json() : []; })
@@ -875,6 +1211,27 @@ const saveIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
           }
         }
 
+        /* Validate output_type JSON before saving */
+        if (!validateOutputTypeJson()) {
+          document.querySelector('[data-tab="advanced"]').click();
+          outputTypeTextarea.focus();
+          return;
+        }
+
+        /* Build hooks_json from hook inputs */
+        var hooksObj = {};
+        hookPoints.forEach(function (hp) {
+          var input = document.querySelector('[data-hook-input="' + hp + '"]');
+          if (input && input.value.trim()) {
+            hooksObj[hp] = input.value.trim();
+          }
+        });
+        /* Store toggle state as meta flags */
+        if (memoryEnabled) hooksObj._memory_enabled = true;
+        if (contextEnabled) hooksObj._context_enabled = true;
+
+        var outputTypeVal = outputTypeTextarea.value.trim() || "{}";
+
         var body = {
           name: name,
           description: descriptionInput.value.trim(),
@@ -882,8 +1239,11 @@ const saveIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
           model_provider: modelProvider,
           model_name: modelSelect.value || "",
           temperature: parseFloat(temperatureSlider.value),
+          max_steps: parseInt(maxStepsSlider.value, 10),
           tools_json: JSON.stringify(assignedTools),
           handoffs_json: JSON.stringify(assignedHandoffs),
+          hooks_json: JSON.stringify(hooksObj),
+          output_type_json: outputTypeVal,
         };
 
         var maxTokens = maxTokensInput.value.trim();
