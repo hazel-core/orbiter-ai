@@ -329,6 +329,11 @@ const icons = {
       <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" /><polyline points="17 21 17 13 7 13 7 21" /><polyline points="7 3 7 8 15 8" />
     </svg>
   ),
+  export: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
+    </svg>
+  ),
 };
 
 /* ------------------------------------------------------------------ */
@@ -448,6 +453,30 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
 
   /* Auto-save */
   const { scheduleSave, saveNow, saveStatus } = useAutoSave(workflowId, nodes, edges, viewportRef, loaded);
+
+  /* Export workflow as JSON download */
+  const exportWorkflow = useCallback(() => {
+    if (!workflowId) return;
+    fetch(`/api/workflows/${workflowId}/export`, { method: "POST" })
+      .then((res) => {
+        if (!res.ok) throw new Error("Export failed");
+        return res.json();
+      })
+      .then((data) => {
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = (workflowName || "workflow").replace(/\s+/g, "_").toLowerCase() + ".json";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      })
+      .catch((err) => {
+        alert("Export error: " + err.message);
+      });
+  }, [workflowId, workflowName]);
 
   /* Load canvas state from backend */
   useEffect(() => {
@@ -978,6 +1007,9 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
                     ? "Saving\u2026"
                     : "Unsaved changes"}
               </span>
+              <ToolbarButton onClick={exportWorkflow} title="Export JSON">
+                {icons.export}
+              </ToolbarButton>
             </>
           )}
         </div>

@@ -285,3 +285,40 @@ async def export_workflow(
             "Content-Disposition": f'attachment; filename="{safe_name}.json"',
         },
     )
+
+
+@router.post("/{workflow_id}/duplicate", response_model=WorkflowResponse, status_code=201)
+async def duplicate_workflow(
+    workflow_id: str,
+    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+) -> dict[str, Any]:
+    """Duplicate a workflow with '(Copy)' suffix."""
+    async with get_db() as db:
+        data = await _verify_ownership(db, workflow_id, user["id"])
+
+        new_id = str(uuid.uuid4())
+        now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
+
+        await db.execute(
+            """
+            INSERT INTO workflows (id, name, description, project_id, nodes_json, edges_json, viewport_json, user_id, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                new_id,
+                data["name"] + " (Copy)",
+                data["description"],
+                data["project_id"],
+                data["nodes_json"],
+                data["edges_json"],
+                data["viewport_json"],
+                user["id"],
+                now,
+                now,
+            ),
+        )
+        await db.commit()
+
+        cursor = await db.execute("SELECT * FROM workflows WHERE id = ?", (new_id,))
+        row = await cursor.fetchone()
+        return _row_to_dict(row)
