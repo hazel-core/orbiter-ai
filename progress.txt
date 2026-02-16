@@ -41,6 +41,8 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
 - Auth middleware: `get_current_user` from `routes/auth.py` is a FastAPI `Depends()` — use in any protected route
 - API keys: encrypt with `encrypt_api_key()` on write, use `api_key_set: bool` in response models — never expose encrypted or plaintext keys in API responses
 - Provider test endpoint: use httpx AsyncClient for lightweight API calls; lazy-import httpx to avoid overhead on CRUD routes
+- Provider keys: multiple keys per provider in `provider_keys` table; load balance strategy on `providers.load_balance_strategy`
+- Key selection: POST `/api/providers/:id/keys/select` returns decrypted key based on strategy; report usage via POST `/api/providers/:id/keys/:keyId/report`
 
 ---
 
@@ -370,5 +372,37 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Edit modal pre-fills all fields from provider data; API key field is blank with placeholder "Leave blank to keep current key"
   - Delete confirmation modal uses a `deleteTargetId` closure variable to track which provider to delete
   - Three modals (add, edit, delete) all use the existing Modal.astro component and `data-modal-close` pattern
+  - Manual browser verification needed (no browser testing tool available)
+---
+
+## 2026-02-16 23:00 - US-023
+- What was implemented: Multi-key load balancing backend — provider_keys table, CRUD endpoints, load balancing strategies, auto-failover with cooldown
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/migrations/005_create_provider_keys.sql (new — provider_keys table with status, stats, cooldown; ALTER TABLE adds load_balance_strategy to providers)
+  - packages/orbiter-web/src/orbiter_web/routes/provider_keys.py (new — APIRouter with key CRUD, strategy get/put, key selection with load balancing, usage reporting for failover)
+  - packages/orbiter-web/src/orbiter_web/routes/providers.py (updated — added load_balance_strategy to ProviderResponse)
+  - packages/orbiter-web/src/orbiter_web/app.py (updated — registered provider_keys_router)
+- **Learnings for future iterations:**
+  - SQLite ALTER TABLE only supports ADD COLUMN (no DROP, RENAME, or modify constraints) — put ALTER in same migration as related CREATE TABLE
+  - Load balancing key selection filters by status: active keys + rate_limited keys with expired cooldown
+  - Round robin strategy: select key with lowest total_requests (natural rotation)
+  - LRU strategy: select key with oldest last_used (NULL sorts first, so never-used keys get picked first)
+  - Usage reporting endpoint (`POST /keys/:id/report`) updates stats and status: success resets errors, rate_limited sets cooldown, 5+ consecutive errors marks key as invalid
+  - `datetime('now', '+' || ? || ' seconds')` for SQLite cooldown calculation
+  - Provider keys router shares the `/api/providers` prefix with providers router — FastAPI handles sub-routes correctly
+  - `_verify_provider_ownership()` helper avoids repeating the ownership check in every endpoint
+---
+
+## 2026-02-16 23:30 - US-024
+- What was implemented: Multi-key management UI — expandable keys section on each provider card with key CRUD, health indicators, per-key stats, cooldown timers, and load balancing strategy selector
+- Files changed:
+  - packages/orbiter-web/src/pages/settings.astro (major update — added key row template, delete key modal, expandable keys section in provider card template with strategy selector + inline add form, JS for key CRUD/rendering/cooldown timers)
+- **Learnings for future iterations:**
+  - Keys section uses a toggle pattern: "Keys" button shows/hides `.provider-keys-section` inside each provider card
+  - Key row template (`key-row-template`) is separate from provider card template — nested templates work with cloneNode(true)
+  - Cooldown timers use `setInterval` keyed by key ID in a `cooldownIntervals` object — must clear all on re-render to prevent leaks
+  - Strategy update is fire-and-forget (no UI feedback) since it's a lightweight PUT
+  - Key stats use compact formatting: `formatTokens()` for 1.2K/1.5M, `formatRelativeTime()` for "5m ago" style
+  - Delete key uses same modal pattern as delete provider but with separate state variables (deleteKeyTargetId, deleteKeyProviderId, deleteKeyCardEl)
   - Manual browser verification needed (no browser testing tool available)
 ---

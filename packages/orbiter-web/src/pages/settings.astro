@@ -292,6 +292,20 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
       </Button>
     </div>
   </Modal>
+
+  <!-- Delete Key Confirmation Modal -->
+  <Modal id="delete-key-modal" title="Delete API Key">
+    <p class="text-sm text-muted mb-1">Are you sure you want to delete key <strong id="delete-key-label" class="text-dark"></strong>?</p>
+    <p class="text-sm text-muted mb-6">This action cannot be undone.</p>
+    <div class="flex justify-end gap-3">
+      <Button variant="default" type="button" data-modal-close="delete-key-modal">
+        Cancel
+      </Button>
+      <Button variant="primary" type="button" id="confirm-delete-key-btn" class="!bg-coral !text-white">
+        Delete Key
+      </Button>
+    </div>
+  </Modal>
 </PageLayout>
 
 <!-- Provider card template -->
@@ -314,6 +328,10 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
         <span class="text-xs text-muted" data-field="key-info"></span>
       </div>
       <div class="flex items-center gap-1">
+        <button type="button" class="provider-keys-btn inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-md text-muted hover:bg-dark/5 hover:text-dark transition-colors cursor-pointer" title="Manage Keys">
+          <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+          Keys
+        </button>
         <button type="button" class="provider-test-btn inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-md text-muted hover:bg-dark/5 hover:text-dark transition-colors cursor-pointer" title="Test Connection">
           <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
           Test
@@ -330,6 +348,58 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
     </div>
     <!-- Test result row (hidden by default) -->
     <div class="provider-test-result hidden mt-3 pt-3 border-t border-dark/[0.06] text-xs"></div>
+    <!-- Keys management section (hidden by default) -->
+    <div class="provider-keys-section hidden mt-3 pt-3 border-t border-dark/[0.06]">
+      <!-- Strategy selector -->
+      <div class="flex items-center justify-between mb-3">
+        <label class="text-xs font-medium text-dark">Load Balancing</label>
+        <select class="keys-strategy-select text-xs bg-paper border border-dark/[0.08] rounded-md px-2 py-1 text-dark cursor-pointer focus:outline-none focus:ring-1 focus:ring-coral/30">
+          <option value="round_robin">Round Robin</option>
+          <option value="random">Random</option>
+          <option value="least_recently_used">Least Recently Used</option>
+        </select>
+      </div>
+      <!-- Key list -->
+      <div class="keys-list flex flex-col gap-2 mb-3"></div>
+      <!-- Keys empty state -->
+      <div class="keys-empty hidden text-xs text-muted text-center py-3">No API keys configured for this provider.</div>
+      <!-- Add key inline form -->
+      <div class="flex gap-2 items-end">
+        <div class="flex-1">
+          <input type="password" class="key-input-value w-full text-xs bg-paper border border-dark/[0.08] rounded-md px-2.5 py-1.5 text-dark placeholder:text-muted/60 focus:outline-none focus:ring-1 focus:ring-coral/30" placeholder="sk-... or API key" />
+        </div>
+        <div class="w-28">
+          <input type="text" class="key-input-label w-full text-xs bg-paper border border-dark/[0.08] rounded-md px-2.5 py-1.5 text-dark placeholder:text-muted/60 focus:outline-none focus:ring-1 focus:ring-coral/30" placeholder="Label" />
+        </div>
+        <button type="button" class="key-add-btn inline-flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-md bg-dark text-paper hover:bg-dark/90 transition-colors cursor-pointer flex-shrink-0">
+          <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Add
+        </button>
+      </div>
+      <div class="key-add-error hidden text-xs text-coral mt-1"></div>
+    </div>
+  </div>
+</template>
+
+<!-- Key row template -->
+<template id="key-row-template">
+  <div class="flex items-center justify-between rounded-md border border-dark/[0.06] px-3 py-2 bg-subtle/40">
+    <div class="flex items-center gap-2 min-w-0">
+      <span class="key-status-dot inline-block h-2 w-2 rounded-full flex-shrink-0"></span>
+      <span class="key-label text-xs font-medium text-dark truncate"></span>
+      <span class="key-status-text text-xs text-muted"></span>
+    </div>
+    <div class="flex items-center gap-3 flex-shrink-0">
+      <div class="flex items-center gap-3 text-xs text-muted">
+        <span class="key-stat-requests" title="Total requests"></span>
+        <span class="key-stat-tokens" title="Total tokens"></span>
+        <span class="key-stat-errors" title="Errors"></span>
+        <span class="key-stat-last-used" title="Last used"></span>
+      </div>
+      <button type="button" class="key-delete-btn text-muted hover:text-coral transition-colors cursor-pointer" title="Delete key">
+        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+      </button>
+    </div>
   </div>
 </template>
 
@@ -519,8 +589,25 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
         });
     }
 
+    var keyRowTemplate = document.getElementById("key-row-template");
+    var deleteKeyModal = document.getElementById("delete-key-modal");
+    var deleteKeyLabel = document.getElementById("delete-key-label");
+    var confirmDeleteKeyBtn = document.getElementById("confirm-delete-key-btn");
+    var deleteKeyTargetId = null;
+    var deleteKeyProviderId = null;
+    var deleteKeyCardEl = null;
+
+    // Cooldown timers - track intervals so we can clear them
+    var cooldownIntervals = {};
+
     function renderProviders(providers) {
       if (providersLoading) providersLoading.classList.add("hidden");
+
+      // Clear all cooldown intervals
+      Object.keys(cooldownIntervals).forEach(function (k) {
+        clearInterval(cooldownIntervals[k]);
+        delete cooldownIntervals[k];
+      });
 
       if (!providers || providers.length === 0) {
         providersList.classList.add("hidden");
@@ -564,6 +651,11 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
         keyInfoEl.textContent = provider.api_key_set ? "API key configured" : "No API key set";
 
         // Button handlers
+        var keysBtn = card.querySelector(".provider-keys-btn");
+        keysBtn.addEventListener("click", function () {
+          toggleKeysSection(provider.id, container);
+        });
+
         var testBtn = card.querySelector(".provider-test-btn");
         testBtn.addEventListener("click", function () {
           testProvider(provider.id, container);
@@ -577,6 +669,18 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
         var deleteBtn = card.querySelector(".provider-delete-btn");
         deleteBtn.addEventListener("click", function () {
           openDeleteModal(provider.id, provider.name);
+        });
+
+        // Keys section: add key button
+        var keyAddBtn = card.querySelector(".key-add-btn");
+        keyAddBtn.addEventListener("click", function () {
+          addKeyToProvider(provider.id, container);
+        });
+
+        // Strategy change handler
+        var strategySelect = card.querySelector(".keys-strategy-select");
+        strategySelect.addEventListener("change", function () {
+          updateStrategy(provider.id, strategySelect.value);
         });
 
         providersList.appendChild(card);
@@ -778,6 +882,270 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
           .finally(function () {
             confirmDeleteBtn.disabled = false;
             confirmDeleteBtn.textContent = "Delete Provider";
+          });
+      });
+    }
+
+    // ------- Key Management -------
+    function toggleKeysSection(providerId, cardEl) {
+      var section = cardEl.querySelector(".provider-keys-section");
+      if (section.classList.contains("hidden")) {
+        section.classList.remove("hidden");
+        fetchKeys(providerId, cardEl);
+      } else {
+        section.classList.add("hidden");
+      }
+    }
+
+    function fetchKeys(providerId, cardEl) {
+      var keysList = cardEl.querySelector(".keys-list");
+      var keysEmpty = cardEl.querySelector(".keys-empty");
+      var strategySelect = cardEl.querySelector(".keys-strategy-select");
+
+      keysList.innerHTML = '<div class="text-xs text-muted py-2">Loading keys...</div>';
+      keysEmpty.classList.add("hidden");
+
+      // Fetch strategy and keys in parallel
+      Promise.all([
+        fetch("/api/providers/" + providerId + "/strategy").then(function (r) { return r.ok ? r.json() : { strategy: "round_robin" }; }),
+        fetch("/api/providers/" + providerId + "/keys").then(function (r) { return r.ok ? r.json() : []; })
+      ]).then(function (results) {
+        var strategyData = results[0];
+        var keys = results[1];
+
+        strategySelect.value = strategyData.strategy || "round_robin";
+        renderKeys(providerId, cardEl, keys);
+      }).catch(function () {
+        keysList.innerHTML = '<div class="text-xs text-coral py-2">Failed to load keys.</div>';
+      });
+    }
+
+    function renderKeys(providerId, cardEl, keys) {
+      var keysList = cardEl.querySelector(".keys-list");
+      var keysEmpty = cardEl.querySelector(".keys-empty");
+
+      keysList.innerHTML = "";
+
+      if (!keys || keys.length === 0) {
+        keysEmpty.classList.remove("hidden");
+        return;
+      }
+
+      keysEmpty.classList.add("hidden");
+
+      keys.forEach(function (key) {
+        var row = keyRowTemplate.content.cloneNode(true);
+        var container = row.querySelector("div");
+        container.setAttribute("data-key-id", key.id);
+
+        // Status dot
+        var dot = row.querySelector(".key-status-dot");
+        if (key.status === "active") {
+          dot.classList.add("bg-zen-green");
+        } else if (key.status === "rate_limited") {
+          dot.classList.add("bg-yellow-400");
+        } else {
+          dot.classList.add("bg-coral");
+        }
+
+        // Label
+        var labelEl = row.querySelector(".key-label");
+        labelEl.textContent = key.label || "Key " + (key.strategy_position + 1);
+
+        // Status text with cooldown
+        var statusText = row.querySelector(".key-status-text");
+        if (key.status === "active") {
+          statusText.textContent = "";
+        } else if (key.status === "rate_limited") {
+          if (key.cooldown_until) {
+            startCooldownTimer(key.id, key.cooldown_until, statusText);
+          } else {
+            statusText.textContent = "(rate limited)";
+            statusText.classList.add("text-yellow-600");
+          }
+        } else if (key.status === "invalid") {
+          statusText.textContent = "(invalid)";
+          statusText.classList.add("text-coral");
+        }
+
+        // Stats
+        var reqEl = row.querySelector(".key-stat-requests");
+        reqEl.textContent = key.total_requests + " req";
+
+        var tokensEl = row.querySelector(".key-stat-tokens");
+        tokensEl.textContent = formatTokens(key.total_tokens);
+
+        var errorsEl = row.querySelector(".key-stat-errors");
+        if (key.error_count > 0) {
+          errorsEl.textContent = key.error_count + " err";
+          errorsEl.classList.add("text-coral");
+        } else {
+          errorsEl.textContent = "";
+        }
+
+        var lastUsedEl = row.querySelector(".key-stat-last-used");
+        if (key.last_used) {
+          lastUsedEl.textContent = formatRelativeTime(key.last_used);
+        } else {
+          lastUsedEl.textContent = "never";
+        }
+
+        // Delete handler
+        var deleteBtn = row.querySelector(".key-delete-btn");
+        deleteBtn.addEventListener("click", function () {
+          openDeleteKeyModal(providerId, key.id, key.label || "Key " + (key.strategy_position + 1), cardEl);
+        });
+
+        keysList.appendChild(row);
+      });
+
+      // Update key-info on the provider card
+      var keyInfoEl = cardEl.querySelector('[data-field="key-info"]');
+      if (keyInfoEl) {
+        keyInfoEl.textContent = keys.length + " key" + (keys.length !== 1 ? "s" : "") + " configured";
+      }
+    }
+
+    function formatTokens(num) {
+      if (num >= 1000000) return (num / 1000000).toFixed(1) + "M tok";
+      if (num >= 1000) return (num / 1000).toFixed(1) + "K tok";
+      return num + " tok";
+    }
+
+    function formatRelativeTime(dateStr) {
+      try {
+        var d = new Date(dateStr + "Z");
+        var now = new Date();
+        var diff = Math.floor((now - d) / 1000);
+        if (diff < 60) return "just now";
+        if (diff < 3600) return Math.floor(diff / 60) + "m ago";
+        if (diff < 86400) return Math.floor(diff / 3600) + "h ago";
+        return Math.floor(diff / 86400) + "d ago";
+      } catch (_e) {
+        return dateStr;
+      }
+    }
+
+    function startCooldownTimer(keyId, cooldownUntil, statusEl) {
+      // Clear any existing timer for this key
+      if (cooldownIntervals[keyId]) {
+        clearInterval(cooldownIntervals[keyId]);
+      }
+
+      function updateTimer() {
+        var now = new Date();
+        var target = new Date(cooldownUntil + "Z");
+        var remaining = Math.max(0, Math.floor((target - now) / 1000));
+
+        if (remaining <= 0) {
+          statusEl.textContent = "(cooldown expired)";
+          statusEl.classList.remove("text-yellow-600");
+          statusEl.classList.add("text-muted");
+          clearInterval(cooldownIntervals[keyId]);
+          delete cooldownIntervals[keyId];
+          return;
+        }
+
+        var mins = Math.floor(remaining / 60);
+        var secs = remaining % 60;
+        statusEl.textContent = "(rate limited " + mins + ":" + (secs < 10 ? "0" : "") + secs + ")";
+        statusEl.classList.add("text-yellow-600");
+      }
+
+      updateTimer();
+      cooldownIntervals[keyId] = setInterval(updateTimer, 1000);
+    }
+
+    function addKeyToProvider(providerId, cardEl) {
+      var keyInput = cardEl.querySelector(".key-input-value");
+      var labelInput = cardEl.querySelector(".key-input-label");
+      var addBtn = cardEl.querySelector(".key-add-btn");
+      var errorEl = cardEl.querySelector(".key-add-error");
+
+      var apiKey = (keyInput.value || "").trim();
+      if (!apiKey) {
+        errorEl.textContent = "API key is required";
+        errorEl.classList.remove("hidden");
+        return;
+      }
+
+      errorEl.classList.add("hidden");
+      addBtn.disabled = true;
+      addBtn.textContent = "Adding...";
+
+      var body = { api_key: apiKey };
+      var label = (labelInput.value || "").trim();
+      if (label) body.label = label;
+
+      fetch("/api/providers/" + providerId + "/keys", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      })
+        .then(function (res) {
+          if (!res.ok) return res.json().then(function (d) { throw new Error(d.detail || "Failed to add key"); });
+          return res.json();
+        })
+        .then(function () {
+          keyInput.value = "";
+          labelInput.value = "";
+          fetchKeys(providerId, cardEl);
+        })
+        .catch(function (err) {
+          errorEl.textContent = err.message;
+          errorEl.classList.remove("hidden");
+        })
+        .finally(function () {
+          addBtn.disabled = false;
+          addBtn.innerHTML = '<svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add';
+        });
+    }
+
+    function updateStrategy(providerId, strategy) {
+      fetch("/api/providers/" + providerId + "/strategy", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ strategy: strategy })
+      }).catch(function () {
+        // Silently fail — strategy is not critical
+      });
+    }
+
+    function openDeleteKeyModal(providerId, keyId, label, cardEl) {
+      deleteKeyTargetId = keyId;
+      deleteKeyProviderId = providerId;
+      deleteKeyCardEl = cardEl;
+      if (deleteKeyLabel) deleteKeyLabel.textContent = label;
+      if (deleteKeyModal) deleteKeyModal.showModal();
+    }
+
+    if (confirmDeleteKeyBtn) {
+      confirmDeleteKeyBtn.addEventListener("click", function () {
+        if (!deleteKeyTargetId || !deleteKeyProviderId) return;
+
+        confirmDeleteKeyBtn.disabled = true;
+        confirmDeleteKeyBtn.textContent = "Deleting...";
+
+        fetch("/api/providers/" + deleteKeyProviderId + "/keys/" + deleteKeyTargetId, {
+          method: "DELETE",
+          credentials: "same-origin"
+        })
+          .then(function (res) {
+            if (!res.ok) throw new Error("Failed to delete");
+            deleteKeyModal.close();
+            if (deleteKeyCardEl) {
+              fetchKeys(deleteKeyProviderId, deleteKeyCardEl);
+            }
+            deleteKeyTargetId = null;
+            deleteKeyProviderId = null;
+            deleteKeyCardEl = null;
+          })
+          .catch(function () {
+            deleteKeyModal.close();
+          })
+          .finally(function () {
+            confirmDeleteKeyBtn.disabled = false;
+            confirmDeleteKeyBtn.textContent = "Delete Key";
           });
       });
     }
