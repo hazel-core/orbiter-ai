@@ -1415,3 +1415,17 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Workflow-node tools have composite IDs: `wfn_{workflow_id}_{node_id}` to ensure uniqueness
   - Manual browser verification needed (no dev-browser skill configured)
 ---
+
+## 2026-02-17 - US-085
+- What was implemented: Plugin manifest and isolation backend — plugins table migration, full REST API for plugin install/uninstall/list/load-from-directory, subprocess isolation for plugin validation
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/migrations/020_create_plugins.sql (new — plugins table with type/status CHECK constraints, indexes)
+  - packages/orbiter-web/src/orbiter_web/routes/plugins.py (new — APIRouter with PluginManifest, install, uninstall, load-directory, status update endpoints)
+  - packages/orbiter-web/src/orbiter_web/app.py (updated — include plugins_router)
+- **Learnings for future iterations:**
+  - Plugin manifest format: plugin.json with name, version, type, permissions, entry_point fields
+  - Subprocess isolation: use asyncio.create_subprocess_exec with timeout for plugin validation — run `python entry_point --validate`
+  - Duplicate check pattern: SELECT before INSERT with name+version+user_id to prevent reinstalling same plugin
+  - Load-from-directory reads plugin.json from the directory and delegates to install_plugin — reuses validation logic
+  - Status endpoint uses query param for status value (PUT /api/plugins/:id/status?status=enabled)
+---
