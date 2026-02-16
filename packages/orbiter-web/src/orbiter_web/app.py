@@ -22,6 +22,7 @@ from orbiter_web.routes.provider_keys import router as provider_keys_router
 from orbiter_web.routes.providers import router as providers_router
 from orbiter_web.routes.threads import router as threads_router
 from orbiter_web.routes.tools import router as tools_router
+from orbiter_web.routes.workflow_runs import router as workflow_runs_router
 from orbiter_web.routes.workflows import router as workflows_router
 
 
@@ -53,6 +54,7 @@ app.include_router(provider_keys_router)
 app.include_router(providers_router)
 app.include_router(threads_router)
 app.include_router(tools_router)
+app.include_router(workflow_runs_router)
 app.include_router(workflows_router)
 
 
