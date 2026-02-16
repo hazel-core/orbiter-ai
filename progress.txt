@@ -1374,3 +1374,27 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Tab key in textarea: must preventDefault and insert spaces manually
   - Manual browser verification needed (no dev-browser skill configured)
 ---
+
+## 2026-02-17 08:10 - US-083
+- What was implemented: Visual tool schema editor — a form-based UI to define tools by building their JSON schema visually, no code required
+- Files changed:
+  - `packages/orbiter-web/src/pages/tools/schema-editor.astro` (new — full schema editor page)
+  - `packages/orbiter-web/src/orbiter_web/routes/tools.py` (added `POST /api/tools/schema/save` endpoint + VisualSchemaCreate model)
+  - `packages/orbiter-web/src/pages/tools/index.astro` (added "Schema Editor" button)
+- Features implemented:
+  - Schema editor form: tool name, description, project selector, tool type (schema/HTTP)
+  - Parameters list: add/remove with dynamic cards
+  - Per parameter: name, type selector (string/integer/number/boolean/array/object), description, required toggle, default value
+  - Nested object support: expandable sub-parameter forms when type=object
+  - Enum support: comma-separated allowed values for string parameters
+  - Live JSON schema preview panel with syntax highlighting
+  - HTTP tool configuration: method dropdown, URL template, header key-value pairs, body template
+  - OpenAPI import: paste JSON or URL to auto-generate tool definitions (resolves $ref, extracts params from requestBody)
+  - POST /api/tools/schema/save to persist visually-built schemas
+- **Learnings for future iterations:**
+  - Astro interprets `{param}` in HTML as JS expressions — escape with `{"{"}<span>param</span>{"}"}` to render literal curly braces
+  - `<template>` + `cloneNode(true)` pattern works well for dynamic form elements (parameter cards, header rows, nested params)
+  - OpenAPI $ref resolution: walk `#/components/schemas/Name` path segments to resolve references
+  - The existing `POST /api/tools` generic endpoint already handles `tool_type: "schema"`, but a dedicated `/schema/save` is cleaner for visual editor payloads
+  - Manual browser verification needed (no dev-browser skill configured)
+---
