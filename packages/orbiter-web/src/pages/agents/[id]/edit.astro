@@ -169,6 +169,14 @@ const saveIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
                     <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
                     Test
                   </button>
+                  <button type="button" id="compare-models-btn" class="flex items-center gap-1 rounded-md bg-zen-blue/10 px-2 py-1 text-[11px] font-medium text-zen-blue hover:bg-zen-blue/20 transition-colors cursor-pointer" title="Compare across models">
+                    <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                    Compare
+                  </button>
+                  <button type="button" id="version-history-btn" class="flex items-center gap-1 rounded-md bg-subtle px-2 py-1 text-[11px] font-medium text-muted hover:bg-dark/[0.08] hover:text-dark transition-colors cursor-pointer" title="Version history">
+                    <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    History
+                  </button>
                   <button type="button" id="import-prompt-btn" class="flex items-center gap-1 rounded-md bg-subtle px-2 py-1 text-[11px] font-medium text-muted hover:bg-dark/[0.08] hover:text-dark transition-colors cursor-pointer" title="Import JSON">
                     <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                   </button>
@@ -219,6 +227,17 @@ const saveIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
                   </div>
                 </div>
                 <div id="test-result-content" class="px-3 py-3 text-sm text-dark whitespace-pre-wrap font-mono leading-relaxed max-h-64 overflow-y-auto"></div>
+              </div>
+
+              <!-- Model comparison result panel -->
+              <div id="compare-result-panel" class="hidden rounded-lg border border-zen-blue/20 bg-subtle/50 overflow-hidden">
+                <div class="flex items-center justify-between px-3 py-2 border-b border-dark/[0.06] bg-paper">
+                  <span class="text-xs font-semibold text-zen-blue uppercase tracking-wider">Model Comparison</span>
+                  <button type="button" id="close-compare-result" class="flex h-5 w-5 items-center justify-center rounded text-muted hover:text-dark transition-colors cursor-pointer">
+                    <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                  </button>
+                </div>
+                <div id="compare-result-content" class="grid gap-0 max-h-96 overflow-y-auto"></div>
               </div>
             </div>
 
@@ -632,6 +651,90 @@ const saveIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
       </div>
     </div>
   </Modal>
+
+  <!-- Model comparison selector modal -->
+  <Modal id="compare-selector-modal" title="Compare Across Models">
+    <div class="flex flex-col gap-4">
+      <p class="text-xs text-muted">Select 2-3 models to compare. The same prompt will be sent to each model in parallel.</p>
+      <div id="compare-model-slots" class="flex flex-col gap-3">
+        <!-- Slot 1 -->
+        <div class="compare-slot rounded-lg border border-dark/[0.08] bg-paper px-3 py-2.5" data-slot="0">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="flex h-5 w-5 items-center justify-center rounded-full bg-coral/10 text-coral text-[10px] font-bold">1</span>
+            <span class="text-xs font-medium text-dark">Model 1</span>
+          </div>
+          <div class="flex gap-2">
+            <select data-compare-provider="0" class="flex-1 bg-subtle/50 border border-dark/[0.06] rounded-md px-2 py-1.5 text-xs text-dark outline-none focus:border-coral transition-all cursor-pointer">
+              <option value="">Provider...</option>
+            </select>
+            <select data-compare-model="0" disabled class="flex-1 bg-subtle/50 border border-dark/[0.06] rounded-md px-2 py-1.5 text-xs text-dark outline-none focus:border-coral transition-all cursor-pointer disabled:opacity-50">
+              <option value="">Model...</option>
+            </select>
+          </div>
+        </div>
+        <!-- Slot 2 -->
+        <div class="compare-slot rounded-lg border border-dark/[0.08] bg-paper px-3 py-2.5" data-slot="1">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="flex h-5 w-5 items-center justify-center rounded-full bg-zen-blue/10 text-zen-blue text-[10px] font-bold">2</span>
+            <span class="text-xs font-medium text-dark">Model 2</span>
+          </div>
+          <div class="flex gap-2">
+            <select data-compare-provider="1" class="flex-1 bg-subtle/50 border border-dark/[0.06] rounded-md px-2 py-1.5 text-xs text-dark outline-none focus:border-coral transition-all cursor-pointer">
+              <option value="">Provider...</option>
+            </select>
+            <select data-compare-model="1" disabled class="flex-1 bg-subtle/50 border border-dark/[0.06] rounded-md px-2 py-1.5 text-xs text-dark outline-none focus:border-coral transition-all cursor-pointer disabled:opacity-50">
+              <option value="">Model...</option>
+            </select>
+          </div>
+        </div>
+        <!-- Slot 3 (optional) -->
+        <div class="compare-slot rounded-lg border border-dashed border-dark/[0.08] bg-paper px-3 py-2.5" data-slot="2">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="flex h-5 w-5 items-center justify-center rounded-full bg-zen-green/10 text-zen-green text-[10px] font-bold">3</span>
+            <span class="text-xs font-medium text-dark">Model 3 <span class="text-muted font-normal">(optional)</span></span>
+          </div>
+          <div class="flex gap-2">
+            <select data-compare-provider="2" class="flex-1 bg-subtle/50 border border-dark/[0.06] rounded-md px-2 py-1.5 text-xs text-dark outline-none focus:border-coral transition-all cursor-pointer">
+              <option value="">Provider...</option>
+            </select>
+            <select data-compare-model="2" disabled class="flex-1 bg-subtle/50 border border-dark/[0.06] rounded-md px-2 py-1.5 text-xs text-dark outline-none focus:border-coral transition-all cursor-pointer disabled:opacity-50">
+              <option value="">Model...</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="flex items-center justify-end gap-2">
+        <button type="button" data-modal-close class="rounded-lg px-3 py-1.5 text-sm text-muted hover:text-dark transition-colors cursor-pointer">Cancel</button>
+        <button type="button" id="confirm-compare" class="rounded-lg bg-zen-blue text-white px-4 py-1.5 text-sm font-medium hover:bg-zen-blue/80 transition-colors cursor-pointer">Compare</button>
+      </div>
+    </div>
+  </Modal>
+
+  <!-- Version history modal -->
+  <Modal id="version-history-modal" title="Prompt Version History">
+    <div class="flex flex-col gap-4">
+      <div id="version-list" class="flex flex-col gap-1 max-h-72 overflow-y-auto">
+        <p class="text-sm text-muted text-center py-4">Loading versions...</p>
+      </div>
+      <!-- Diff view area (hidden until two versions selected) -->
+      <div id="diff-view" class="hidden">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs font-semibold text-dark uppercase tracking-wider">Diff View</span>
+          <button type="button" id="close-diff-view" class="text-xs text-muted hover:text-dark transition-colors cursor-pointer">Close diff</button>
+        </div>
+        <div id="diff-content" class="rounded-lg border border-dark/[0.08] bg-paper overflow-hidden max-h-64 overflow-y-auto">
+          <div class="flex">
+            <div id="diff-left" class="flex-1 border-r border-dark/[0.06] p-3 text-xs font-mono leading-relaxed whitespace-pre-wrap"></div>
+            <div id="diff-right" class="flex-1 p-3 text-xs font-mono leading-relaxed whitespace-pre-wrap"></div>
+          </div>
+        </div>
+        <div class="flex items-center justify-between mt-1.5">
+          <span id="diff-left-label" class="text-[10px] text-muted"></span>
+          <span id="diff-right-label" class="text-[10px] text-muted"></span>
+        </div>
+      </div>
+    </div>
+  </Modal>
 </PageLayout>
 
 <style>
@@ -640,6 +743,9 @@ const saveIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
     background: rgba(247, 111, 83, 0.08);
     border-radius: 3px;
     padding: 0 2px;
+  }
+  #compare-result-content > div:last-child {
+    border-right: none !important;
   }
 </style>
 
@@ -1345,8 +1451,9 @@ const saveIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
             if (!res.ok) throw new Error("Failed to save template");
             return res.json();
           })
-          .then(function () {
+          .then(function (tpl) {
             cachedTemplates = []; /* invalidate cache */
+            currentTemplateId = tpl.id; /* track for version history */
             saveTemplateModal.close();
           })
           .catch(function (err) {
@@ -1413,6 +1520,7 @@ const saveIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
         /* Load template on click */
         item.querySelector("[data-tpl-load]").addEventListener("click", function () {
           instructionsInput.value = tpl.content;
+          currentTemplateId = tpl.id; /* track for version history */
           /* Restore variables if available */
           try {
             var vars = JSON.parse(tpl.variables_json || "{}");
@@ -1596,6 +1704,383 @@ const saveIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
         reader.readAsText(file);
         /* Reset so the same file can be re-imported */
         importFileInput.value = "";
+      });
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Model Comparison                                                    */
+    /* ------------------------------------------------------------------ */
+    var compareModelsBtn = document.getElementById("compare-models-btn");
+    var compareSelectorModal = document.getElementById("compare-selector-modal");
+    var confirmCompare = document.getElementById("confirm-compare");
+    var compareResultPanel = document.getElementById("compare-result-panel");
+    var compareResultContent = document.getElementById("compare-result-content");
+    var closeCompareResult = document.getElementById("close-compare-result");
+
+    if (closeCompareResult) {
+      closeCompareResult.addEventListener("click", function () {
+        compareResultPanel.classList.add("hidden");
+      });
+    }
+
+    function populateCompareProviders() {
+      for (var s = 0; s < 3; s++) {
+        var sel = document.querySelector('[data-compare-provider="' + s + '"]');
+        if (!sel) continue;
+        sel.innerHTML = '<option value="">Provider...</option>';
+        allProviders.forEach(function (p) {
+          var opt = document.createElement("option");
+          opt.value = p.id;
+          opt.textContent = p.name + " (" + p.provider_type + ")";
+          sel.appendChild(opt);
+        });
+      }
+    }
+
+    function onCompareProviderChange(slotIdx) {
+      var provSel = document.querySelector('[data-compare-provider="' + slotIdx + '"]');
+      var modSel = document.querySelector('[data-compare-model="' + slotIdx + '"]');
+      if (!provSel || !modSel) return;
+
+      var provId = provSel.value;
+      if (!provId) {
+        modSel.innerHTML = '<option value="">Model...</option>';
+        modSel.disabled = true;
+        return;
+      }
+
+      modSel.innerHTML = '<option value="">Loading...</option>';
+      modSel.disabled = true;
+
+      fetch("/api/models?provider_id=" + encodeURIComponent(provId))
+        .then(function (res) { return res.ok ? res.json() : []; })
+        .then(function (models) {
+          modSel.innerHTML = '<option value="">Model...</option>';
+          models.forEach(function (m) {
+            var opt = document.createElement("option");
+            opt.value = m.model_name;
+            opt.textContent = m.model_name;
+            modSel.appendChild(opt);
+          });
+          modSel.disabled = false;
+        })
+        .catch(function () {
+          modSel.innerHTML = '<option value="">Failed</option>';
+        });
+    }
+
+    /* Attach change listeners for compare selectors */
+    for (var _s = 0; _s < 3; _s++) {
+      (function (idx) {
+        var provSel = document.querySelector('[data-compare-provider="' + idx + '"]');
+        if (provSel) {
+          provSel.addEventListener("change", function () { onCompareProviderChange(idx); });
+        }
+      })(_s);
+    }
+
+    if (compareModelsBtn) {
+      compareModelsBtn.addEventListener("click", function () {
+        var prompt = instructionsInput.value.trim();
+        if (!prompt) return;
+
+        populateCompareProviders();
+        /* Pre-fill slot 1 with the currently selected provider/model */
+        var curProv = providerSelect.value;
+        var curModel = modelSelect.value;
+        if (curProv) {
+          var pSel = document.querySelector('[data-compare-provider="0"]');
+          if (pSel) {
+            pSel.value = curProv;
+            onCompareProviderChange(0);
+            /* Set model after models load */
+            if (curModel) {
+              setTimeout(function () {
+                var mSel = document.querySelector('[data-compare-model="0"]');
+                if (mSel) mSel.value = curModel;
+              }, 500);
+            }
+          }
+        }
+
+        compareSelectorModal.showModal();
+      });
+    }
+
+    if (confirmCompare) {
+      confirmCompare.addEventListener("click", function () {
+        var prompt = instructionsInput.value.trim();
+        if (!prompt) return;
+
+        /* Collect selected models */
+        var models = [];
+        for (var s = 0; s < 3; s++) {
+          var pSel = document.querySelector('[data-compare-provider="' + s + '"]');
+          var mSel = document.querySelector('[data-compare-model="' + s + '"]');
+          if (pSel && mSel && pSel.value && mSel.value) {
+            models.push({ provider_id: pSel.value, model_name: mSel.value });
+          }
+        }
+
+        if (models.length < 2) {
+          alert("Please select at least 2 models to compare.");
+          return;
+        }
+
+        /* Build variable values from defaults */
+        var variables = {};
+        var varNames = extractVariables(prompt);
+        varNames.forEach(function (name) {
+          if (detectedVariables[name] && detectedVariables[name].defaultValue) {
+            variables[name] = detectedVariables[name].defaultValue;
+          } else {
+            variables[name] = "[" + name + "]";
+          }
+        });
+
+        compareSelectorModal.close();
+        compareResultPanel.classList.remove("hidden");
+        testResultPanel.classList.add("hidden");
+
+        /* Show loading state */
+        var cols = models.length;
+        compareResultContent.style.gridTemplateColumns = "repeat(" + cols + ", minmax(0, 1fr))";
+        compareResultContent.innerHTML = "";
+        models.forEach(function (m) {
+          var col = document.createElement("div");
+          col.className = "p-3 border-r border-dark/[0.06] last:border-r-0";
+          col.innerHTML =
+            '<div class="flex items-center gap-1.5 mb-2">' +
+              '<span class="text-[10px] font-semibold text-dark font-mono">' + escapeHtml(m.model_name) + '</span>' +
+            '</div>' +
+            '<p class="text-xs text-muted animate-pulse">Sending prompt...</p>';
+          compareResultContent.appendChild(col);
+        });
+
+        confirmCompare.disabled = true;
+        confirmCompare.textContent = "Comparing...";
+
+        fetch("/api/prompt-templates/compare", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt: prompt, variables: variables, models: models }),
+        })
+          .then(function (res) {
+            if (!res.ok) return res.json().then(function (d) { throw new Error(d.detail || "Compare failed"); });
+            return res.json();
+          })
+          .then(function (data) {
+            compareResultContent.innerHTML = "";
+            data.results.forEach(function (r) {
+              var col = document.createElement("div");
+              col.className = "p-3 border-r border-dark/[0.06] last:border-r-0";
+              var metaParts = [];
+              if (r.response_time_ms != null) metaParts.push(r.response_time_ms + "ms");
+              if (r.tokens_used != null) metaParts.push(r.tokens_used + " tok");
+              var metaStr = metaParts.length > 0 ? metaParts.join(" · ") : "";
+
+              if (r.error) {
+                col.innerHTML =
+                  '<div class="flex items-center justify-between mb-2">' +
+                    '<span class="text-[10px] font-semibold text-dark font-mono">' + escapeHtml(r.model_name) + '</span>' +
+                    '<span class="text-[9px] text-muted">' + metaStr + '</span>' +
+                  '</div>' +
+                  '<p class="text-xs text-coral">' + escapeHtml(r.error) + '</p>';
+              } else {
+                col.innerHTML =
+                  '<div class="flex items-center justify-between mb-2">' +
+                    '<span class="text-[10px] font-semibold text-dark font-mono">' + escapeHtml(r.model_name) + '</span>' +
+                    '<span class="text-[9px] text-muted">' + metaStr + '</span>' +
+                  '</div>' +
+                  '<div class="text-xs text-dark font-mono whitespace-pre-wrap leading-relaxed max-h-48 overflow-y-auto">' + escapeHtml(r.output || "(empty)") + '</div>';
+              }
+              compareResultContent.appendChild(col);
+            });
+          })
+          .catch(function (err) {
+            compareResultContent.innerHTML =
+              '<div class="p-3 text-xs text-coral">' + escapeHtml(err.message) + '</div>';
+          })
+          .finally(function () {
+            confirmCompare.disabled = false;
+            confirmCompare.textContent = "Compare";
+          });
+      });
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Version History                                                      */
+    /* ------------------------------------------------------------------ */
+    var versionHistoryBtn = document.getElementById("version-history-btn");
+    var versionHistoryModal = document.getElementById("version-history-modal");
+    var versionList = document.getElementById("version-list");
+    var diffView = document.getElementById("diff-view");
+    var closeDiffView = document.getElementById("close-diff-view");
+    var diffContent = document.getElementById("diff-content");
+    var diffLeft = document.getElementById("diff-left");
+    var diffRight = document.getElementById("diff-right");
+    var diffLeftLabel = document.getElementById("diff-left-label");
+    var diffRightLabel = document.getElementById("diff-right-label");
+
+    var cachedVersions = [];
+    var selectedDiffVersions = []; /* array of version objects for diff */
+
+    /* Track current template ID for version API calls */
+    var currentTemplateId = null;
+
+    if (closeDiffView) {
+      closeDiffView.addEventListener("click", function () {
+        diffView.classList.add("hidden");
+        selectedDiffVersions = [];
+        /* Deselect all checkboxes */
+        versionList.querySelectorAll('input[type="checkbox"]').forEach(function (cb) {
+          cb.checked = false;
+        });
+      });
+    }
+
+    function diffLines(textA, textB) {
+      /* Simple line-by-line diff with highlighting */
+      var linesA = textA.split("\n");
+      var linesB = textB.split("\n");
+      var maxLen = Math.max(linesA.length, linesB.length);
+      var leftHtml = "";
+      var rightHtml = "";
+
+      for (var i = 0; i < maxLen; i++) {
+        var a = i < linesA.length ? linesA[i] : "";
+        var b = i < linesB.length ? linesB[i] : "";
+        if (a === b) {
+          leftHtml += escapeHtml(a) + "\n";
+          rightHtml += escapeHtml(b) + "\n";
+        } else {
+          leftHtml += '<span class="bg-coral/10 text-coral">' + escapeHtml(a) + '</span>\n';
+          rightHtml += '<span class="bg-zen-green/10 text-zen-green">' + escapeHtml(b) + '</span>\n';
+        }
+      }
+      return { left: leftHtml, right: rightHtml };
+    }
+
+    function updateDiffView() {
+      if (selectedDiffVersions.length !== 2) {
+        diffView.classList.add("hidden");
+        return;
+      }
+
+      /* Sort by version_number so older is on the left */
+      var sorted = selectedDiffVersions.slice().sort(function (a, b) {
+        return a.version_number - b.version_number;
+      });
+
+      var result = diffLines(sorted[0].content, sorted[1].content);
+      diffLeft.innerHTML = result.left;
+      diffRight.innerHTML = result.right;
+      diffLeftLabel.textContent = "v" + sorted[0].version_number + " — " + sorted[0].created_at;
+      diffRightLabel.textContent = "v" + sorted[1].version_number + " — " + sorted[1].created_at;
+      diffView.classList.remove("hidden");
+    }
+
+    function renderVersionList() {
+      versionList.innerHTML = "";
+      selectedDiffVersions = [];
+      diffView.classList.add("hidden");
+
+      if (cachedVersions.length === 0) {
+        versionList.innerHTML = '<p class="text-sm text-muted text-center py-4">No versions yet. Save a template to start tracking versions.</p>';
+        return;
+      }
+
+      cachedVersions.forEach(function (ver) {
+        var item = document.createElement("div");
+        item.className = "flex items-center gap-3 rounded-lg px-3 py-2.5 hover:bg-subtle/80 transition-colors group";
+
+        var preview = ver.content.length > 60 ? ver.content.substring(0, 60) + "..." : ver.content;
+
+        item.innerHTML =
+          '<input type="checkbox" data-version-id="' + ver.id + '" class="h-3.5 w-3.5 rounded border-dark/20 accent-zen-blue cursor-pointer" title="Select for diff" />' +
+          '<div class="flex-1 min-w-0">' +
+            '<div class="flex items-center gap-2">' +
+              '<span class="text-xs font-semibold text-dark">v' + ver.version_number + '</span>' +
+              '<span class="text-[10px] text-muted">' + escapeHtml(ver.created_at) + '</span>' +
+            '</div>' +
+            '<p class="text-[11px] text-muted truncate font-mono mt-0.5">' + escapeHtml(preview) + '</p>' +
+          '</div>' +
+          '<button type="button" class="version-restore-btn flex items-center gap-1 rounded-md bg-subtle px-2 py-1 text-[10px] font-medium text-muted hover:bg-coral/10 hover:text-coral transition-colors opacity-0 group-hover:opacity-100 cursor-pointer" data-version-id="' + ver.id + '" data-template-id="' + ver.template_id + '" title="Restore this version">' +
+            '<svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>' +
+            'Restore' +
+          '</button>';
+
+        /* Checkbox for diff selection */
+        var cb = item.querySelector('input[type="checkbox"]');
+        cb.addEventListener("change", function () {
+          if (cb.checked) {
+            if (selectedDiffVersions.length >= 2) {
+              /* Uncheck the first selected to make room */
+              var firstCb = versionList.querySelector('input[data-version-id="' + selectedDiffVersions[0].id + '"]');
+              if (firstCb) firstCb.checked = false;
+              selectedDiffVersions.shift();
+            }
+            selectedDiffVersions.push(ver);
+          } else {
+            selectedDiffVersions = selectedDiffVersions.filter(function (v) { return v.id !== ver.id; });
+          }
+          updateDiffView();
+        });
+
+        /* Restore button */
+        item.querySelector(".version-restore-btn").addEventListener("click", function (e) {
+          e.stopPropagation();
+          var vId = this.getAttribute("data-version-id");
+          var tId = this.getAttribute("data-template-id");
+          if (!confirm("Restore this version? This will update the template content.")) return;
+
+          fetch("/api/prompt-templates/" + tId + "/versions/" + vId + "/restore", { method: "POST" })
+            .then(function (res) {
+              if (!res.ok) throw new Error("Failed to restore");
+              return res.json();
+            })
+            .then(function (tpl) {
+              /* Update the editor with the restored content */
+              instructionsInput.value = tpl.content;
+              try {
+                var vars = JSON.parse(tpl.variables_json || "{}");
+                if (vars && typeof vars === "object") detectedVariables = vars;
+              } catch (ex) { /* ignore */ }
+              onInstructionsChange();
+              renderVariablesPanel();
+              versionHistoryModal.close();
+            })
+            .catch(function (err) {
+              alert(err.message);
+            });
+        });
+
+        versionList.appendChild(item);
+      });
+    }
+
+    if (versionHistoryBtn) {
+      versionHistoryBtn.addEventListener("click", function () {
+        if (!currentTemplateId) {
+          /* No template ID means the prompt hasn't been saved as a template yet */
+          versionList.innerHTML = '<p class="text-sm text-muted text-center py-4">Save your prompt as a template first to enable version history.</p>';
+          versionHistoryModal.showModal();
+          return;
+        }
+
+        versionList.innerHTML = '<p class="text-sm text-muted text-center py-4">Loading versions...</p>';
+        diffView.classList.add("hidden");
+        versionHistoryModal.showModal();
+
+        fetch("/api/prompt-templates/" + currentTemplateId + "/versions")
+          .then(function (res) { return res.ok ? res.json() : []; })
+          .then(function (versions) {
+            cachedVersions = versions;
+            renderVersionList();
+          })
+          .catch(function () {
+            versionList.innerHTML = '<p class="text-sm text-coral text-center py-4">Failed to load versions.</p>';
+          });
       });
     }
 
