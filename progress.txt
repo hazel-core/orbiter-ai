@@ -869,3 +869,15 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - `foreignObject` in SVG allows React-rendered HTML labels on edges; use `pointerEvents: "none"` to prevent blocking mouse events
   - Manual browser verification needed (no browser testing tool available)
 ---
+
+## 2026-02-16 - US-053
+- What was implemented: Completed workflow REST API — added `version` column migration, export endpoint (POST /:id/export with Content-Disposition), and import endpoint (POST /import with JSON validation)
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/migrations/013_add_workflow_version.sql (new — ALTER TABLE adds version column)
+  - packages/orbiter-web/src/orbiter_web/routes/workflows.py (added WorkflowImport model, version field to WorkflowResponse, export/import endpoints, moved /import before /{workflow_id} routes)
+- **Learnings for future iterations:**
+  - FastAPI route order matters: static paths like `/import` must be defined before parameterized paths like `/{workflow_id}` to avoid capture
+  - Export endpoint uses JSONResponse with Content-Disposition header for downloadable JSON
+  - Import endpoint validates JSON fields (nodes_json, edges_json, viewport_json) with json.loads before insertion
+  - The existing CRUD (list, create, get, update, delete) was already in place from earlier canvas work — only export/import and version column were missing
+---
