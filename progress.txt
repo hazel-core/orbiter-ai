@@ -1091,3 +1091,18 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Rating state stored in `compareHistory` array — persists across multiple prompt rounds within the same session
   - Manual browser verification needed (no browser testing tool available)
 ---
+
+## 2026-02-17 - US-066
+- What was implemented: Voice input (SpeechRecognition) and text-to-speech (SpeechSynthesis) for playground chat
+- Files changed:
+  - packages/orbiter-web/src/pages/playground.astro (added mic button, TTS toggle, voice/TTS JS logic ~130 lines)
+  - packages/orbiter-web/src/styles/global.css (added pulseDot animation keyframes)
+- **Learnings for future iterations:**
+  - Web Speech API types (SpeechRecognition, SpeechRecognitionEvent, SpeechRecognitionErrorEvent) are not in Astro's default TS lib — use `any` types for event params
+  - Access SpeechRecognition via `(window as any).SpeechRecognition || (window as any).webkitSpeechRecognition` for cross-browser support
+  - interimResults=true shows live transcription as user speaks; final results fire on recognition.onend
+  - TTS: strip markdown before speaking — regex chain handles code blocks, links, bold/italic, headers
+  - speechSynthesis.cancel() before speaking prevents overlapping utterances
+  - Mic button enable/disable must be synced with WS open/close events (same as messageInput and sendBtn)
+  - Manual browser verification needed (no browser testing tool available)
+---
