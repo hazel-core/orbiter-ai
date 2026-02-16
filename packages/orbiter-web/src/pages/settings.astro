@@ -180,6 +180,17 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
             name="default_provider"
             options={providerOptions}
           />
+          <div class="flex flex-col gap-1.5">
+            <label for="workspace-default-model" class="text-sm font-medium text-dark">Default Model</label>
+            <select
+              id="workspace-default-model"
+              name="default_model"
+              class="w-full bg-paper border border-dark/[0.08] rounded-lg px-3 py-2 text-sm text-dark outline-none focus:border-coral focus:ring-2 focus:ring-coral/20 appearance-none pr-8 cursor-pointer"
+            >
+              <option value="">None</option>
+            </select>
+            <p class="text-xs text-muted">Default model for new agent runs across the workspace.</p>
+          </div>
           <Input
             label="Concurrent Run Limit"
             name="concurrent_limit"
@@ -1153,6 +1164,27 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
     // ------- Workspace -------
     var workspaceForm = document.getElementById("workspace-form");
     var workspaceSaved = document.getElementById("workspace-saved");
+    var workspaceModelSelect = document.getElementById("workspace-default-model");
+
+    // Populate model dropdown for workspace
+    function fetchModelsForWorkspace() {
+      fetch("/api/models")
+        .then(function (res) { return res.ok ? res.json() : []; })
+        .then(function (models) {
+          if (!workspaceModelSelect) return;
+          workspaceModelSelect.innerHTML = '<option value="">None</option>';
+          models.forEach(function (m) {
+            var opt = document.createElement("option");
+            opt.value = m.model_name;
+            opt.textContent = m.model_name + " (" + (m.provider_name || m.provider_type) + ")";
+            workspaceModelSelect.appendChild(opt);
+          });
+          // Restore saved value
+          var savedModel = localStorage.getItem("orbiter_default_model") || "";
+          workspaceModelSelect.value = savedModel;
+        })
+        .catch(function () {});
+    }
 
     // Load workspace settings from localStorage
     if (workspaceForm) {
@@ -1163,13 +1195,17 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
       if (providerSelect) providerSelect.value = savedProvider;
       if (limitInput) limitInput.value = savedLimit;
 
+      fetchModelsForWorkspace();
+
       workspaceForm.addEventListener("submit", function (e) {
         e.preventDefault();
         var provider = providerSelect ? providerSelect.value : "";
         var limit = limitInput ? limitInput.value : "5";
+        var model = workspaceModelSelect ? workspaceModelSelect.value : "";
 
         localStorage.setItem("orbiter_default_provider", provider);
         localStorage.setItem("orbiter_concurrent_limit", limit);
+        localStorage.setItem("orbiter_default_model", model);
 
         if (workspaceSaved) {
           workspaceSaved.classList.remove("hidden");

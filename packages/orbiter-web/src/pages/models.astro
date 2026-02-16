@@ -47,6 +47,17 @@ const searchIcon = '<svg class="h-4 w-4 text-muted" viewBox="0 0 24 24" fill="no
       </div>
     </div>
 
+    <!-- Comparison floating bar (hidden until 2+ models selected) -->
+    <div id="compare-bar" class="hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-dark text-paper rounded-xl shadow-2xl px-5 py-3 flex items-center gap-4 transition-all duration-300">
+      <span class="text-sm font-medium"><span id="compare-count">0</span> models selected</span>
+      <button id="compare-btn" class="bg-coral hover:bg-coral/90 text-white text-sm font-medium px-4 py-1.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer" disabled>
+        Compare
+      </button>
+      <button id="compare-clear-btn" class="text-paper/60 hover:text-paper text-sm cursor-pointer transition-colors">
+        Clear
+      </button>
+    </div>
+
     <!-- Filters -->
     <div class="flex items-center gap-3 mb-6 flex-wrap">
       <!-- Search -->
@@ -123,6 +134,16 @@ const searchIcon = '<svg class="h-4 w-4 text-muted" viewBox="0 0 24 24" fill="no
     </div>
   </div>
 
+  <!-- Model Comparison Modal -->
+  <Modal id="compare-modal" title="Model Comparison">
+    <div id="compare-content" class="min-w-0 overflow-x-auto">
+      <table class="w-full text-sm border-collapse">
+        <thead id="compare-thead"></thead>
+        <tbody id="compare-tbody"></tbody>
+      </table>
+    </div>
+  </Modal>
+
   <!-- Add Custom Model Modal -->
   <Modal id="add-model-modal" title="Add Custom Model">
     <form id="add-model-form" class="flex flex-col gap-4">
@@ -178,9 +199,12 @@ const searchIcon = '<svg class="h-4 w-4 text-muted" viewBox="0 0 24 24" fill="no
 
 <!-- Model card template -->
 <template id="model-card-template">
-  <div class="rounded-xl bg-subtle/80 border border-dark/[0.08] transition-all duration-300 hover:-translate-y-0.5 hover:border-dark/20 hover:shadow-lg p-5">
+  <div class="rounded-xl bg-subtle/80 border border-dark/[0.08] transition-all duration-300 hover:-translate-y-0.5 hover:border-dark/20 hover:shadow-lg p-5 relative">
     <div class="flex items-start justify-between mb-2">
       <div class="flex items-center gap-2 min-w-0">
+        <label class="flex-shrink-0 cursor-pointer" data-field="compare-label">
+          <input type="checkbox" class="compare-checkbox accent-coral w-3.5 h-3.5 rounded cursor-pointer" data-field="compare-check" />
+        </label>
         <span class="flex-shrink-0 w-6 h-6 rounded-md flex items-center justify-center text-xs font-bold" data-field="provider-icon"></span>
         <h3 class="font-semibold text-dark text-sm truncate" data-field="model-name"></h3>
       </div>
@@ -237,6 +261,14 @@ const searchIcon = '<svg class="h-4 w-4 text-muted" viewBox="0 0 24 24" fill="no
 
     var allModels = [];
     var providers = [];
+    var selectedForCompare = []; /* array of model IDs */
+    var compareBar = document.getElementById("compare-bar");
+    var compareCount = document.getElementById("compare-count");
+    var compareBtn = document.getElementById("compare-btn");
+    var compareClearBtn = document.getElementById("compare-clear-btn");
+    var compareModal = document.getElementById("compare-modal");
+    var compareThead = document.getElementById("compare-thead");
+    var compareTbody = document.getElementById("compare-tbody");
 
     /* ---------------------------------------------------------------
        Provider metadata
@@ -275,6 +307,116 @@ const searchIcon = '<svg class="h-4 w-4 text-muted" viewBox="0 0 24 24" fill="no
       if (output) parts.push("$" + Number(output).toFixed(2) + " out");
       return parts.join(" / ");
     }
+
+    /* ---------------------------------------------------------------
+       Comparison logic
+    --------------------------------------------------------------- */
+    function updateCompareBar() {
+      var n = selectedForCompare.length;
+      compareCount.textContent = String(n);
+      if (n >= 1) {
+        compareBar.classList.remove("hidden");
+      } else {
+        compareBar.classList.add("hidden");
+      }
+      compareBtn.disabled = n < 2;
+    }
+
+    function toggleCompare(modelId) {
+      var idx = selectedForCompare.indexOf(modelId);
+      if (idx > -1) {
+        selectedForCompare.splice(idx, 1);
+      } else {
+        if (selectedForCompare.length >= 3) return; /* max 3 */
+        selectedForCompare.push(modelId);
+      }
+      updateCompareBar();
+      /* Sync checkbox state in DOM */
+      var checkboxes = grid.querySelectorAll(".compare-checkbox");
+      checkboxes.forEach(function (cb) {
+        var mid = cb.getAttribute("data-model-id");
+        cb.checked = selectedForCompare.indexOf(mid) > -1;
+        /* Disable unchecked boxes when 3 are selected */
+        if (selectedForCompare.length >= 3 && !cb.checked) {
+          cb.disabled = true;
+        } else {
+          cb.disabled = false;
+        }
+      });
+      /* Highlight selected cards */
+      var cards = grid.querySelectorAll("[data-model-card-id]");
+      cards.forEach(function (card) {
+        var mid = card.getAttribute("data-model-card-id");
+        if (selectedForCompare.indexOf(mid) > -1) {
+          card.classList.add("ring-2", "ring-coral/40");
+        } else {
+          card.classList.remove("ring-2", "ring-coral/40");
+        }
+      });
+    }
+
+    function clearCompare() {
+      selectedForCompare = [];
+      updateCompareBar();
+      var checkboxes = grid.querySelectorAll(".compare-checkbox");
+      checkboxes.forEach(function (cb) { cb.checked = false; cb.disabled = false; });
+      var cards = grid.querySelectorAll("[data-model-card-id]");
+      cards.forEach(function (card) { card.classList.remove("ring-2", "ring-coral/40"); });
+    }
+
+    function showComparisonModal() {
+      var models = selectedForCompare.map(function (id) {
+        return allModels.find(function (m) { return m.id === id; });
+      }).filter(Boolean);
+
+      if (models.length < 2) return;
+
+      /* Build header row */
+      var thead = "<tr><th class='text-left py-2 pr-4 text-muted font-medium border-b border-dark/[0.08] w-32'>Attribute</th>";
+      models.forEach(function (m) {
+        var icon = providerIcons[m.provider_type] || providerIcons.custom;
+        thead += "<th class='text-left py-2 px-3 font-semibold text-dark border-b border-dark/[0.08] min-w-[160px]'>" +
+          "<span class='inline-flex items-center gap-1.5'>" +
+          "<span class='w-5 h-5 rounded flex items-center justify-center text-[10px] font-bold " + icon.bg + " " + icon.text + "'>" + icon.letter + "</span>" +
+          "<span class='truncate'>" + m.model_name + "</span></span></th>";
+      });
+      thead += "</tr>";
+      compareThead.innerHTML = thead;
+
+      /* Comparison rows */
+      var rows = [
+        { label: "Provider", key: "provider_name" },
+        { label: "Context Window", key: "context_window", fmt: formatTokens },
+        { label: "Input Price", key: "pricing_input", fmt: function (v) { return v ? "$" + Number(v).toFixed(2) + "/1M" : "—"; } },
+        { label: "Output Price", key: "pricing_output", fmt: function (v) { return v ? "$" + Number(v).toFixed(2) + "/1M" : "—"; } },
+        { label: "Capabilities", key: "capabilities", fmt: function (v) { return v && v.length ? v.join(", ") : "—"; } },
+        { label: "Custom", key: "is_custom", fmt: function (v) { return v ? "Yes" : "No"; } }
+      ];
+
+      var tbody = "";
+      rows.forEach(function (row) {
+        /* Collect values for diff highlighting */
+        var values = models.map(function (m) {
+          var raw = m[row.key];
+          return row.fmt ? row.fmt(raw) : (raw || "—");
+        });
+        var allSame = values.every(function (v) { return v === values[0]; });
+
+        tbody += "<tr>";
+        tbody += "<td class='py-2.5 pr-4 text-muted text-xs font-medium border-b border-dark/[0.06] align-top'>" + row.label + "</td>";
+        values.forEach(function (val) {
+          var highlight = !allSame ? " bg-coral/5 font-semibold text-dark" : "";
+          tbody += "<td class='py-2.5 px-3 text-sm border-b border-dark/[0.06]" + highlight + "'>" + val + "</td>";
+        });
+        tbody += "</tr>";
+      });
+      compareTbody.innerHTML = tbody;
+
+      compareModal.showModal();
+    }
+
+    if (compareBtn) compareBtn.addEventListener("click", showComparisonModal);
+    if (compareClearBtn) compareClearBtn.addEventListener("click", clearCompare);
 
     /* ---------------------------------------------------------------
        Render models
@@ -320,6 +462,18 @@ const searchIcon = '<svg class="h-4 w-4 text-muted" viewBox="0 0 24 24" fill="no
 
       filtered.forEach(function (model) {
         var card = cardTemplate.content.cloneNode(true);
+        var cardDiv = card.querySelector("div");
+        cardDiv.setAttribute("data-model-card-id", model.id);
+
+        // Compare checkbox
+        var checkbox = card.querySelector('[data-field="compare-check"]');
+        checkbox.setAttribute("data-model-id", model.id);
+        checkbox.checked = selectedForCompare.indexOf(model.id) > -1;
+        if (selectedForCompare.length >= 3 && !checkbox.checked) checkbox.disabled = true;
+        if (checkbox.checked) cardDiv.classList.add("ring-2", "ring-coral/40");
+        checkbox.addEventListener("change", function () {
+          toggleCompare(model.id);
+        });
 
         // Provider icon
         var iconEl = card.querySelector('[data-field="provider-icon"]');

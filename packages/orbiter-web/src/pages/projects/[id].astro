@@ -79,7 +79,16 @@ const backIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
           </div>
           <div>
             <span class="text-muted">Default Model</span>
-            <p id="project-model" class="text-dark font-medium mt-0.5"></p>
+            <div class="flex items-center gap-2 mt-0.5">
+              <select
+                id="project-model-select"
+                class="bg-paper border border-dark/[0.08] rounded-lg px-2.5 py-1.5 text-sm text-dark outline-none focus:border-coral focus:ring-2 focus:ring-coral/20 appearance-none pr-7 cursor-pointer flex-1 max-w-xs"
+              >
+                <option value="">Not set</option>
+              </select>
+              <button id="save-model-btn" class="text-xs px-2.5 py-1.5 rounded-md bg-dark text-paper hover:bg-dark/90 transition-colors cursor-pointer hidden">Save</button>
+              <span id="model-saved-msg" class="text-xs text-zen-green hidden">Saved</span>
+            </div>
           </div>
           <div>
             <span class="text-muted">Default Provider</span>
@@ -155,7 +164,9 @@ const backIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
     var descEl = document.getElementById("project-description");
     var createdEl = document.getElementById("project-created");
     var updatedEl = document.getElementById("project-updated");
-    var modelEl = document.getElementById("project-model");
+    var modelSelect = document.getElementById("project-model-select");
+    var saveModelBtn = document.getElementById("save-model-btn");
+    var modelSavedMsg = document.getElementById("model-saved-msg");
     var providerEl = document.getElementById("project-provider");
 
     var renameBtn = document.getElementById("rename-btn");
@@ -199,8 +210,10 @@ const backIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
 
       createdEl.textContent = formatDate(project.created_at);
       updatedEl.textContent = formatDate(project.updated_at);
-      modelEl.textContent = project.default_model || "Not set";
       providerEl.textContent = project.default_provider || "Not set";
+
+      /* Populate model dropdown */
+      fetchModelsForProject(project.default_model);
 
       /* Update breadcrumb with project name */
       var allSpans = document.querySelectorAll("nav span");
@@ -214,6 +227,69 @@ const backIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
     function showError() {
       loadingState.classList.add("hidden");
       errorState.classList.remove("hidden");
+    }
+
+    /* Default model dropdown */
+    var originalModelValue = "";
+
+    function fetchModelsForProject(currentModel) {
+      fetch("/api/models")
+        .then(function (res) { return res.ok ? res.json() : []; })
+        .then(function (models) {
+          if (!modelSelect) return;
+          modelSelect.innerHTML = '<option value="">Not set</option>';
+          models.forEach(function (m) {
+            var opt = document.createElement("option");
+            opt.value = m.model_name;
+            opt.textContent = m.model_name + " (" + (m.provider_name || m.provider_type) + ")";
+            modelSelect.appendChild(opt);
+          });
+          modelSelect.value = currentModel || "";
+          originalModelValue = modelSelect.value;
+        })
+        .catch(function () {});
+    }
+
+    if (modelSelect) {
+      modelSelect.addEventListener("change", function () {
+        if (modelSelect.value !== originalModelValue) {
+          saveModelBtn.classList.remove("hidden");
+          modelSavedMsg.classList.add("hidden");
+        } else {
+          saveModelBtn.classList.add("hidden");
+        }
+      });
+    }
+
+    if (saveModelBtn) {
+      saveModelBtn.addEventListener("click", function () {
+        var newModel = modelSelect.value || null;
+        saveModelBtn.disabled = true;
+        saveModelBtn.textContent = "...";
+
+        fetch("/api/projects/" + projectId, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ default_model: newModel })
+        })
+          .then(function (res) {
+            if (!res.ok) throw new Error("Failed");
+            return res.json();
+          })
+          .then(function () {
+            originalModelValue = modelSelect.value;
+            saveModelBtn.classList.add("hidden");
+            modelSavedMsg.classList.remove("hidden");
+            setTimeout(function () { modelSavedMsg.classList.add("hidden"); }, 2000);
+          })
+          .catch(function () {
+            modelSavedMsg.classList.add("hidden");
+          })
+          .finally(function () {
+            saveModelBtn.disabled = false;
+            saveModelBtn.textContent = "Save";
+          });
+      });
     }
 
     function fetchProject() {
