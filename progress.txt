@@ -1678,3 +1678,13 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - `close()` stops reconnection; to reconnect after close, a new subscribe() call will reconnect
   - `resetInstance()` available for tests — tears down singleton completely
 ---
+
+## 2026-02-17 04:10 - US-158
+- What was implemented: Replaced hardcoded `_DEFAULT_USER_ID = "default-user"` in projects route with proper `Depends(get_current_user)` authentication
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/routes/projects.py (updated — removed _DEFAULT_USER_ID, added Depends(get_current_user) to all 5 endpoints, imported get_current_user from auth module)
+- **Learnings for future iterations:**
+  - All endpoints using `_DEFAULT_USER_ID` need the same conversion: add `user: dict[str, Any] = Depends(get_current_user),  # noqa: B008` parameter and replace `_DEFAULT_USER_ID` with `user["id"]`
+  - No migration needed since the `projects` table already has `user_id TEXT NOT NULL REFERENCES users(id)` — the column was correct, just the route was bypassing auth
+  - The `# noqa: B008` comment is required on `Depends()` default parameters to suppress ruff's B008 rule
+---
