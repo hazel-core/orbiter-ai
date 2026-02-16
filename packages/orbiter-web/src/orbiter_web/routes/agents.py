@@ -70,6 +70,11 @@ class AgentCreate(BaseModel):
     persona_goal: str = ""
     persona_backstory: str = ""
     autonomous_mode: bool = False
+    context_automation_level: str = "copilot"
+    context_max_tokens_per_step: int | None = None
+    context_max_total_tokens: int | None = None
+    context_memory_type: str = "conversation"
+    context_workspace_enabled: bool = False
 
 
 class AgentUpdate(BaseModel):
@@ -90,6 +95,11 @@ class AgentUpdate(BaseModel):
     persona_goal: str | None = None
     persona_backstory: str | None = None
     autonomous_mode: bool | None = None
+    context_automation_level: str | None = None
+    context_max_tokens_per_step: int | None = None
+    context_max_total_tokens: int | None = None
+    context_memory_type: str | None = None
+    context_workspace_enabled: bool | None = None
 
 
 class AgentResponse(BaseModel):
@@ -111,6 +121,11 @@ class AgentResponse(BaseModel):
     persona_goal: str
     persona_backstory: str
     autonomous_mode: bool
+    context_automation_level: str
+    context_max_tokens_per_step: int | None
+    context_max_total_tokens: int | None
+    context_memory_type: str
+    context_workspace_enabled: bool
     project_id: str
     user_id: str
     created_at: str
@@ -149,6 +164,7 @@ def _row_to_dict(row: Any) -> dict[str, Any]:
     """Convert an aiosqlite.Row to a plain dict."""
     d = dict(row)
     d["autonomous_mode"] = bool(d.get("autonomous_mode", 0))
+    d["context_workspace_enabled"] = bool(d.get("context_workspace_enabled", 0))
     return d
 
 
@@ -594,8 +610,11 @@ async def create_agent(
                 knowledge_base_ids,
                 persona_role, persona_goal, persona_backstory,
                 autonomous_mode,
+                context_automation_level, context_max_tokens_per_step,
+                context_max_total_tokens, context_memory_type,
+                context_workspace_enabled,
                 project_id, user_id, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 agent_id,
@@ -616,6 +635,11 @@ async def create_agent(
                 body.persona_goal,
                 body.persona_backstory,
                 int(body.autonomous_mode),
+                body.context_automation_level,
+                body.context_max_tokens_per_step,
+                body.context_max_total_tokens,
+                body.context_memory_type,
+                int(body.context_workspace_enabled),
                 body.project_id,
                 user["id"],
                 now,
@@ -653,6 +677,8 @@ async def update_agent(
     # SQLite stores bools as integers
     if "autonomous_mode" in updates:
         updates["autonomous_mode"] = int(updates["autonomous_mode"])
+    if "context_workspace_enabled" in updates:
+        updates["context_workspace_enabled"] = int(updates["context_workspace_enabled"])
 
     async with get_db() as db:
         await _verify_ownership(db, agent_id, user["id"])

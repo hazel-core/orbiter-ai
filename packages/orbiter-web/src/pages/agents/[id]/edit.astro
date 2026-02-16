@@ -110,6 +110,15 @@ const saveIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
             type="button"
             role="tab"
             aria-selected="false"
+            data-tab="context"
+            class="tab-btn relative pb-3 text-sm font-medium text-muted border-b-2 border-transparent hover:text-dark transition-colors"
+          >
+            Context
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected="false"
             data-tab="advanced"
             class="tab-btn relative pb-3 text-sm font-medium text-muted border-b-2 border-transparent hover:text-dark transition-colors"
           >
@@ -585,6 +594,155 @@ const saveIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
         </div>
       </div>
 
+      <!-- Context tab -->
+      <div id="panel-context" class="tab-panel hidden" role="tabpanel">
+        <div class="flex flex-col gap-6">
+          <!-- Automation Level -->
+          <div class="flex flex-col gap-1.5">
+            <label class="text-sm font-medium text-dark">Automation Level</label>
+            <p class="text-xs text-muted">Controls how autonomously the agent operates with the context engine.</p>
+            <div class="grid grid-cols-3 gap-2 mt-1">
+              <button
+                type="button"
+                data-level="pilot"
+                class="ctx-level-btn flex flex-col items-center gap-1.5 rounded-lg border-2 border-dark/[0.08] bg-paper px-3 py-3 transition-all hover:border-coral/40"
+              >
+                <span class="flex h-8 w-8 items-center justify-center rounded-full bg-zen-green/10 text-zen-green">
+                  <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+                </span>
+                <span class="text-xs font-medium text-dark">Pilot</span>
+                <span class="text-[10px] text-muted text-center leading-tight">Fully autonomous</span>
+              </button>
+              <button
+                type="button"
+                data-level="copilot"
+                class="ctx-level-btn flex flex-col items-center gap-1.5 rounded-lg border-2 border-coral bg-paper px-3 py-3 transition-all hover:border-coral/40"
+              >
+                <span class="flex h-8 w-8 items-center justify-center rounded-full bg-zen-blue/10 text-zen-blue">
+                  <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                </span>
+                <span class="text-xs font-medium text-dark">Copilot</span>
+                <span class="text-[10px] text-muted text-center leading-tight">Suggests, user approves</span>
+              </button>
+              <button
+                type="button"
+                data-level="navigator"
+                class="ctx-level-btn flex flex-col items-center gap-1.5 rounded-lg border-2 border-dark/[0.08] bg-paper px-3 py-3 transition-all hover:border-coral/40"
+              >
+                <span class="flex h-8 w-8 items-center justify-center rounded-full bg-coral/10 text-coral">
+                  <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
+                </span>
+                <span class="text-xs font-medium text-dark">Navigator</span>
+                <span class="text-[10px] text-muted text-center leading-tight">Plans only</span>
+              </button>
+            </div>
+            <input type="hidden" id="ctx-automation-level" value="copilot" />
+          </div>
+
+          <hr class="border-dark/[0.06]" />
+
+          <!-- Token Budgets -->
+          <div class="flex flex-col gap-4">
+            <div>
+              <h3 class="text-sm font-medium text-dark">Token Budgets</h3>
+              <p class="text-xs text-muted mt-0.5">Limit token consumption per step and across the entire run.</p>
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+              <div class="flex flex-col gap-1.5">
+                <label for="ctx-max-tokens-step" class="text-xs font-medium text-dark">Max Tokens per Step</label>
+                <input
+                  type="number"
+                  id="ctx-max-tokens-step"
+                  min="100"
+                  max="1000000"
+                  step="100"
+                  placeholder="No limit"
+                  class="w-full bg-paper border border-dark/[0.08] rounded-lg px-3 py-2 text-sm text-dark placeholder:text-muted/60 outline-none focus:border-coral focus:ring-2 focus:ring-coral/20 transition-all tabular-nums font-mono"
+                />
+              </div>
+              <div class="flex flex-col gap-1.5">
+                <label for="ctx-max-total-tokens" class="text-xs font-medium text-dark">Max Total Tokens</label>
+                <input
+                  type="number"
+                  id="ctx-max-total-tokens"
+                  min="100"
+                  max="10000000"
+                  step="1000"
+                  placeholder="No limit"
+                  class="w-full bg-paper border border-dark/[0.08] rounded-lg px-3 py-2 text-sm text-dark placeholder:text-muted/60 outline-none focus:border-coral focus:ring-2 focus:ring-coral/20 transition-all tabular-nums font-mono"
+                />
+              </div>
+            </div>
+          </div>
+
+          <hr class="border-dark/[0.06]" />
+
+          <!-- Memory -->
+          <div class="flex flex-col gap-3">
+            <div class="flex items-center justify-between">
+              <div>
+                <h3 class="text-sm font-medium text-dark">Memory</h3>
+                <p class="text-xs text-muted mt-0.5">Enable and configure memory for the context engine.</p>
+              </div>
+              <button
+                type="button"
+                id="ctx-toggle-memory"
+                role="switch"
+                aria-checked="true"
+                class="relative h-6 w-11 rounded-full bg-coral transition-colors cursor-pointer"
+              >
+                <span class="toggle-dot absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform translate-x-5"></span>
+              </button>
+            </div>
+            <div id="ctx-memory-type-group" class="flex flex-col gap-1.5">
+              <label class="text-xs font-medium text-dark">Memory Type</label>
+              <div class="grid grid-cols-3 gap-2">
+                <label class="flex items-center gap-2 rounded-lg border border-dark/[0.08] bg-paper px-3 py-2 cursor-pointer has-[:checked]:border-coral has-[:checked]:bg-coral/5 transition-all">
+                  <input type="radio" name="ctx-memory-type" value="conversation" checked class="accent-coral h-3.5 w-3.5" />
+                  <div>
+                    <span class="text-xs font-medium text-dark">Conversation</span>
+                    <p class="text-[10px] text-muted leading-tight">Full message history</p>
+                  </div>
+                </label>
+                <label class="flex items-center gap-2 rounded-lg border border-dark/[0.08] bg-paper px-3 py-2 cursor-pointer has-[:checked]:border-coral has-[:checked]:bg-coral/5 transition-all">
+                  <input type="radio" name="ctx-memory-type" value="summary" class="accent-coral h-3.5 w-3.5" />
+                  <div>
+                    <span class="text-xs font-medium text-dark">Summary</span>
+                    <p class="text-[10px] text-muted leading-tight">Condensed summaries</p>
+                  </div>
+                </label>
+                <label class="flex items-center gap-2 rounded-lg border border-dark/[0.08] bg-paper px-3 py-2 cursor-pointer has-[:checked]:border-coral has-[:checked]:bg-coral/5 transition-all">
+                  <input type="radio" name="ctx-memory-type" value="sliding_window" class="accent-coral h-3.5 w-3.5" />
+                  <div>
+                    <span class="text-xs font-medium text-dark">Sliding Window</span>
+                    <p class="text-[10px] text-muted leading-tight">Last N messages</p>
+                  </div>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <hr class="border-dark/[0.06]" />
+
+          <!-- Workspace -->
+          <div class="flex items-center justify-between rounded-lg border border-dark/[0.08] bg-paper px-4 py-3">
+            <div>
+              <p class="text-sm font-medium text-dark">Workspace</p>
+              <p class="text-xs text-muted mt-0.5">Enable artifact storage for this agent. Allows the agent to save and retrieve files, documents, and other artifacts during execution.</p>
+            </div>
+            <button
+              type="button"
+              id="ctx-toggle-workspace"
+              role="switch"
+              aria-checked="false"
+              class="relative h-6 w-11 rounded-full bg-dark/[0.12] transition-colors cursor-pointer"
+            >
+              <span class="toggle-dot absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform"></span>
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- Advanced tab -->
       <div id="panel-advanced" class="tab-panel hidden" role="tabpanel">
         <div class="flex flex-col gap-6">
@@ -913,6 +1071,17 @@ const saveIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
     /* Toggle state */
     var memoryEnabled = false;
     var contextEnabled = false;
+
+    /* Context tab */
+    var ctxLevelBtns = document.querySelectorAll(".ctx-level-btn");
+    var ctxLevelInput = document.getElementById("ctx-automation-level");
+    var ctxMaxTokensStep = document.getElementById("ctx-max-tokens-step");
+    var ctxMaxTotalTokens = document.getElementById("ctx-max-total-tokens");
+    var ctxToggleMemory = document.getElementById("ctx-toggle-memory");
+    var ctxMemoryTypeGroup = document.getElementById("ctx-memory-type-group");
+    var ctxToggleWorkspace = document.getElementById("ctx-toggle-workspace");
+    var ctxMemoryEnabled = true;
+    var ctxWorkspaceEnabled = false;
 
     var currentAgent = null;
     var allProviders = [];
@@ -1267,6 +1436,54 @@ const saveIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
       toggleContext.addEventListener("click", function () {
         contextEnabled = !contextEnabled;
         setToggle(toggleContext, contextEnabled);
+      });
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Context tab: automation level, memory toggle, workspace toggle       */
+    /* ------------------------------------------------------------------ */
+    ctxLevelBtns.forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var level = btn.getAttribute("data-level");
+        ctxLevelInput.value = level;
+        ctxLevelBtns.forEach(function (b) {
+          b.classList.remove("border-coral");
+          b.classList.add("border-dark/[0.08]");
+        });
+        btn.classList.remove("border-dark/[0.08]");
+        btn.classList.add("border-coral");
+      });
+    });
+
+    function setCtxAutomationLevel(level) {
+      ctxLevelInput.value = level;
+      ctxLevelBtns.forEach(function (b) {
+        if (b.getAttribute("data-level") === level) {
+          b.classList.remove("border-dark/[0.08]");
+          b.classList.add("border-coral");
+        } else {
+          b.classList.remove("border-coral");
+          b.classList.add("border-dark/[0.08]");
+        }
+      });
+    }
+
+    if (ctxToggleMemory) {
+      ctxToggleMemory.addEventListener("click", function () {
+        ctxMemoryEnabled = !ctxMemoryEnabled;
+        setToggle(ctxToggleMemory, ctxMemoryEnabled);
+        if (ctxMemoryEnabled) {
+          ctxMemoryTypeGroup.classList.remove("hidden");
+        } else {
+          ctxMemoryTypeGroup.classList.add("hidden");
+        }
+      });
+    }
+
+    if (ctxToggleWorkspace) {
+      ctxToggleWorkspace.addEventListener("click", function () {
+        ctxWorkspaceEnabled = !ctxWorkspaceEnabled;
+        setToggle(ctxToggleWorkspace, ctxWorkspaceEnabled);
       });
     }
 
@@ -2412,6 +2629,31 @@ const saveIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
         /* ignore */
       }
 
+      /* Context tab */
+      if (agent.context_automation_level) {
+        setCtxAutomationLevel(agent.context_automation_level);
+      }
+      if (agent.context_max_tokens_per_step != null) {
+        ctxMaxTokensStep.value = agent.context_max_tokens_per_step;
+      }
+      if (agent.context_max_total_tokens != null) {
+        ctxMaxTotalTokens.value = agent.context_max_total_tokens;
+      }
+      if (agent.context_memory_type) {
+        var radio = document.querySelector('input[name="ctx-memory-type"][value="' + agent.context_memory_type + '"]');
+        if (radio) radio.checked = true;
+      }
+      /* Memory toggle — default is enabled (matches HTML default) */
+      /* If the agent has _memory_enabled as false from hooks, we still use context tab state */
+      ctxMemoryEnabled = true;
+      setToggle(ctxToggleMemory, true);
+      ctxMemoryTypeGroup.classList.remove("hidden");
+
+      if (agent.context_workspace_enabled) {
+        ctxWorkspaceEnabled = true;
+        setToggle(ctxToggleWorkspace, true);
+      }
+
       /* Populate providers, then models. */
       fetch("/api/providers")
         .then(function (res) { return res.ok ? res.json() : []; })
@@ -2522,11 +2764,24 @@ const saveIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
           persona_role: personaRole.value.trim(),
           persona_goal: personaGoal.value.trim(),
           persona_backstory: personaBackstory.value.trim(),
+          context_automation_level: ctxLevelInput.value,
+          context_memory_type: ctxMemoryEnabled ? (document.querySelector('input[name="ctx-memory-type"]:checked') || {}).value || "conversation" : "conversation",
+          context_workspace_enabled: ctxWorkspaceEnabled,
         };
 
         var maxTokens = maxTokensInput.value.trim();
         if (maxTokens !== "") {
           body.max_tokens = parseInt(maxTokens, 10);
+        }
+
+        var ctxStepTokens = ctxMaxTokensStep.value.trim();
+        if (ctxStepTokens !== "") {
+          body.context_max_tokens_per_step = parseInt(ctxStepTokens, 10);
+        }
+
+        var ctxTotalTokens = ctxMaxTotalTokens.value.trim();
+        if (ctxTotalTokens !== "") {
+          body.context_max_total_tokens = parseInt(ctxTotalTokens, 10);
         }
 
         saveBtn.disabled = true;
