@@ -15,11 +15,44 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
 - Use `data-animate="zenReveal|zenFade|zenScale"` on elements for scroll-triggered animations
 - Proxy API requests in dev: configure `vite.server.proxy` in astro.config.mjs (NOT Astro-specific proxy)
 - Use `uv run` prefix in npm scripts that need the Python venv (e.g., `uv run uvicorn ...`)
+- PageLayout.astro is the app shell with sidebar — use `activeSection` prop to highlight current nav item (e.g., `<PageLayout activeSection="projects">`)
+- Inline SVG icons: store as HTML strings in frontmatter, render with `set:html` directive — no icon library needed
 - orbiter-web has BOTH package.json (Astro frontend) AND pyproject.toml (FastAPI backend) — it's a dual Node+Python package
+- PageLayout accepts `breadcrumbs` (array of {label, href}), `projectName`, and `activeSection` props
+- Mobile breakpoint: `< md` uses bottom tab bar + hamburger slide-out; `md+` uses sidebar; `lg+` sidebar is expandable
 - FastAPI app entry point: `orbiter_web.app:app` — run with `uvicorn orbiter_web.app:app`
 - Settings via dataclass in `orbiter_web/config.py` — reads ORBITER_DATABASE_URL, ORBITER_SECRET_KEY, ORBITER_DEBUG env vars
 - When adding a new Python package to UV workspace: update `members`, `dependency-groups.dev`, and `tool.uv.sources` in root pyproject.toml
+- Database: `get_db()` async context manager in `orbiter_web/database.py` — sets WAL mode, foreign keys, Row factory
+- Migrations: sequential .sql files in `orbiter_web/migrations/`, tracked in `_migrations` table; run automatically on app startup via FastAPI lifespan
+- FastAPI lifespan: use `@asynccontextmanager` that yields once (replaces deprecated `on_event("startup")`)
+- Routes: use `APIRouter(prefix="/api/...", tags=["..."])` in `routes/<module>.py`, register with `app.include_router()` in app.py
+- Pydantic models: use `BaseModel` for request/response schemas, `Field(min_length=...)` for validation
+- Row conversion: `dict(row)` converts `aiosqlite.Row` to a plain dict for Pydantic serialization
+- Placeholder auth: `_DEFAULT_USER_ID = "default-user"` until US-018 is implemented — all queries filter by user_id
+- Ruff: use `datetime.UTC` not `timezone.utc`, use `[*list(...), item]` instead of `list(...) + [item]`
+- Dynamic routes: `[param].astro` files in `src/pages/` — access via `Astro.params.param`; use `define:vars={{ var }}` to pass to `is:inline` scripts
+- Client-side data fetching: use `<template>` + `cloneNode(true)` for card rendering from API data; better than innerHTML string building
+- Modal integration: reuse `Modal.astro` component, open with `.showModal()`, `data-modal-close` handles closing automatically
+- App pages use `PageLayout` (not `BaseLayout`) for sidebar + top bar + breadcrumbs
+- Ruff B008: use `# noqa: B008` for FastAPI `Depends()` in function defaults — it's the standard DI pattern
+- Auth middleware: `get_current_user` from `routes/auth.py` is a FastAPI `Depends()` — use in any protected route
 
+---
+
+## 2026-02-16 21:00 - US-016
+- What was implemented: Projects CRUD REST API with 5 endpoints (list, create, get, update, delete)
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/routes/__init__.py (new — route package init)
+  - packages/orbiter-web/src/orbiter_web/routes/projects.py (new — APIRouter with ProjectCreate, ProjectUpdate, ProjectResponse Pydantic models, 5 endpoints)
+  - packages/orbiter-web/src/orbiter_web/app.py (updated — include projects_router)
+- **Learnings for future iterations:**
+  - APIRouter with prefix="/api/projects" keeps all project routes in one module, registered via app.include_router()
+  - Pydantic's Field(min_length=1) provides automatic 422 validation for required string fields
+  - aiosqlite.Row can be converted to dict via dict(row) for Pydantic model serialization
+  - Dynamic UPDATE SET clause: build from model_dump(exclude_none=True) keys for partial updates
+  - Placeholder _DEFAULT_USER_ID used until auth (US-018) is ready — easy to replace with a dependency later
+  - DELETE returns 204 No Content with `status_code=204` and `-> None` return type
 ---
 
 ## 2026-02-16 20:16 - US-001
@@ -122,4 +155,151 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Use `uv run uvicorn ...` in npm scripts to ensure the UV venv is active (avoids needing manual venv activation)
   - concurrently with `--names` and `--prefix-colors` makes dual-server output readable
   - uvicorn `--reload` watches Python files for changes; Astro has HMR built-in
+---
+
+## 2026-02-16 20:35 - US-008
+- What was implemented: Reusable Button component with polymorphic rendering and three variants
+- Files changed:
+  - packages/orbiter-web/src/components/Button.astro (new — polymorphic button/link with primary, bordered, default variants)
+- **Learnings for future iterations:**
+  - Astro conditional rendering (`{href ? <a> : <button>}`) is cleaner than dynamic tag approach for polymorphic components
+  - Use `[key: string]: any` in Astro Props interface to pass through arbitrary HTML attributes via `{...rest}`
+  - Dark mode "just works" for Button because it uses design token colors (bg-dark/text-paper swap automatically)
+  - Astro `check` reports unused variables as "hints" (not errors/warnings) — still worth cleaning up
+---
+
+## 2026-02-16 20:37 - US-009
+- What was implemented: Reusable Card component with polymorphic element tag and hover lift effect
+- Files changed:
+  - packages/orbiter-web/src/components/Card.astro (new — polymorphic div/article/section with hover lift, border opacity increase, shadow)
+- **Learnings for future iterations:**
+  - Astro supports polymorphic elements by destructuring a tag prop (`as`) and using `<Tag>` in the template
+  - Tailwind arbitrary opacity via bracket notation: `border-dark/[0.08]` for precise control
+  - `hover:-translate-y-0.5` gives a subtle 2px lift effect; combine with `hover:shadow-lg` for depth
+  - Dark mode works automatically because Card uses design token colors (bg-subtle, border-dark) that swap via CSS vars
+---
+
+## 2026-02-16 20:38 - US-010
+- What was implemented: Input and Select form components with label, error state, required indicator, and design system styling
+- Files changed:
+  - packages/orbiter-web/src/components/Input.astro (new — text input with label, error, required, focus ring)
+  - packages/orbiter-web/src/components/Select.astro (new — select dropdown with label, options, error, custom chevron)
+- **Learnings for future iterations:**
+  - Use `appearance-none` on `<select>` to remove browser default arrow, then add a custom SVG chevron via absolute positioning
+  - Generate stable-ish IDs with `rest.id || rest.name || random` pattern to link `<label for>` to input
+  - Error state uses `border-coral` + `focus:ring-coral/30`; normal state uses `border-dark/[0.08]` + `focus:ring-coral/20`
+  - Dark mode works automatically via CSS custom properties (bg-paper, text-dark, border-dark swap)
+  - Manual browser verification needed (no browser testing tool available)
+---
+
+## 2026-02-16 20:40 - US-011
+- What was implemented: Badge and Modal components for status indicators and dialogs
+- Files changed:
+  - packages/orbiter-web/src/components/Badge.astro (new — rounded-full pill with coral, zen-blue, zen-green, default color variants)
+  - packages/orbiter-web/src/components/Modal.astro (new — native `<dialog>` overlay with backdrop blur, slide-in animation, close button, click-outside-to-close)
+- **Learnings for future iterations:**
+  - Use native `<dialog>` element for modals — gives free Escape key closing, focus trapping, and `::backdrop` pseudo-element support
+  - `<dialog>` must be opened via `.showModal()` in JS (not just adding `open` attribute) to get overlay/backdrop behavior
+  - Use `data-modal-close` attributes with event delegation for close button + backdrop click pattern
+  - `backdrop:bg-dark/40 backdrop:backdrop-blur-sm` targets the native `::backdrop` pseudo-element via Tailwind
+  - Scoped `<style>` block in Astro for the `@keyframes` keeps animation definition local to the component
+  - Modal uses `animate-[modalSlideIn_200ms_ease-out]` Tailwind arbitrary animation syntax for inline keyframe reference
+  - Manual browser verification needed (no browser testing tool available)
+---
+
+## 2026-02-16 20:42 - US-012
+- What was implemented: Tabs component with tab navigation and coral accent active indicator, Toast component with success/error/info variants and auto-dismiss, section-divider utility class in global.css
+- Files changed:
+  - packages/orbiter-web/src/components/Tabs.astro (new — tab navigation with `data-tab` attributes, ARIA roles, coral underline indicator, JS for switching)
+  - packages/orbiter-web/src/components/Toast.astro (new — fixed-position alert with variant icons, auto-dismiss via configurable timeout, slide-in/out animations)
+  - packages/orbiter-web/src/styles/global.css (added section-divider utility class with gradient border-top line and responsive padding)
+- **Learnings for future iterations:**
+  - Tabs use `data-tab` and `data-tab-panel` attributes for JS switching; ARIA `role="tab/tablist/tabpanel"` for accessibility
+  - Tab active indicator uses `scale-x-0/scale-x-100` with `transition-all` for smooth underline animation
+  - Tabs use named slots (`<slot name={tab.id} />`) so consumers pass content as `<div slot="tabId">...</div>`
+  - Toast auto-dismiss uses `setTimeout` + slide-out animation via inline `style.animation` assignment, then removes on `animationend`
+  - `@keyframes` in scoped `<style>` works for initial animation, but programmatic dismiss needs to reference the keyframe by name in JS
+  - section-divider uses `border-image: linear-gradient(...)` for a gradient top-border effect
+  - Manual browser verification needed (no browser testing tool available)
+---
+
+## 2026-02-16 20:46 - US-013
+- What was implemented: PageLayout.astro — application shell with collapsible left sidebar navigation
+- Files changed:
+  - packages/orbiter-web/src/layouts/PageLayout.astro (new — extends BaseLayout, 10 nav sections with inline SVG icons, collapse toggle, localStorage persistence, Cmd+B shortcut)
+- **Learnings for future iterations:**
+  - SVG icons as inline HTML strings in frontmatter + `set:html` directive avoids needing an icon library dependency
+  - `sidebar-label` CSS class used as a JS hook to toggle label visibility; `hidden lg:block` for responsive default, `lg:hidden` added dynamically when collapsed
+  - Sidebar collapse state toggled via classList manipulation (`lg:w-60` ↔ `lg:w-16`) rather than CSS custom properties — simpler for Tailwind
+  - `data-collapsed` attribute on sidebar tracks state for JS; `localStorage` persists across page loads
+  - Cmd+B / Ctrl+B keyboard shortcut dispatches click on toggle button — keeps logic centralized
+  - On `< lg` screens, sidebar is always collapsed to icon-only (w-16); labels are `hidden lg:block` by default
+  - `getIcon()` helper function must be in Astro frontmatter (between `---` fences), not in template — Astro doesn't support function definitions in template expressions
+  - Manual browser verification needed (no browser testing tool available)
+---
+
+## 2026-02-16 20:50 - US-014
+- What was implemented: Top bar with project name, Cmd+K search trigger, theme toggle, and user menu; Breadcrumbs component; mobile bottom tab bar (< md) with 5 key sections; mobile hamburger slide-out menu with full navigation
+- Files changed:
+  - packages/orbiter-web/src/components/Breadcrumbs.astro (new — accepts items array of {label, href}, renders with chevron separators, last item is plain text)
+  - packages/orbiter-web/src/layouts/PageLayout.astro (major update — added top bar header, mobile bottom tab bar, mobile slide-out menu overlay, theme toggle, search Cmd+K shortcut, breadcrumbs prop)
+- **Learnings for future iterations:**
+  - Desktop sidebar is `hidden md:flex` — hidden on mobile, where bottom tab bar + hamburger menu take over
+  - Mobile bottom tab bar shows 5 key sections (projects, agents, workflows, playground, settings) — filtered from full navSections array
+  - Mobile slide-out menu uses translateX(-100%) → translateX(0) animation with a backdrop overlay; `void panel.offsetWidth` triggers reflow before animation
+  - Theme toggle syncs with BaseLayout's `data-theme` attribute on `<html>` and `localStorage.setItem("theme", ...)` — consistent with BaseLayout's blocking theme detection script
+  - Breadcrumbs conditional rendering in Astro JSX needs Fragment wrapper (`<>...</>`) when rendering multiple sibling elements inside `&&`
+  - Main content has `pb-16 md:pb-0` to prevent the mobile bottom tab bar from overlapping scrollable content
+  - PageLayout now accepts `breadcrumbs` and `projectName` props for flexible usage by consumer pages
+  - Manual browser verification needed (no browser testing tool available)
+---
+
+## 2026-02-16 20:53 - US-015
+- What was implemented: SQLite database foundation with aiosqlite connection management, migration system, and initial migrations
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/database.py (new — get_db async context manager, run_migrations with _migrations tracking table)
+  - packages/orbiter-web/src/orbiter_web/migrations/001_create_users.sql (new — users table with id, email, password_hash, created_at)
+  - packages/orbiter-web/src/orbiter_web/migrations/002_create_projects.sql (new — projects table with FK to users, index on user_id)
+  - packages/orbiter-web/src/orbiter_web/app.py (updated — added lifespan handler to run migrations on startup)
+- **Learnings for future iterations:**
+  - aiosqlite.Row row_factory lets you access columns by name — set it in get_db for all queries
+  - Use PRAGMA journal_mode=WAL and foreign_keys=ON at connection time for concurrency and referential integrity
+  - executescript() runs multiple SQL statements (needed for migration files with multiple statements like CREATE TABLE + CREATE INDEX)
+  - Migration files are sorted by filename, so use zero-padded numbering (001_, 002_)
+  - FastAPI lifespan context manager replaces deprecated on_event("startup") — use `@asynccontextmanager` that yields once
+  - Database URL parsing: config stores SQLAlchemy-style URL (sqlite+aiosqlite:///path), but aiosqlite just needs the file path
+---
+
+## 2026-02-16 21:00 - US-017
+- What was implemented: Projects UI pages — list page at /projects with card grid, empty state, and create dialog; detail page at /projects/:id with rename and delete actions (with confirmation modal)
+- Files changed:
+  - packages/orbiter-web/src/pages/projects/index.astro (new — projects list with card grid, empty state, create modal, fetches from /api/projects)
+  - packages/orbiter-web/src/pages/projects/[id].astro (new — project detail with metadata, rename modal, delete confirmation modal)
+- **Learnings for future iterations:**
+  - Use `<template>` elements for client-side card rendering — cloneNode(true) is cleaner than string concatenation
+  - `is:inline` scripts in Astro can use `define:vars={{ var: value }}` to pass server-side values to client JS (used for projectId in [id].astro)
+  - Dynamic routes in Astro: `[id].astro` extracts `Astro.params.id` — works for SSR/SSG modes
+  - Modal.astro's `data-modal-close` event delegation works out of the box for new modals — just pass the modal id
+  - `line-clamp-2` Tailwind utility is great for truncating card descriptions to 2 lines
+  - Breadcrumb text can be updated client-side by finding spans with "Loading..." text and replacing
+  - Fetch API calls to `/api/projects` are proxied via Vite during dev (configured in astro.config.mjs)
+  - Manual browser verification needed (no browser testing tool available)
+---
+
+## 2026-02-16 21:10 - US-018
+- What was implemented: Authentication backend — login, logout, me endpoints with bcrypt password hashing, HTTP-only session cookies, and protected route middleware
+- Files changed:
+  - packages/orbiter-web/pyproject.toml (added bcrypt>=4.0 dependency)
+  - packages/orbiter-web/src/orbiter_web/config.py (added session_expiry_hours setting)
+  - packages/orbiter-web/src/orbiter_web/migrations/003_create_sessions.sql (new — sessions table with user FK and expiry)
+  - packages/orbiter-web/src/orbiter_web/routes/auth.py (new — login/logout/me endpoints, get_current_user dependency)
+  - packages/orbiter-web/src/orbiter_web/app.py (registered auth_router)
+- **Learnings for future iterations:**
+  - bcrypt 5.x provides `hashpw`/`checkpw` directly — no need for passlib wrapper
+  - FastAPI `Cookie(None)` parameter extracts named cookie from request; cookie name matches the parameter name
+  - `get_current_user` as a FastAPI `Depends()` dependency — reuse across any protected route
+  - Ruff B008 flags `Depends()` in function defaults — use `# noqa: B008` for standard FastAPI dependency injection pattern
+  - Session expiry checked in SQL: `WHERE s.expires_at > datetime('now')` — no Python datetime comparison needed
+  - `response.set_cookie(httponly=True, samesite="lax")` for secure session cookies
+  - `_hash_password` and `_verify_password` helpers keep bcrypt encoding details in one place
 ---

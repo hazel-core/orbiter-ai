@@ -2492,6 +2492,7 @@ version = "0.1.0"
 source = { editable = "packages/orbiter-web" }
 dependencies = [
     { name = "aiosqlite" },
+    { name = "bcrypt" },
     { name = "fastapi" },
     { name = "uvicorn" },
 ]
@@ -2499,6 +2500,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "aiosqlite", specifier = ">=0.20" },
+    { name = "bcrypt", specifier = ">=4.0" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "uvicorn", specifier = ">=0.30" },
 ]

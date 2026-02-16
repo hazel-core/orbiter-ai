@@ -134,7 +134,7 @@
         "Verify in browser using dev-browser skill"
       ],
       "priority": 8,
-      "passes": false,
+      "passes": true,
       "notes": "From PRD US-002 (part 1/5)"
     },
     {
@@ -152,7 +152,7 @@
         "Verify in browser using dev-browser skill"
       ],
       "priority": 9,
-      "passes": false,
+      "passes": true,
       "notes": "From PRD US-002 (part 2/5)"
     },
     {
@@ -170,7 +170,7 @@
         "Verify in browser using dev-browser skill"
       ],
       "priority": 10,
-      "passes": false,
+      "passes": true,
       "notes": "From PRD US-002 (part 3/5)"
     },
     {
@@ -187,7 +187,7 @@
         "Verify in browser using dev-browser skill"
       ],
       "priority": 11,
-      "passes": false,
+      "passes": true,
       "notes": "From PRD US-002 (part 4/5)"
     },
     {
@@ -205,7 +205,7 @@
         "Verify in browser using dev-browser skill"
       ],
       "priority": 12,
-      "passes": false,
+      "passes": true,
       "notes": "From PRD US-002 (part 5/5)"
     },
     {
@@ -224,7 +224,7 @@
         "Verify in browser using dev-browser skill"
       ],
       "priority": 13,
-      "passes": false,
+      "passes": true,
       "notes": "From PRD US-003 (part 1/2)"
     },
     {
@@ -241,7 +241,7 @@
         "Verify in browser using dev-browser skill"
       ],
       "priority": 14,
-      "passes": false,
+      "passes": true,
       "notes": "From PRD US-003 (part 2/2)"
     },
     {
@@ -258,7 +258,7 @@
         "Typecheck passes"
       ],
       "priority": 15,
-      "passes": false,
+      "passes": true,
       "notes": "From PRD US-004 + US-005 (database foundation)"
     },
     {
@@ -275,7 +275,7 @@
         "Typecheck passes"
       ],
       "priority": 16,
-      "passes": false,
+      "passes": true,
       "notes": "From PRD US-004"
     },
     {
@@ -292,7 +292,7 @@
         "Verify in browser using dev-browser skill"
       ],
       "priority": 17,
-      "passes": false,
+      "passes": true,
       "notes": "From PRD US-004"
     },
     {
@@ -309,7 +309,7 @@
         "Typecheck passes"
       ],
       "priority": 18,
-      "passes": false,
+      "passes": true,
       "notes": "From PRD US-005"
     },
     {
