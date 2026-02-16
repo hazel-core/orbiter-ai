@@ -1034,3 +1034,21 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Trace entries are cleared when chat is cleared (via `clearTraceEntries()` in `clearMessages()`)
   - Manual browser verification needed (no browser testing tool available)
 ---
+
+## 2026-02-17 00:31 - US-063
+- What was implemented: Tool call, model call, and reasoning trace display in playground trace panel
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/routes/playground.py (enhanced all 4 streaming functions to send tool_call, reasoning events + enriched done event with model, finish_reason, latency_ms)
+  - packages/orbiter-web/src/pages/playground.astro (revamped trace panel: collapsible model call section, tool calls with JSON args, reasoning section, finish reason badges, error display, latency tracking)
+- **Learnings for future iterations:**
+  - OpenAI tool call deltas accumulate across chunks — index-keyed dict pattern for reassembly
+  - Anthropic content_block_start/stop lifecycle: tool_use blocks emit name on start, input_json_delta chunks accumulate, emit tool_call on block_stop
+  - Anthropic thinking blocks: content_block_start type=thinking, thinking_delta deltas, emit reasoning event on block_stop
+  - Gemini function calls arrive as `functionCall` parts within candidates
+  - `stream_options: {"include_usage": true}` needed for OpenAI to send usage in streaming mode
+  - `time.monotonic()` for latency — more reliable than `time.time()` for short durations
+  - `makeCollapsibleSection()` helper creates reusable expand/collapse sections with icon + title + chevron toggle
+  - Finish reason badge styles mapped via FINISH_REASON_STYLES dict — covers stop/end_turn/tool_calls/length/content_filter/SAFETY across providers
+  - pendingToolCalls + pendingReasoning pattern: accumulate trace data from WS events between messages, consume on `done` event
+  - Manual browser verification needed (no browser testing tool available)
+---
