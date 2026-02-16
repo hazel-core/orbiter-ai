@@ -2496,6 +2496,8 @@ dependencies = [
     { name = "cryptography" },
     { name = "fastapi" },
     { name = "httpx" },
+    { name = "orbiter-core" },
+    { name = "orbiter-models" },
     { name = "uvicorn" },
 ]
 
@@ -2506,6 +2508,8 @@ requires-dist = [
     { name = "cryptography", specifier = ">=42.0" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "httpx", specifier = ">=0.27" },
+    { name = "orbiter-core", editable = "packages/orbiter-core" },
+    { name = "orbiter-models", editable = "packages/orbiter-models" },
     { name = "uvicorn", specifier = ">=0.30" },
 ]
 
