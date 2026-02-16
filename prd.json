@@ -41,7 +41,7 @@
         "Pyright passes"
       ],
       "priority": 2,
-      "passes": false,
+      "passes": true,
       "notes": "Port the _Formatter, get_logger, and configure from packages/orbiter-core/src/orbiter/log.py (87 lines). Add JSON formatter and LogContext as new functionality. Use test prefix test_obs_logging.py to avoid collision with orbiter-core's test_log.py."
     },
     {

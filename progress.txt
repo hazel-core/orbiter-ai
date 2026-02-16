@@ -17,6 +17,7 @@ Started: Mon Feb 16 2026
 - `@asynccontextmanager` returns single-use CMs — when mocking, use `side_effect=lambda: factory()` not `return_value=cm`
 - Don't use `# noqa: PLW0603` or `# noqa: S101` — those rules aren't enabled in ruff config (ruff RUF100 catches unused noqa)
 - hatchling requires a README.md in each package directory (build fails without it)
+- Ruff UP017: use `datetime.UTC` alias, not `datetime.timezone.utc`
 ---
 
 ## 2026-02-16 - US-001
@@ -31,4 +32,21 @@ Started: Mon Feb 16 2026
   - hatchling requires README.md in each package dir — add it early
   - Ruff linting catches unused noqa directives — don't add PLW0603/S101 suppressions since those rules aren't enabled
   - ObservabilityConfig follows same frozen=True pattern as TraceConfig
+---
+
+## 2026-02-16 - US-002
+- Implemented structured logging module at `packages/orbiter-observability/src/orbiter/observability/logging.py` (~170 lines)
+- TextFormatter: compact single-line ANSI output ported from orbiter.log._Formatter, enhanced with LogContext support
+- JsonFormatter: structured {timestamp, level, logger, message, extra} JSON output for production
+- get_logger(name) with auto "orbiter." namespace prefixing
+- configure_logging(level, fmt, force) with idempotency, text/json format selection
+- LogContext context manager using contextvars for async-safe structured bindings
+- reset_logging() for test cleanup
+- 33 tests covering both formatters, namespace auto-prefixing, idempotency, LogContext binding/nesting/override
+- Files changed: packages/orbiter-observability/src/orbiter/observability/logging.py, packages/orbiter-observability/tests/test_obs_logging.py
+- **Learnings for future iterations:**
+  - Ruff UP017: use `datetime.UTC` alias instead of `datetime.timezone.utc`
+  - ContextVar with `default=None` and `T | None` type is the right pattern (confirmed from Codebase Patterns)
+  - LogContext nesting works by merging parent context into child — child overrides take precedence
+  - Text/JSON formatter tests should set `_log_context` directly for unit testing (no need to use LogContext CM in formatter tests)
 ---
