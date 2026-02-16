@@ -65,6 +65,8 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
 - WebSocket chat pattern: connect on agent select, send `{content: "..."}`, receive `{type: "token"|"done"|"error", ...}`; reconnect on clear to reset server-side history
 - Conversation persistence: conversations + messages tables; WebSocket creates conversation lazily on first message; _TokenCollector wraps WS to capture streamed content for DB storage
 - REST API for conversations at `/api/conversations` — list (with optional agent_id filter), get, delete, and `/api/conversations/:id/messages` for message history
+- FastAPI route ordering: define `/search` or other static paths BEFORE `/{id}` param routes to prevent FastAPI matching "search" as an id
+- Ruff B008: only `Depends()` triggers it — `Query(...)` with keyword args does NOT; don't add unnecessary noqa comments
 
 ---
 
@@ -1104,5 +1106,20 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - TTS: strip markdown before speaking — regex chain handles code blocks, links, bold/italic, headers
   - speechSynthesis.cancel() before speaking prevents overlapping utterances
   - Mic button enable/disable must be synced with WS open/close events (same as messageInput and sendBtn)
+  - Manual browser verification needed (no browser testing tool available)
+---
+
+## 2026-02-17 - US-067
+- What was implemented: Thread schema and REST API with migration and 6 endpoints
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/migrations/015_create_threads.sql (new — threads + thread_messages tables)
+  - packages/orbiter-web/src/orbiter_web/routes/threads.py (new — ThreadCreate, ThreadResponse, ThreadMessageResponse models, 6 endpoints)
+  - packages/orbiter-web/src/orbiter_web/app.py (updated — include threads_router)
+- **Learnings for future iterations:**
+  - Threads are separate from conversations — threads table has `first_message_preview`, `message_count`, `total_tokens`, `total_cost` metadata columns
+  - Thread messages use `thread_messages` table (separate from conversations' `messages` table) — CASCADE delete on thread removal
+  - Search endpoint (`/search`) must be defined BEFORE `/{thread_id}` route to avoid FastAPI matching "search" as a thread_id parameter
+  - `Query(min_length=1)` and `Query(default=50, ge=1, le=200)` don't trigger ruff B008 (function call in default arg) — only `Depends()` does; don't add unnecessary `# noqa: B008` comments
+  - Pagination pattern: use `limit` + `offset` query params with sensible defaults (50/0) and validation constraints
   - Manual browser verification needed (no browser testing tool available)
 ---
