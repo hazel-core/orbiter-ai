@@ -198,7 +198,7 @@
         "Pyright passes"
       ],
       "priority": 10,
-      "passes": false,
+      "passes": true,
       "notes": "New module — no existing code to port. Use re.match for model_pattern matching against model name strings. Pricing values should be hardcoded constants (easy to update). Thread safety via threading.Lock around the entries list."
     },
     {

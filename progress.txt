@@ -182,3 +182,23 @@ Started: Mon Feb 16 2026
   - `time.monotonic()` for cooldown is clean — initial `_last_fired` value of 0.0 means first evaluation always passes cooldown
   - `cooldown_seconds=0` in tests is essential to allow repeated evaluations without waiting
 ---
+
+## 2026-02-16 - US-010
+- Implemented cost estimation module at `packages/orbiter-observability/src/orbiter/observability/cost.py` (~130 lines)
+- New module — no existing code to port, designed from scratch
+- `ModelPricing` frozen dataclass: model_pattern (regex), input_cost_per_1k, output_cost_per_1k
+- Built-in pricing table: gpt-4o, gpt-4o-mini, claude-sonnet-4-5-20250514, claude-haiku-3-5-20241022, gemini-2.0-flash
+- `CostEntry` frozen dataclass: model, tokens, costs, timestamp (UTC)
+- `CostTracker`: register_pricing, record, get_total, get_breakdown, get_entries(since), reset
+- Thread-safe via `threading.Lock` around entries list
+- Unknown models log warning and record zero cost
+- `register_pricing()` prepends to pricing list so custom entries take priority over defaults
+- Module-level convenience: `get_tracker()`, `reset()`
+- 30 tests covering: ModelPricing (creation/frozen), CostEntry (creation/timestamp/frozen), pricing lookup (all 5 built-in models, unknown, custom priority), recording (known/unknown/stores/multiple), queries (total/empty/breakdown/aggregation/entries/since/copy), reset (clears entries/preserves pricing), thread safety (concurrent recording), module functions (singleton/reset/full flow)
+- Files changed: packages/orbiter-observability/src/orbiter/observability/cost.py, packages/orbiter-observability/tests/test_obs_cost.py
+- **Learnings for future iterations:**
+  - `re.search` (not `re.match`) for model pattern matching — allows partial matches on model name strings
+  - gpt-4o-mini must be listed BEFORE gpt-4o in pricing table, otherwise "gpt-4o" pattern matches "gpt-4o-mini" first
+  - `register_pricing()` uses `insert(0, ...)` to prepend — custom pricing overrides defaults without removing them
+  - Cost module has no OTel dependency — pure stdlib (logging, re, threading, datetime)
+---
