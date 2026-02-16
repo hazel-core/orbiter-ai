@@ -45,6 +45,8 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
 - Key selection: POST `/api/providers/:id/keys/select` returns decrypted key based on strategy; report usage via POST `/api/providers/:id/keys/:keyId/report`
 - Applications: 5 types (chatbot, chatflow, workflow, agent, text_generator); duplicate endpoint copies with "(Copy)" suffix
 - Application routes at `/api/applications` — use `project_id` query param for filtering by project
+- tools_json and handoffs_json are JSON arrays stored as TEXT in agents table — parse on load, stringify on save
+- /api/tools returns built-in tool catalog (static, no DB) — will be augmented with user-defined tools later
 
 ---
 
@@ -528,5 +530,23 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Ctrl/Cmd+S keyboard shortcut for save — `e.preventDefault()` blocks browser's default save dialog
   - Tab switching: toggle `hidden` class on panels, swap `border-coral`/`text-dark` on active tab button
   - Save sends only changed fields; PUT /api/agents/:id handles partial updates via `model_dump(exclude_none=True)`
+  - Manual browser verification needed (no browser testing tool available)
+---
+
+## 2026-02-17 07:00 - US-033
+- What was implemented: Agent builder Tools and Handoffs tabs — Tools tab with assigned tool list, drag-to-reorder, add tool modal (fetches from /api/tools), remove button; Handoffs tab with assigned handoff list, add handoff modal (fetches project agents from /api/agents), remove button; both saved via PUT /api/agents/:id as tools_json and handoffs_json
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/routes/tools.py (new — /api/tools endpoint returning built-in tool catalog with 10 tools across 5 categories)
+  - packages/orbiter-web/src/orbiter_web/app.py (updated — registered tools_router)
+  - packages/orbiter-web/src/pages/agents/[id]/edit.astro (major update — added Tools and Handoffs tab buttons, tab panels with tool/handoff lists, tool selector modal, handoff agent selector modal, drag-to-reorder for tools, save includes tools_json and handoffs_json)
+- **Learnings for future iterations:**
+  - Tools tab stores assigned tools as array of {id, name, description, category} objects in tools_json — parsed on load, serialized on save
+  - Handoffs tab stores handoff targets as array of {id, name, description} objects in handoffs_json — same pattern
+  - Drag-to-reorder uses native HTML5 drag and drop: `draggable="true"`, dragstart/dragover/drop events, splice to move items in the array, then re-render
+  - Tool selector modal filters out already-assigned tools from the available tools list
+  - Handoff selector modal filters out the current agent (self) and already-assigned handoffs
+  - /api/tools returns a static built-in tool catalog (no DB table yet) — will be augmented with user-defined tools later
+  - Category icons (retrieval, filesystem, execution, data, utility) stored as SVG HTML strings in a JS object, keyed by category name
+  - Modal.astro can be reused for both tool and handoff selectors — just pass different id and title
   - Manual browser verification needed (no browser testing tool available)
 ---
