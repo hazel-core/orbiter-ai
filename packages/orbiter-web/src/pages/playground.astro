@@ -119,6 +119,17 @@ const traceIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="
             <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
+        <!-- Cumulative usage summary -->
+        <div id="trace-summary" class="hidden px-4 py-2 border-b border-dark/[0.08] bg-subtle/30">
+          <div class="grid grid-cols-2 gap-x-4 gap-y-1">
+            <div class="text-[10px] text-muted">Total Tokens</div>
+            <div id="trace-total-tokens" class="text-[10px] text-dark font-medium text-right tabular-nums">0</div>
+            <div class="text-[10px] text-muted">Input / Output</div>
+            <div id="trace-io-tokens" class="text-[10px] text-dark text-right tabular-nums">0 / 0</div>
+            <div class="text-[10px] text-muted">Est. Cost</div>
+            <div id="trace-total-cost" class="text-[10px] text-dark font-medium text-right tabular-nums">$0.0000</div>
+          </div>
+        </div>
         <!-- Trace entries list -->
         <div id="trace-entries" class="flex-1 overflow-y-auto px-3 py-3 space-y-2">
           <div id="trace-empty" class="flex flex-col items-center justify-center h-full text-center px-4">
@@ -168,6 +179,66 @@ let userScrolledUp = false;
 let tracePanelOpen = false;
 let traceCounter = 0;
 
+/* Pricing & cumulative usage */
+interface PricingEntry {
+  model_name: string;
+  provider_type: string;
+  pricing_input: number | null;
+  pricing_output: number | null;
+}
+let pricingData: PricingEntry[] = [];
+let cumulativePromptTokens = 0;
+let cumulativeCompletionTokens = 0;
+let cumulativeCost = 0;
+
+const traceSummary = document.getElementById("trace-summary")!;
+const traceTotalTokens = document.getElementById("trace-total-tokens")!;
+const traceIoTokens = document.getElementById("trace-io-tokens")!;
+const traceTotalCost = document.getElementById("trace-total-cost")!;
+
+function formatCost(cost: number): string {
+  if (cost < 0.01) return "$" + cost.toFixed(4);
+  return "$" + cost.toFixed(2);
+}
+
+function calcCost(model: string | undefined, promptTokens: number, completionTokens: number): number {
+  if (!model) return 0;
+  const pricing = pricingData.find(function(p) { return p.model_name === model; });
+  if (!pricing) return 0;
+  const inCost = pricing.pricing_input ? (promptTokens / 1000) * pricing.pricing_input : 0;
+  const outCost = pricing.pricing_output ? (completionTokens / 1000) * pricing.pricing_output : 0;
+  return inCost + outCost;
+}
+
+function updateCumulativeSummary() {
+  const total = cumulativePromptTokens + cumulativeCompletionTokens;
+  traceTotalTokens.textContent = total.toLocaleString();
+  traceIoTokens.textContent = cumulativePromptTokens.toLocaleString() + " / " + cumulativeCompletionTokens.toLocaleString();
+  traceTotalCost.textContent = formatCost(cumulativeCost);
+  if (total > 0) {
+    traceSummary.classList.remove("hidden");
+  }
+}
+
+function resetCumulativeSummary() {
+  cumulativePromptTokens = 0;
+  cumulativeCompletionTokens = 0;
+  cumulativeCost = 0;
+  traceSummary.classList.add("hidden");
+  traceTotalTokens.textContent = "0";
+  traceIoTokens.textContent = "0 / 0";
+  traceTotalCost.textContent = "$0.0000";
+}
+
+async function loadPricing() {
+  try {
+    const res = await fetch("/api/costs/pricing", { credentials: "same-origin" });
+    if (res.ok) pricingData = await res.json();
+  } catch (_e) {
+    /* Pricing is non-critical — degrade gracefully */
+  }
+}
+
 interface ToolCallTrace {
   name: string;
   arguments: string;
@@ -187,6 +258,7 @@ interface TraceEntry {
   tool_calls: ToolCallTrace[];
   reasoning?: string;
   error?: string;
+  cost?: number;
 }
 
 const traceData: TraceEntry[] = [];
@@ -224,6 +296,10 @@ interface TraceFinishData {
 
 function addTraceEntry(data: TraceFinishData, contentPreview: string) {
   traceCounter++;
+  const promptTok = data.usage?.prompt_tokens || 0;
+  const completionTok = data.usage?.completion_tokens || 0;
+  const cost = calcCost(data.model, promptTok, completionTok);
+
   const entry: TraceEntry = {
     id: traceCounter,
     timestamp: Date.now(),
@@ -234,10 +310,18 @@ function addTraceEntry(data: TraceFinishData, contentPreview: string) {
     latency_ms: data.latency_ms,
     tool_calls: [...pendingToolCalls],
     reasoning: pendingReasoning || undefined,
+    cost: cost,
   };
   traceData.push(entry);
   pendingToolCalls = [];
   pendingReasoning = "";
+
+  /* Update cumulative totals */
+  cumulativePromptTokens += promptTok;
+  cumulativeCompletionTokens += completionTok;
+  cumulativeCost += cost;
+  updateCumulativeSummary();
+
   traceEmpty.classList.add("hidden");
   renderTraceEntry(entry);
 }
@@ -339,6 +423,14 @@ function renderTraceEntry(entry: TraceEntry) {
     labelWrap.appendChild(badge);
   }
 
+  /* Cost badge in header */
+  if (entry.cost !== undefined && entry.cost > 0) {
+    const costBadge = document.createElement("span");
+    costBadge.className = "flex-shrink-0 text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-subtle text-dark tabular-nums";
+    costBadge.textContent = formatCost(entry.cost);
+    labelWrap.appendChild(costBadge);
+  }
+
   const timeEl = document.createElement("span");
   timeEl.className = "text-[10px] text-muted/60 flex-shrink-0 tabular-nums";
   const d = new Date(entry.timestamp);
@@ -397,6 +489,13 @@ function renderTraceEntry(entry: TraceEntry) {
       latencyLine.className = "text-[11px] text-dark";
       latencyLine.innerHTML = '<span class="text-muted">Latency:</span> ' + entry.latency_ms.toLocaleString() + 'ms';
       modelContent.appendChild(latencyLine);
+    }
+
+    if (entry.cost !== undefined && entry.cost > 0) {
+      const costLine = document.createElement("div");
+      costLine.className = "text-[11px] text-dark";
+      costLine.innerHTML = '<span class="text-muted">Est. Cost:</span> <span class="font-medium">' + formatCost(entry.cost) + '</span>';
+      modelContent.appendChild(costLine);
     }
 
     body.appendChild(makeCollapsibleSection(MODEL_ICON, "Model Call", modelContent, true));
@@ -534,6 +633,7 @@ function clearTraceEntries() {
   traceCounter = 0;
   pendingToolCalls = [];
   pendingReasoning = "";
+  resetCumulativeSummary();
   const children = Array.from(traceEntries.children);
   children.forEach(function(c) {
     if (c.id !== "trace-empty") traceEntries.removeChild(c);
@@ -803,10 +903,15 @@ function finishStream(data: { usage?: { prompt_tokens?: number; completion_token
       const meta = document.createElement("div");
       meta.className = "text-[10px] text-muted/60 mt-1.5 text-right";
       const parts: string[] = [];
-      if (usage.prompt_tokens) parts.push(usage.prompt_tokens + " in");
-      if (usage.completion_tokens) parts.push(usage.completion_tokens + " out");
+      if (usage.prompt_tokens) parts.push(usage.prompt_tokens.toLocaleString() + " in");
+      if (usage.completion_tokens) parts.push(usage.completion_tokens.toLocaleString() + " out");
       if (parts.length > 0) {
-        meta.textContent = parts.join(" / ") + " tokens";
+        let metaText = parts.join(" / ") + " tokens";
+        const msgCost = calcCost(data.model, usage.prompt_tokens || 0, usage.completion_tokens || 0);
+        if (msgCost > 0) {
+          metaText += " · " + formatCost(msgCost);
+        }
+        meta.textContent = metaText;
         wrapper.appendChild(meta);
       }
     }
@@ -963,4 +1068,5 @@ clearBtn.addEventListener("click", clearMessages);
 
 /* ---- Init ---- */
 loadAgents();
+loadPricing();
 </script>
