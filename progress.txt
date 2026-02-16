@@ -81,6 +81,9 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
 - Service layer: `orbiter_web/services/` directory for business logic separate from routes; AgentService bridges DB configs to live orbiter Agent objects
 - orbiter-web depends on orbiter-core + orbiter-models via workspace deps in pyproject.toml + `[tool.uv.sources]`
 - Agent runtime: `get_provider("provider:model", api_key=..., base_url=...)` creates ModelProvider; `Agent.run(input=..., messages=..., provider=...)` executes the tool loop
+- Agent node execution: `_execute_agent_node()` in engine.py handles both DB-referenced and inline agents; inject `_user_id` into node data for provider resolution
+- Upstream context: `_gather_upstream_inputs(node_id, edges, variables)` collects text from all upstream nodes — use for agent node input
+- `_execute_node()` accepts optional `edges`, `variables`, `event_callback` — agent nodes use these, other node types ignore them
 
 ---
 
@@ -1714,4 +1717,20 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - React island accepts `agentId` prop and polls `/api/agents/{agentId}/plans/active` every 3s for live updates
   - Plan page at `/agents/[id]/plan.astro` uses same loading/error pattern as edit page — fetch agent first, then render island
   - Step reorder endpoint takes ordered list of step IDs and assigns sequential step_numbers
+---
+
+## 2026-02-17 - US-096
+- What was implemented: Workflow-embedded agent nodes — agent_node and sub_agent types now execute real Orbiter Agents instead of stubs
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/engine.py (major — replaced stub `_execute_node` with real agent execution via AgentService; added `_execute_agent_node`, `_gather_upstream_inputs`, upstream context passing, streaming token events)
+  - packages/orbiter-web/src/islands/Canvas/CanvasIsland.tsx (added `agentTokens` to ExecutionState, `agent_token` WebSocket event handler for streaming)
+- **Learnings for future iterations:**
+  - Agent node execution pattern: `_execute_agent_node()` supports both DB-referenced agents (via `agent_id`) and inline agents (via `inline_*` config fields)
+  - Upstream context: `_gather_upstream_inputs()` collects text from all upstream nodes via edges and variables dict — joined with newlines
+  - Runtime context injection: `_user_id` and `_workflow_id` are injected into agent node data before execution so AgentService can resolve providers
+  - Streaming: when `event_callback` is available, agent nodes emit `agent_token` events via `svc.stream_agent()` for real-time visibility; falls back to `run_agent()` on failure
+  - `_execute_node()` now accepts optional `edges`, `variables`, and `event_callback` params — all callers (execute_workflow, execute_workflow_debug, execute_single_node) updated
+  - Supervisor/nested agents: supported through DB agent relationships (agent_sub_agents table) — AgentService resolves delegation tools automatically
+  - Frontend `agentTokens: Record<string, string>` accumulates streamed text per node_id, reset on new run
+  - Existing infrastructure was well-designed: handle types, AgentNodeConfig UI, NodeConfigPanel, and AgentService were already complete — only the engine stub needed real implementation
 ---
