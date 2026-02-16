@@ -1768,3 +1768,17 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - knowledge_bases has both user_id (ownership) and optional project_id (scoping) — filter by both when project_id is provided
   - Next migration number is 029
 ---
+
+## 2026-02-17 04:41 - US-098
+- What was implemented: Knowledge base management UI with two pages
+  - `/knowledge` index page: KB list grid, create modal (name, description, embedding model selector, chunk size, chunk overlap), delete with confirmation dialog
+  - `/knowledge/[id]` detail page: stats cards (documents, chunks, index size), configuration display, document list placeholder, delete with confirmation
+- Files changed:
+  - packages/orbiter-web/src/pages/knowledge/index.astro (new — KB list page with create/delete modals)
+  - packages/orbiter-web/src/pages/knowledge/[id].astro (new — KB detail page with stats and config)
+- **Learnings for future iterations:**
+  - PageLayout already has "knowledge" in its nav sections — just use `activeSection="knowledge"` and the nav item lights up
+  - Follow the projects page pattern: loading state → empty state → grid with template cloning
+  - Delete buttons on cards: use `data-action="delete"` with event delegation on the grid container, `e.stopPropagation()` to prevent card link navigation
+  - `define:vars={{ kbId: id }}` passes Astro params into `is:inline` scripts — same pattern as projects/[id].astro
+---
