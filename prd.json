@@ -268,7 +268,7 @@
         "Pyright passes"
       ],
       "priority": 14,
-      "passes": false,
+      "passes": true,
       "notes": "Final polish story — depends on all modules (US-001 through US-011) being complete. Use lazy imports via a _lazy_import helper or __getattr__ on the module to avoid importing OTel at module load time."
     }
   ]

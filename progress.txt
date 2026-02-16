@@ -259,3 +259,19 @@ Started: Mon Feb 16 2026
   - Pre-existing pyright ignores may need fixing when they're on the wrong line of a multi-line import
   - Docs/README references to removed packages should be updated but non-code references (docs/, tasks/) can be updated later
 ---
+
+## 2026-02-16 - US-014
+- Implemented public API and __init__.py exports for orbiter-observability
+- Tiered imports: core symbols (configure, get_logger, traced, span, aspan, ObservabilityConfig, etc.) eagerly imported
+- Lazy loading via `__getattr__` + `_LAZY_IMPORTS` dict for all other symbols (~140 lazy symbols)
+- `__all__` exports ~150 symbols across all 11 sub-modules
+- Semconv constants (47 names) lazy-loaded from semconv module via loop registration
+- Caching: lazy-loaded symbols stored in module globals after first access (no repeat `__getattr__`)
+- 58 tests covering: eager imports (10), lazy imports (14), sub-module imports (11), __all__ completeness (15), lazy loading behavior (4), OTel optional (2), convenience patterns (2)
+- Files changed: packages/orbiter-observability/src/orbiter/observability/__init__.py, packages/orbiter-observability/tests/test_obs_init.py, prd.json
+- **Learnings for future iterations:**
+  - `*dict_var` unpacking in `__all__` list triggers pyright `reportUnsupportedDunderAll` warning — harmless, just means pyright can't statically resolve the exported list
+  - `@traced` (without parens) doesn't work — the decorator factory always requires `@traced()` with parens
+  - Ruff isort auto-fix can move pyright ignores from `from` line to symbol line in multi-line imports — always check and fix back to `from` line
+  - All orbiter-observability modules already handle missing OTel via `try/except ImportError` — lazy loading is for avoiding unnecessary module loads, not for preventing ImportError
+---
