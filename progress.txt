@@ -78,6 +78,9 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
 - Server-side handle type map in `tools.py` (`_NODE_HANDLE_MAP`) mirrors `handleTypes.ts` — keep both in sync when adding new node types
 - Tool Mode on nodes: stored as `tool_mode: boolean` in node.data; exposed via `GET /api/tools/workflow-nodes`; wrench badge in WorkflowNode.tsx
 - Marketplace catalog: static `MARKETPLACE_CATALOG` list in plugins.py; marketplace endpoints before /{id} routes; categories: Models, Tools, Agent Strategies, Extensions, Bundles
+- Service layer: `orbiter_web/services/` directory for business logic separate from routes; AgentService bridges DB configs to live orbiter Agent objects
+- orbiter-web depends on orbiter-core + orbiter-models via workspace deps in pyproject.toml + `[tool.uv.sources]`
+- Agent runtime: `get_provider("provider:model", api_key=..., base_url=...)` creates ModelProvider; `Agent.run(input=..., messages=..., provider=...)` executes the tool loop
 
 ---
 
@@ -1571,4 +1574,22 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Process type radio buttons use `peer` + `peer-checked:` Tailwind pattern for styled card selectors
   - Sequential mode shows drag handles and dependency selectors; parallel mode hides both
   - Manual browser verification needed (no dev-browser skill configured)
+---
+
+## 2026-02-17 03:50 - US-155
+- What was implemented: AgentService class that bridges database agent configs to live Orbiter Agent objects
+- Files changed:
+  - packages/orbiter-web/pyproject.toml (added orbiter-core, orbiter-models deps + uv.sources)
+  - packages/orbiter-web/src/orbiter_web/services/__init__.py (new — service layer init)
+  - packages/orbiter-web/src/orbiter_web/services/agent_runtime.py (new — AgentRuntimeError, AgentService with build_agent/run_agent/stream_agent, helpers for loading agent row, resolving provider + API key, resolving tools)
+  - packages/orbiter-web/tests/__init__.py (new — test package init)
+  - packages/orbiter-web/tests/test_agent_runtime.py (new — 14 unit tests with mocked DB and mocked model provider)
+- **Learnings for future iterations:**
+  - orbiter-web needs `[tool.uv.sources]` entries in its pyproject.toml for workspace deps (orbiter-core, orbiter-models)
+  - Agent.run() requires a `provider` kwarg — pass an `orbiter.models.ModelProvider` instance
+  - `get_provider("openai:gpt-4o", api_key=..., base_url=...)` is the factory for creating ModelProvider instances
+  - FunctionTool can have its `.parameters` dict overridden after construction to use DB-stored schemas
+  - For testing async DB code, mock `get_db()` context manager + cursor.fetchone/fetchall
+  - Provider key lookup: check `providers.encrypted_api_key` first, fall back to `provider_keys` table
+  - `build_messages()` from `orbiter._internal.message_builder` handles system prompt + message list assembly
 ---

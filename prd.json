@@ -2716,7 +2716,7 @@
         "Typecheck passes"
       ],
       "priority": 16,
-      "passes": false,
+      "passes": true,
       "notes": "Gap fill: ~20 stories say 'run agent' but none defines how DB configs become live Agent objects. Blocks US-058, US-069, US-096"
     },
     {
