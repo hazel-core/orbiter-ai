@@ -1225,3 +1225,21 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - On client disconnect, a "stop" command is sent to the engine to cleanly abort the debug run
   - Manual browser verification needed (no browser testing tool available)
 ---
+
+## 2026-02-17 - US-074
+- What was implemented: Step-through debug UI — complete frontend for debug mode workflow execution
+- Files changed:
+  - packages/orbiter-web/src/islands/Canvas/CanvasIsland.tsx (added useDebugExecution hook, DebugVariablePanel component, debug CSS animations, debug icon, debug toolbar button, debug control bar with Continue/Skip/Stop, wired debug state into displayNodes/displayEdges, Alt+click breakpoint toggle)
+  - packages/orbiter-web/src/islands/Canvas/WorkflowNode.tsx (added _debugPaused and _hasBreakpoint data props, purple pulsing border for paused node, red dot breakpoint indicator, paused badge)
+  - prd.json (updated — US-074 passes: true)
+- **Learnings for future iterations:**
+  - Debug state is separate from execution state (useDebugExecution vs useWorkflowExecution) — they share similar patterns but debug adds paused state, variables, breakpoints
+  - Debug paused nodes use purple (#a855f7) visual treatment to distinguish from coral running state
+  - Breakpoint indicator: red dot at top-left corner of node (position: absolute, left: -6, top: -6)
+  - Variable panel uses click-to-edit pattern: click value → input field appears, Enter commits, Escape cancels
+  - Variables are keyed by node_id — map to node labels via nodeLabels lookup for display
+  - Alt+click toggles breakpoints on nodes during debug mode (Shift+click already used for relationships mode)
+  - Debug control bar replaces normal execution status bar via conditional Panel rendering at bottom-center
+  - Copy-to-clipboard button on each variable value for quick debugging
+  - Manual browser verification needed (no browser testing tool available)
+---
