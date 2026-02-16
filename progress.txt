@@ -1068,3 +1068,26 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - `loadPricing()` is non-critical — wrapped in try/catch with empty fallback so missing pricing degrades gracefully
   - Manual browser verification needed (no browser testing tool available)
 ---
+
+## 2026-02-17 - US-065
+- What was implemented: Multi-model comparison mode for the playground
+  - Compare mode toggle button in playground header
+  - Model picker bar with add/remove chip UI (2–4 models from /api/models)
+  - New WebSocket endpoint `/api/playground/compare/chat` that accepts multiple model configs and streams responses in parallel via asyncio.gather, each tagged with `model_index`
+  - Side-by-side response columns with per-column streaming, markdown rendering, and user/agent message bubbles
+  - Per-model metrics footer: latency (ms), token counts (in/out), cost estimate
+  - Thumbs up/down rating buttons per response column
+  - JSON export button that downloads full comparison history with ratings
+  - `_IndexedCollector` class wraps WebSocket to prefix all messages with `model_index`
+  - `_stream_for_model()` helper dispatches to existing provider streaming functions
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/routes/playground.py (added compare endpoint + helpers)
+  - packages/orbiter-web/src/pages/playground.astro (added compare mode UI + ~350 lines of JS)
+- **Learnings for future iterations:**
+  - Compare mode uses a separate WebSocket (`/api/playground/compare/chat`) rather than the agent-specific one — no agent required, models are passed directly in the message
+  - `asyncio.gather(*tasks, return_exceptions=True)` streams all models in parallel through a single WebSocket; each message tagged with `model_index`
+  - Astro frontmatter variables are NOT available inside `<script>` tags — need to re-declare SVG strings in the script section
+  - Compare columns use `data-*` attributes for DOM queries (e.g., `data-response-area="0"`, `data-col-footer="1"`) — fast and clean for dynamic column management
+  - Rating state stored in `compareHistory` array — persists across multiple prompt rounds within the same session
+  - Manual browser verification needed (no browser testing tool available)
+---
