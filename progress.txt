@@ -550,3 +550,17 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Modal.astro can be reused for both tool and handoff selectors — just pass different id and title
   - Manual browser verification needed (no browser testing tool available)
 ---
+
+## 2026-02-17 07:45 - US-034
+- What was implemented: Agent builder Hooks and Advanced tabs — Hooks tab with 5 HookPoint values (before_model_call, after_model_call, before_tool_call, after_tool_call, on_error) each with function name/path input; Advanced tab with max_steps slider (1-100), output_type JSON Schema textarea with on-blur validation, Memory toggle, Context Engine toggle
+- Files changed:
+  - packages/orbiter-web/src/pages/agents/[id]/edit.astro (major update — added Hooks and Advanced tab buttons + panels, hook input fields, max_steps slider, output_type textarea with JSON validation, toggle switches, save includes all new fields)
+- **Learnings for future iterations:**
+  - Hook points are stored as a flat object in hooks_json: `{"before_model_call": "module.func", ...}` — keys are hook point names, values are function references
+  - Toggle state (memory, context) stored as meta flags (`_memory_enabled`, `_context_enabled`) inside hooks_json to avoid schema changes — these are not hook points but config flags
+  - Toggle switch pattern: `role="switch"` + `aria-checked` + coral bg when on; `.toggle-dot` uses `translate-x-5` for the slide animation
+  - JSON validation on blur: `JSON.parse()` in try/catch, show `border-coral` + error message on failure; validate again before save and switch to Advanced tab if invalid
+  - Max steps slider uses same pattern as temperature: `input` event updates a `<span>` with current value, `accent-coral` for the range thumb
+  - Output type textarea pretty-prints stored JSON on load with `JSON.stringify(JSON.parse(...), null, 2)` for readability
+  - Manual browser verification needed (no browser testing tool available)
+---
