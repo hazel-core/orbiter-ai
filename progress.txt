@@ -13,6 +13,7 @@ Started: Mon Feb 16 2026
 - OTel optional imports: use `try/except ImportError` pattern with `HAS_OTEL` flag
 - OTel `trace.set_tracer_provider()` can only be called once — in tests, reset internal state before each test
 - OTel metrics instruments created at module level bind to the no-op provider — create instruments inside recording functions
+- Cross-namespace-package imports within same package (e.g., metrics.py → semconv.py) also need `# pyright: ignore[reportMissingImports]`
 - Ruff B039: `ContextVar` default cannot be mutable — use `default=None` with `T | None` type
 - `@asynccontextmanager` returns single-use CMs — when mocking, use `side_effect=lambda: factory()` not `return_value=cm`
 - Don't use `# noqa: PLW0603` or `# noqa: S101` — those rules aren't enabled in ruff config (ruff RUF100 catches unused noqa)
@@ -87,4 +88,24 @@ Started: Mon Feb 16 2026
   - OTel test fixture must reset `trace._TRACER_PROVIDER_SET_ONCE._done = False` and `trace._TRACER_PROVIDER = None` before each test
   - Use `unittest.mock.patch("orbiter.observability.tracing.HAS_OTEL", False)` to test no-OTel path
   - Ruff SIM117: combine nested `with` statements into single `with` using comma syntax
+---
+
+## 2026-02-16 - US-005
+- Implemented metrics collection module at `packages/orbiter-observability/src/orbiter/observability/metrics.py` (~270 lines)
+- Ported from `packages/orbiter-trace/src/orbiter/trace/instrumentation.py` with key enhancement: in-memory fallback when OTel absent
+- `MetricsCollector` class: thread-safe in-memory storage for counters, histograms, gauges with `get_snapshot()` and `reset()`
+- `HAS_OTEL` flag via `try/except ImportError` — when OTel is absent, all metrics go to `MetricsCollector`
+- Instrument factories: `create_counter()`, `create_histogram()`, `create_gauge()` (OTel path)
+- Attribute builders: `build_agent_attributes()`, `build_tool_attributes()` using semconv constants
+- Recording helpers: `record_agent_run()` and `record_tool_step()` with dual OTel/in-memory paths
+- `Timer` class with `start()`/`stop()`/`elapsed` + context manager support (`__enter__`/`__exit__`)
+- `timer()` context manager function for convenience
+- `get_metrics_snapshot()` and `reset_metrics()` global helpers
+- 51 tests covering: metric name constants, MetricsCollector (add/record/set/reset/snapshot/singleton/thread-safety), attribute builders, in-memory recording (agent runs, tool steps, tokens, success/failure), OTel recording, instrument factories, Timer (basic/CM/function), integration (full flow, multiple recordings, reset)
+- Files changed: packages/orbiter-observability/src/orbiter/observability/metrics.py, packages/orbiter-observability/tests/test_obs_metrics.py
+- **Learnings for future iterations:**
+  - Cross-namespace-package imports within orbiter-observability also need `# pyright: ignore[reportMissingImports]` (e.g., metrics.py importing from semconv.py)
+  - OTel MeterProvider reset pattern: `metrics._internal._METER_PROVIDER_SET_ONCE._done = False` and `metrics._internal._METER_PROVIDER = None`
+  - `unittest.mock.patch("orbiter.observability.metrics.HAS_OTEL", False)` to test in-memory path even when OTel is installed
+  - Timer context manager (`with Timer() as t:`) is more ergonomic than manual start()/stop() for typical use
 ---

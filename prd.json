@@ -102,7 +102,7 @@
         "Pyright passes"
       ],
       "priority": 5,
-      "passes": false,
+      "passes": true,
       "notes": "Port from packages/orbiter-trace/src/orbiter/trace/instrumentation.py (~240 lines). Key change: add MetricsCollector in-memory fallback when OTel not installed. Uses semconv constants from US-003. Port tests from test_trace_instrumentation.py."
     },
     {
