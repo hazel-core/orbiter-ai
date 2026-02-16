@@ -472,3 +472,18 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - GET /api/applications supports optional `project_id` query param via `Query(None)` — builds different SQL based on presence
   - Applications have both `project_id` FK (to projects) and `user_id` FK (to users) — ownership check is on user_id
 ---
+
+## 2026-02-17 05:00 - US-029
+- What was implemented: New Application dialog on the project detail page — modal with five type cards (Chatbot, Chatflow, Workflow, Agent, Text Generator), each with icon, description, and use case examples; two-step flow (select type → enter name → create)
+- Files changed:
+  - packages/orbiter-web/src/pages/projects/[id].astro (updated — added "New Application" button in actions row, New Application modal with 5 type cards grid, name input step, create logic calling POST /api/applications, navigation to builder on success)
+- **Learnings for future iterations:**
+  - Two-step dialog pattern: show type cards first, then slide to name input — avoids cluttering the type selection with a form
+  - Type card selection hides the grid and shows a badge + "Change" link for the selected type — gives a clear undo path
+  - Each type has a unique accent color (coral, zen-blue, zen-green, purple-500, amber-500) matching the capability tag colors used on models page
+  - `sm:col-span-2` on the last card (Text Generator) makes it full-width in the 2-column grid — cleaner layout with odd number of items
+  - Dialog reset function must clear both selectedAppType state and visual selection classes — call on both modal close and "Change" click
+  - Enter key on name input delegates to create button click — keeps submit logic centralized
+  - After successful creation, navigates to `/applications/{id}` — builder pages will be implemented in later stories
+  - Manual browser verification needed (no browser testing tool available)
+---
