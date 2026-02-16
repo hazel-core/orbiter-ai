@@ -1864,3 +1864,18 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Engine retrieval node reads KB settings from DB directly, no need for AgentService
   - Agent knowledge_base_ids is stored as JSON TEXT array (same pattern as tools_json, handoffs_json)
 ---
+
+## 2026-02-17 - US-102
+- What was implemented: Knowledge retrieval config UI on KB detail page
+  - Retrieval Settings section with search type toggle (keyword/semantic/hybrid), top-k slider (1-20), similarity threshold slider (0.0-1.0), reranker toggle
+  - Save Changes button with PUT to /api/knowledge-bases/:id, success/error messages
+  - Test Retrieval section with query input, search button, results showing chunks with relevance scores as percentage badges
+  - Click-to-expand on result items shows full chunk text with source document name highlighted
+- Files changed:
+  - packages/orbiter-web/src/pages/knowledge/[id].astro (added ~180 lines: HTML sections + JS logic)
+- **Learnings for future iterations:**
+  - Retrieval settings were already in the DB schema (migration 030) and the PUT endpoint already accepts them — the frontend was the missing piece
+  - Use `setSearchType()` pattern with button group styling for toggle selections (add/remove Tailwind classes)
+  - Range slider for threshold uses 0-100 int range, divide by 100 for float display/API calls
+  - CSRF is auto-handled by PageLayout monkey-patch — no need to add X-CSRF-Token headers manually
+---

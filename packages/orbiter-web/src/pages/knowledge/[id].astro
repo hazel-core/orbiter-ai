@@ -108,6 +108,76 @@ const typeIcons: Record<string, string> = {
         </div>
       </div>
 
+      <!-- Retrieval Settings -->
+      <div class="rounded-xl bg-subtle/80 border border-dark/[0.08] p-5 mb-8">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-sm font-semibold text-dark">Retrieval Settings</h2>
+          <button id="save-retrieval-btn" class="hidden px-3 py-1.5 text-xs font-medium text-paper bg-zen-blue rounded-md hover:bg-zen-blue/90 transition-colors cursor-pointer">Save Changes</button>
+        </div>
+        <div id="retrieval-saved-msg" class="hidden text-xs text-zen-green mb-3">Settings saved.</div>
+        <div id="retrieval-error-msg" class="hidden text-xs text-coral mb-3"></div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+          <!-- Search type -->
+          <div>
+            <label class="text-[10px] font-medium text-muted uppercase tracking-wide">Search Type</label>
+            <div class="mt-1.5 flex gap-1">
+              <button class="search-type-btn flex-1 px-3 py-1.5 text-xs font-medium rounded-md border transition-colors cursor-pointer" data-value="keyword">Keyword</button>
+              <button class="search-type-btn flex-1 px-3 py-1.5 text-xs font-medium rounded-md border transition-colors cursor-pointer" data-value="semantic">Semantic</button>
+              <button class="search-type-btn flex-1 px-3 py-1.5 text-xs font-medium rounded-md border transition-colors cursor-pointer" data-value="hybrid">Hybrid</button>
+            </div>
+          </div>
+
+          <!-- Reranker toggle -->
+          <div>
+            <label class="text-[10px] font-medium text-muted uppercase tracking-wide">Reranking</label>
+            <div class="mt-1.5 flex items-center gap-3">
+              <button id="reranker-toggle" class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors cursor-pointer bg-dark/15" role="switch" aria-checked="false">
+                <span class="reranker-dot inline-block h-3.5 w-3.5 rounded-full bg-paper shadow-sm transition-transform translate-x-0.5"></span>
+              </button>
+              <span id="reranker-label" class="text-xs text-muted">Disabled</span>
+            </div>
+          </div>
+
+          <!-- Top-K slider -->
+          <div>
+            <label class="text-[10px] font-medium text-muted uppercase tracking-wide">Top K Results</label>
+            <div class="mt-1.5 flex items-center gap-3">
+              <input type="range" id="topk-slider" min="1" max="20" value="5" class="flex-1 h-1.5 accent-zen-blue cursor-pointer" />
+              <span id="topk-value" class="text-xs font-medium text-dark w-6 text-right">5</span>
+            </div>
+          </div>
+
+          <!-- Similarity threshold slider -->
+          <div>
+            <label class="text-[10px] font-medium text-muted uppercase tracking-wide">Similarity Threshold</label>
+            <div class="mt-1.5 flex items-center gap-3">
+              <input type="range" id="threshold-slider" min="0" max="100" value="0" class="flex-1 h-1.5 accent-zen-blue cursor-pointer" />
+              <span id="threshold-value" class="text-xs font-medium text-dark w-8 text-right">0.00</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Test Retrieval -->
+      <div class="rounded-xl bg-subtle/80 border border-dark/[0.08] p-5 mb-8">
+        <h2 class="text-sm font-semibold text-dark mb-4">Test Retrieval</h2>
+        <div class="flex gap-2">
+          <input type="text" id="test-query-input" placeholder="Enter a search query..." class="flex-1 rounded-md border border-dark/[0.12] bg-paper px-3 py-2 text-sm text-dark placeholder:text-muted/50 focus:outline-none focus:border-dark/30" />
+          <button id="test-query-btn" class="px-4 py-2 text-sm font-medium text-paper bg-zen-blue rounded-md hover:bg-zen-blue/90 transition-colors cursor-pointer">Search</button>
+        </div>
+        <div id="test-results" class="hidden mt-4">
+          <p id="test-results-count" class="text-xs font-medium text-muted uppercase tracking-wide mb-3"></p>
+          <div id="test-results-list" class="space-y-2"></div>
+        </div>
+        <div id="test-no-results" class="hidden mt-4">
+          <p class="text-sm text-muted italic">No matching chunks found.</p>
+        </div>
+        <div id="test-error" class="hidden mt-4">
+          <p class="text-sm text-coral" id="test-error-msg"></p>
+        </div>
+      </div>
+
       <!-- Upload section -->
       <div class="rounded-xl bg-subtle/80 border border-dark/[0.08] p-5 mb-8">
         <h2 class="text-sm font-semibold text-dark mb-4">Upload Documents</h2>
@@ -243,10 +313,33 @@ const typeIcons: Record<string, string> = {
     var chunkPreviewModal = document.getElementById("chunk-preview-modal");
     var chunkPreviewContent = document.getElementById("chunk-preview-content");
 
+    /* Retrieval settings DOM refs */
+    var saveRetrievalBtn = document.getElementById("save-retrieval-btn");
+    var retrievalSavedMsg = document.getElementById("retrieval-saved-msg");
+    var retrievalErrorMsg = document.getElementById("retrieval-error-msg");
+    var searchTypeBtns = document.querySelectorAll(".search-type-btn");
+    var rerankerToggle = document.getElementById("reranker-toggle");
+    var rerankerLabel = document.getElementById("reranker-label");
+    var topkSlider = document.getElementById("topk-slider");
+    var topkValue = document.getElementById("topk-value");
+    var thresholdSlider = document.getElementById("threshold-slider");
+    var thresholdValue = document.getElementById("threshold-value");
+
+    /* Test retrieval DOM refs */
+    var testQueryInput = document.getElementById("test-query-input");
+    var testQueryBtn = document.getElementById("test-query-btn");
+    var testResults = document.getElementById("test-results");
+    var testResultsCount = document.getElementById("test-results-count");
+    var testResultsList = document.getElementById("test-results-list");
+    var testNoResults = document.getElementById("test-no-results");
+    var testError = document.getElementById("test-error");
+    var testErrorMsg = document.getElementById("test-error-msg");
+
     var currentKb = null;
     var selectedFiles = [];
     var fileSettings = {}; /* keyed by file name+size for uniqueness */
     var pendingDeleteDocId = null;
+    var retrievalDirty = false;
 
     /* ---------- Helpers ---------- */
     function formatSize(chunks) {
@@ -307,6 +400,16 @@ const typeIcons: Record<string, string> = {
       embeddingModelEl.textContent = kb.embedding_model;
       chunkSizeEl.textContent = kb.chunk_size + " tokens";
       chunkOverlapEl.textContent = kb.chunk_overlap + " tokens";
+
+      /* Populate retrieval settings */
+      setSearchType(kb.search_type || "keyword");
+      setReranker(!!kb.reranker_enabled);
+      topkSlider.value = kb.top_k || 5;
+      topkValue.textContent = topkSlider.value;
+      thresholdSlider.value = Math.round((kb.similarity_threshold || 0) * 100);
+      thresholdValue.textContent = (parseFloat(thresholdSlider.value) / 100).toFixed(2);
+      retrievalDirty = false;
+      saveRetrievalBtn.classList.add("hidden");
 
       /* Update breadcrumb */
       var allSpans = document.querySelectorAll("nav span");
@@ -754,6 +857,191 @@ const typeIcons: Record<string, string> = {
           status.classList.add("text-coral");
         });
     }
+
+    /* ---------- Retrieval Settings ---------- */
+    function setSearchType(type) {
+      searchTypeBtns.forEach(function (btn) {
+        if (btn.getAttribute("data-value") === type) {
+          btn.classList.add("bg-zen-blue", "text-paper", "border-zen-blue");
+          btn.classList.remove("text-muted", "border-dark/[0.12]", "hover:bg-dark/5");
+        } else {
+          btn.classList.remove("bg-zen-blue", "text-paper", "border-zen-blue");
+          btn.classList.add("text-muted", "border-dark/[0.12]", "hover:bg-dark/5");
+        }
+      });
+    }
+
+    function getSearchType() {
+      var active = document.querySelector(".search-type-btn.bg-zen-blue");
+      return active ? active.getAttribute("data-value") : "keyword";
+    }
+
+    function setReranker(enabled) {
+      if (enabled) {
+        rerankerToggle.classList.remove("bg-dark/15");
+        rerankerToggle.classList.add("bg-zen-blue");
+        rerankerToggle.setAttribute("aria-checked", "true");
+        rerankerToggle.querySelector(".reranker-dot").classList.remove("translate-x-0.5");
+        rerankerToggle.querySelector(".reranker-dot").classList.add("translate-x-[18px]");
+        rerankerLabel.textContent = "Enabled";
+      } else {
+        rerankerToggle.classList.add("bg-dark/15");
+        rerankerToggle.classList.remove("bg-zen-blue");
+        rerankerToggle.setAttribute("aria-checked", "false");
+        rerankerToggle.querySelector(".reranker-dot").classList.add("translate-x-0.5");
+        rerankerToggle.querySelector(".reranker-dot").classList.remove("translate-x-[18px]");
+        rerankerLabel.textContent = "Disabled";
+      }
+    }
+
+    function markRetrievalDirty() {
+      retrievalDirty = true;
+      saveRetrievalBtn.classList.remove("hidden");
+      retrievalSavedMsg.classList.add("hidden");
+      retrievalErrorMsg.classList.add("hidden");
+    }
+
+    searchTypeBtns.forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        setSearchType(btn.getAttribute("data-value"));
+        markRetrievalDirty();
+      });
+    });
+
+    rerankerToggle.addEventListener("click", function () {
+      var isEnabled = rerankerToggle.getAttribute("aria-checked") === "true";
+      setReranker(!isEnabled);
+      markRetrievalDirty();
+    });
+
+    topkSlider.addEventListener("input", function () {
+      topkValue.textContent = topkSlider.value;
+      markRetrievalDirty();
+    });
+
+    thresholdSlider.addEventListener("input", function () {
+      thresholdValue.textContent = (parseFloat(thresholdSlider.value) / 100).toFixed(2);
+      markRetrievalDirty();
+    });
+
+    saveRetrievalBtn.addEventListener("click", function () {
+      saveRetrievalBtn.disabled = true;
+      saveRetrievalBtn.textContent = "Saving...";
+      retrievalSavedMsg.classList.add("hidden");
+      retrievalErrorMsg.classList.add("hidden");
+
+      var payload = {
+        search_type: getSearchType(),
+        top_k: parseInt(topkSlider.value, 10),
+        similarity_threshold: parseFloat(thresholdSlider.value) / 100,
+        reranker_enabled: rerankerToggle.getAttribute("aria-checked") === "true",
+      };
+
+      fetch("/api/knowledge-bases/" + kbId, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+        .then(function (res) {
+          if (!res.ok) return res.json().then(function (b) { throw new Error(b.detail || "Save failed"); });
+          return res.json();
+        })
+        .then(function (kb) {
+          currentKb = kb;
+          retrievalDirty = false;
+          saveRetrievalBtn.classList.add("hidden");
+          retrievalSavedMsg.classList.remove("hidden");
+          setTimeout(function () { retrievalSavedMsg.classList.add("hidden"); }, 3000);
+        })
+        .catch(function (err) {
+          retrievalErrorMsg.textContent = err.message;
+          retrievalErrorMsg.classList.remove("hidden");
+        })
+        .finally(function () {
+          saveRetrievalBtn.disabled = false;
+          saveRetrievalBtn.textContent = "Save Changes";
+        });
+    });
+
+    /* ---------- Test Retrieval ---------- */
+    function runTestQuery() {
+      var query = testQueryInput.value.trim();
+      if (!query) return;
+
+      testQueryBtn.disabled = true;
+      testQueryBtn.textContent = "Searching...";
+      testResults.classList.add("hidden");
+      testNoResults.classList.add("hidden");
+      testError.classList.add("hidden");
+
+      fetch("/api/knowledge-bases/" + kbId + "/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: query }),
+      })
+        .then(function (res) {
+          if (!res.ok) return res.json().then(function (b) { throw new Error(b.detail || "Search failed"); });
+          return res.json();
+        })
+        .then(function (results) {
+          if (results.length === 0) {
+            testNoResults.classList.remove("hidden");
+            return;
+          }
+
+          testResults.classList.remove("hidden");
+          testResultsCount.textContent = results.length + " result" + (results.length === 1 ? "" : "s");
+          testResultsList.innerHTML = "";
+
+          results.forEach(function (r) {
+            var el = document.createElement("div");
+            el.className = "test-result-item rounded-lg bg-paper border border-dark/[0.06] p-3 cursor-pointer transition-colors hover:border-dark/15";
+            el.innerHTML =
+              '<div class="flex items-center justify-between mb-2">' +
+                '<div class="flex items-center gap-2">' +
+                  '<span class="text-xs font-medium text-dark">' + escapeHtml(r.filename) + '</span>' +
+                  '<span class="text-[10px] text-muted">Chunk ' + r.chunk_index + '</span>' +
+                '</div>' +
+                '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-zen-blue/15 text-zen-blue">' + (r.score * 100).toFixed(0) + '%</span>' +
+              '</div>' +
+              '<p class="test-result-preview text-xs text-dark/80 leading-relaxed">' + escapeHtml(r.content.length > 200 ? r.content.substring(0, 200) + "..." : r.content) + '</p>' +
+              '<div class="test-result-full hidden mt-2 pt-2 border-t border-dark/[0.06]">' +
+                '<div class="flex items-center gap-1 mb-1.5">' +
+                  '<span class="text-[10px] font-medium text-muted uppercase tracking-wide">Full text</span>' +
+                  '<span class="text-[10px] text-zen-blue font-medium">' + escapeHtml(r.filename) + '</span>' +
+                '</div>' +
+                '<p class="text-xs text-dark leading-relaxed whitespace-pre-wrap break-words">' + escapeHtml(r.content) + '</p>' +
+              '</div>';
+            testResultsList.appendChild(el);
+
+            /* Click to expand/collapse full text */
+            el.addEventListener("click", function () {
+              var full = el.querySelector(".test-result-full");
+              var preview = el.querySelector(".test-result-preview");
+              if (full.classList.contains("hidden")) {
+                full.classList.remove("hidden");
+                preview.classList.add("hidden");
+              } else {
+                full.classList.add("hidden");
+                preview.classList.remove("hidden");
+              }
+            });
+          });
+        })
+        .catch(function (err) {
+          testErrorMsg.textContent = err.message;
+          testError.classList.remove("hidden");
+        })
+        .finally(function () {
+          testQueryBtn.disabled = false;
+          testQueryBtn.textContent = "Search";
+        });
+    }
+
+    testQueryBtn.addEventListener("click", runTestQuery);
+    testQueryInput.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") runTestQuery();
+    });
 
     /* ---------- Init ---------- */
     fetchKb();
