@@ -1,0 +1,367 @@
+---
+import PageLayout from "../layouts/PageLayout.astro";
+
+const breadcrumbs = [{ label: "Playground" }];
+
+/* Icons */
+const sendIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>';
+const botIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/><line x1="8" y1="16" x2="8" y2="16"/><line x1="16" y1="16" x2="16" y2="16"/></svg>';
+const userIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
+const clearIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
+---
+
+<PageLayout
+  title="Playground"
+  description="Chat with your AI agents"
+  activeSection="playground"
+  breadcrumbs={breadcrumbs}
+  class="!overflow-hidden flex flex-col"
+>
+  <div class="flex flex-col h-full">
+    <!-- Top bar: agent selector -->
+    <div class="flex items-center gap-3 px-4 py-3 border-b border-dark/[0.08] bg-paper flex-shrink-0">
+      <label for="agent-select" class="text-sm font-medium text-dark whitespace-nowrap">Agent:</label>
+      <select
+        id="agent-select"
+        class="flex-1 max-w-xs px-3 py-1.5 text-sm border border-dark/[0.08] rounded-lg bg-paper text-dark focus:outline-none focus:ring-2 focus:ring-coral/20 focus:border-coral transition-colors"
+      >
+        <option value="">Select an agent...</option>
+      </select>
+      <div id="agent-info" class="text-xs text-muted hidden">
+        <span id="agent-model" class="inline-flex items-center gap-1 px-2 py-0.5 bg-subtle rounded-full"></span>
+      </div>
+      <div class="ml-auto">
+        <button
+          id="clear-btn"
+          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-muted hover:text-dark transition-colors rounded-lg hover:bg-subtle"
+          title="Clear conversation"
+        >
+          <span set:html={clearIcon} />
+          <span class="hidden sm:inline">Clear</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Messages area -->
+    <div id="messages" class="flex-1 overflow-y-auto px-4 py-6 space-y-4">
+      <!-- Empty state -->
+      <div id="empty-state" class="flex flex-col items-center justify-center h-full text-center">
+        <div class="w-16 h-16 rounded-full bg-subtle flex items-center justify-center mb-4">
+          <span class="text-muted" set:html={botIcon} />
+        </div>
+        <h3 class="text-lg font-medium text-dark mb-2">Chat Playground</h3>
+        <p class="text-sm text-muted max-w-sm">Select an agent above and start chatting. Messages stream in real-time via WebSocket.</p>
+      </div>
+    </div>
+
+    <!-- Input area -->
+    <div class="flex-shrink-0 border-t border-dark/[0.08] bg-paper px-4 py-3">
+      <div id="connection-status" class="hidden text-xs text-coral mb-2 px-1"></div>
+      <div class="flex items-end gap-3 max-w-4xl mx-auto">
+        <textarea
+          id="message-input"
+          rows="1"
+          placeholder="Type a message... (Enter to send, Shift+Enter for newline)"
+          disabled
+          class="flex-1 px-4 py-2.5 text-sm border border-dark/[0.08] rounded-xl bg-paper text-dark placeholder:text-muted/60 focus:outline-none focus:ring-2 focus:ring-coral/20 focus:border-coral transition-colors resize-none max-h-40 disabled:opacity-50"
+        ></textarea>
+        <button
+          id="send-btn"
+          disabled
+          class="flex-shrink-0 p-2.5 bg-coral text-white rounded-xl hover:bg-coral/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          title="Send message"
+        >
+          <span set:html={sendIcon} />
+        </button>
+      </div>
+    </div>
+  </div>
+</PageLayout>
+
+<script is:inline define:vars={{ botIconHtml: botIcon, userIconHtml: userIcon }}>
+(function() {
+  const agentSelect = document.getElementById("agent-select");
+  const agentInfo = document.getElementById("agent-info");
+  const agentModel = document.getElementById("agent-model");
+  const messagesEl = document.getElementById("messages");
+  const emptyState = document.getElementById("empty-state");
+  const messageInput = document.getElementById("message-input");
+  const sendBtn = document.getElementById("send-btn");
+  const clearBtn = document.getElementById("clear-btn");
+  const connectionStatus = document.getElementById("connection-status");
+
+  let ws = null;
+  let currentAgentId = null;
+  let agents = [];
+  let isStreaming = false;
+
+  /* ---- Load agents ---- */
+  async function loadAgents() {
+    try {
+      const res = await fetch("/api/agents", { credentials: "same-origin" });
+      if (!res.ok) return;
+      agents = await res.json();
+      agentSelect.innerHTML = '<option value="">Select an agent...</option>';
+      agents.forEach(function(a) {
+        const opt = document.createElement("option");
+        opt.value = a.id;
+        opt.textContent = a.name + (a.model_provider ? " (" + a.model_provider + ")" : "");
+        agentSelect.appendChild(opt);
+      });
+    } catch (e) {
+      console.error("Failed to load agents:", e);
+    }
+  }
+
+  /* ---- WebSocket management ---- */
+  function connectWebSocket(agentId) {
+    if (ws) {
+      ws.close();
+      ws = null;
+    }
+
+    currentAgentId = agentId;
+    var proto = location.protocol === "https:" ? "wss:" : "ws:";
+    var url = proto + "//" + location.host + "/api/playground/" + agentId + "/chat";
+
+    connectionStatus.classList.add("hidden");
+    connectionStatus.textContent = "";
+
+    ws = new WebSocket(url);
+
+    ws.onopen = function() {
+      messageInput.disabled = false;
+      sendBtn.disabled = false;
+      messageInput.focus();
+    };
+
+    ws.onclose = function(e) {
+      if (e.code === 4001) {
+        showStatus("Authentication required. Please log in.");
+      } else if (e.code === 4004) {
+        showStatus("Agent not found.");
+      } else if (e.code !== 1000 && e.code !== 1001) {
+        showStatus("Connection closed (code " + e.code + ")");
+      }
+      messageInput.disabled = true;
+      sendBtn.disabled = true;
+      isStreaming = false;
+      ws = null;
+    };
+
+    ws.onerror = function() {
+      showStatus("WebSocket connection error.");
+    };
+
+    ws.onmessage = function(event) {
+      try {
+        var data = JSON.parse(event.data);
+      } catch (e) {
+        return;
+      }
+
+      if (data.type === "token") {
+        appendToken(data.content);
+      } else if (data.type === "done") {
+        finishStream(data.usage);
+      } else if (data.type === "error") {
+        appendError(data.message);
+        isStreaming = false;
+        messageInput.disabled = false;
+        sendBtn.disabled = false;
+      }
+    };
+  }
+
+  function disconnectWebSocket() {
+    if (ws) {
+      ws.close();
+      ws = null;
+    }
+    currentAgentId = null;
+    messageInput.disabled = true;
+    sendBtn.disabled = true;
+  }
+
+  function showStatus(msg) {
+    connectionStatus.textContent = msg;
+    connectionStatus.classList.remove("hidden");
+  }
+
+  /* ---- Message rendering ---- */
+  function hideEmptyState() {
+    if (emptyState) emptyState.classList.add("hidden");
+  }
+
+  function showEmptyState() {
+    if (emptyState) emptyState.classList.remove("hidden");
+  }
+
+  function addUserMessage(text) {
+    hideEmptyState();
+    var row = document.createElement("div");
+    row.className = "flex justify-end";
+
+    var bubble = document.createElement("div");
+    bubble.className = "max-w-[75%] sm:max-w-[60%]";
+
+    var inner = document.createElement("div");
+    inner.className = "px-4 py-2.5 rounded-2xl rounded-br-sm bg-subtle text-dark text-sm whitespace-pre-wrap break-words";
+    inner.textContent = text;
+
+    bubble.appendChild(inner);
+    row.appendChild(bubble);
+    messagesEl.appendChild(row);
+    scrollToBottom();
+  }
+
+  var currentStreamBubble = null;
+  var streamedContent = "";
+
+  function startAgentMessage() {
+    hideEmptyState();
+    var row = document.createElement("div");
+    row.className = "flex justify-start";
+
+    var wrapper = document.createElement("div");
+    wrapper.className = "max-w-[75%] sm:max-w-[60%] flex gap-2";
+
+    var avatar = document.createElement("div");
+    avatar.className = "flex-shrink-0 w-7 h-7 rounded-full bg-coral/10 text-coral flex items-center justify-center mt-1";
+    avatar.innerHTML = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/><line x1="8" y1="16" x2="8" y2="16"/><line x1="16" y1="16" x2="16" y2="16"/></svg>';
+
+    var bubble = document.createElement("div");
+    bubble.className = "px-4 py-2.5 rounded-2xl rounded-bl-sm bg-paper border border-dark/[0.06] text-dark text-sm whitespace-pre-wrap break-words";
+    bubble.textContent = "";
+
+    wrapper.appendChild(avatar);
+    wrapper.appendChild(bubble);
+    row.appendChild(wrapper);
+    messagesEl.appendChild(row);
+
+    currentStreamBubble = bubble;
+    streamedContent = "";
+    scrollToBottom();
+  }
+
+  function appendToken(token) {
+    if (!currentStreamBubble) {
+      startAgentMessage();
+    }
+    streamedContent += token;
+    currentStreamBubble.textContent = streamedContent;
+    scrollToBottom();
+  }
+
+  function finishStream(usage) {
+    if (currentStreamBubble && usage) {
+      var meta = document.createElement("div");
+      meta.className = "text-[10px] text-muted/60 mt-1.5 text-right";
+      var parts = [];
+      if (usage.prompt_tokens) parts.push(usage.prompt_tokens + " in");
+      if (usage.completion_tokens) parts.push(usage.completion_tokens + " out");
+      if (parts.length > 0) {
+        meta.textContent = parts.join(" / ") + " tokens";
+        currentStreamBubble.parentElement.appendChild(meta);
+      }
+    }
+    currentStreamBubble = null;
+    streamedContent = "";
+    isStreaming = false;
+    messageInput.disabled = false;
+    sendBtn.disabled = false;
+    messageInput.focus();
+    scrollToBottom();
+  }
+
+  function appendError(msg) {
+    hideEmptyState();
+    var row = document.createElement("div");
+    row.className = "flex justify-center";
+    var pill = document.createElement("div");
+    pill.className = "px-4 py-2 rounded-xl bg-coral/10 text-coral text-xs max-w-md text-center";
+    pill.textContent = msg;
+    row.appendChild(pill);
+    messagesEl.appendChild(row);
+    scrollToBottom();
+  }
+
+  function scrollToBottom() {
+    requestAnimationFrame(function() {
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    });
+  }
+
+  function clearMessages() {
+    /* Remove all children except the empty state */
+    var children = Array.from(messagesEl.children);
+    children.forEach(function(c) {
+      if (c.id !== "empty-state") messagesEl.removeChild(c);
+    });
+    showEmptyState();
+    currentStreamBubble = null;
+    streamedContent = "";
+    /* Reconnect to reset conversation history on server */
+    if (currentAgentId) {
+      connectWebSocket(currentAgentId);
+    }
+  }
+
+  /* ---- Send message ---- */
+  function sendMessage() {
+    var text = messageInput.value.trim();
+    if (!text || !ws || ws.readyState !== WebSocket.OPEN || isStreaming) return;
+
+    addUserMessage(text);
+    ws.send(JSON.stringify({ content: text }));
+    messageInput.value = "";
+    autoResize();
+    isStreaming = true;
+    messageInput.disabled = true;
+    sendBtn.disabled = true;
+    startAgentMessage();
+  }
+
+  /* ---- Auto-resize textarea ---- */
+  function autoResize() {
+    messageInput.style.height = "auto";
+    messageInput.style.height = Math.min(messageInput.scrollHeight, 160) + "px";
+  }
+
+  /* ---- Event listeners ---- */
+  agentSelect.addEventListener("change", function() {
+    var val = agentSelect.value;
+    if (!val) {
+      disconnectWebSocket();
+      agentInfo.classList.add("hidden");
+      return;
+    }
+    /* Show model info */
+    var agent = agents.find(function(a) { return a.id === val; });
+    if (agent && agent.model_provider) {
+      agentModel.textContent = agent.model_provider + (agent.model_name ? ":" + agent.model_name : "");
+      agentInfo.classList.remove("hidden");
+    } else {
+      agentInfo.classList.add("hidden");
+    }
+    clearMessages();
+    connectWebSocket(val);
+  });
+
+  messageInput.addEventListener("keydown", function(e) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  });
+
+  messageInput.addEventListener("input", autoResize);
+
+  sendBtn.addEventListener("click", sendMessage);
+
+  clearBtn.addEventListener("click", clearMessages);
+
+  /* ---- Init ---- */
+  loadAgents();
+})();
+</script>
