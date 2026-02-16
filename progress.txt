@@ -1447,3 +1447,26 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - When moving a page from pages/foo.astro to pages/foo/index.astro (to support sub-routes like /foo/[id]), update import paths from `../` to `../../`
   - Install button calls POST /api/plugins/install with manifest from marketplace data — handles 409 (already installed) gracefully
 ---
+
+## 2026-02-17 - US-087
+- What was implemented: Plugin management UI with Installed tab on the plugins page
+- Features:
+  - Tab bar switching between "Marketplace" and "Installed" tabs
+  - Installed plugins list with type icon, name, version, status dot (green=active, gray=disabled, red=error, blue=installed)
+  - Enable/disable toggle per plugin (calls PUT /api/plugins/:id/status)
+  - Uninstall button with confirmation modal (calls DELETE /api/plugins/:id)
+  - "Load from Directory" button (visible on Installed tab) with modal for entering directory path
+  - Installed count badge on tab
+  - Search filtering works on both tabs
+  - Category filter hidden on Installed tab (not needed)
+  - Toast notifications for success/error feedback
+  - "Browse Marketplace" button in empty installed state
+- Files changed:
+  - packages/orbiter-web/src/pages/plugins/index.astro (rewrote to add Installed tab alongside Marketplace tab)
+- **Learnings for future iterations:**
+  - Plugin type (model/tool/strategy/extension/bundle) maps to display category (Models/Tools/Agent Strategies/Extensions/Bundles) via `typeToCategoryMap`
+  - Toggle switch pattern: use `translate-x-0.5` for off, `translate-x-5.5` for on; bg-zen-green for enabled, bg-dark/20 for disabled
+  - Modal integration: import Modal.astro, use `.showModal()` to open, `data-modal-close` handles closing; works with multiple modals on same page
+  - Tab bar pattern: use `span:last-child` for the active indicator line, toggle `opacity-0` for inactive
+  - `fetchInstalled()` updates the badge count regardless of active tab, so badge is always current
+---
