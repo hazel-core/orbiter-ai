@@ -90,6 +90,9 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
 - Document routes are sub-routes of knowledge_bases router — same file, same APIRouter prefix `/api/knowledge-bases`
 - Document processing: `services/document_processor.py` — extract_text(bytes, file_type) and chunk_text(text, size, overlap)
 - DOCX extraction via stdlib (zipfile + xml.etree.ElementTree) — no external dep; PDF via pypdf with binary fallback
+- KB retrieval settings: search_type, top_k, similarity_threshold, reranker_enabled stored per KB; keyword search uses LIKE + term frequency scoring
+- Knowledge retrieval node in engine.py: `_execute_retrieval_node()` handles `knowledge_retrieval` nodeType; reads KB settings from DB
+- Agent KB assignment: `knowledge_base_ids` column (JSON TEXT array) on agents table — stores list of KB IDs the agent can query
 
 ---
 
@@ -1845,4 +1848,19 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - FormData append for file upload — CSRF is auto-included by PageLayout's fetch monkey-patch
   - Sequential file upload via promise chain (`Promise.resolve().then(...)`) for ordered progress display
   - Document chunks endpoint uses `limit` query param for preview — keeps responses small
+---
+
+## 2026-02-17 - US-101
+- What was implemented: Knowledge retrieval backend — retrieval settings per KB, search endpoint, workflow retrieval node, agent KB assignment
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/migrations/030_add_retrieval_settings.sql (new — adds search_type, top_k, similarity_threshold, reranker_enabled to knowledge_bases; knowledge_base_ids to agents)
+  - packages/orbiter-web/src/orbiter_web/routes/knowledge_bases.py (updated — SearchRequest/SearchResult models, retrieval settings in KB CRUD models, POST /{kb_id}/search endpoint with keyword scoring)
+  - packages/orbiter-web/src/orbiter_web/routes/agents.py (updated — knowledge_base_ids field in AgentCreate, AgentUpdate, AgentResponse, create INSERT)
+  - packages/orbiter-web/src/orbiter_web/engine.py (updated — _execute_retrieval_node() for knowledge_retrieval nodeType, integrated into _execute_node dispatch)
+- **Learnings for future iterations:**
+  - KB retrieval uses keyword search (LIKE + term frequency scoring) as a fallback until vector embeddings are implemented
+  - `_keyword_score()` in knowledge_bases.py is reusable — computes fraction of query terms present in content
+  - Retrieval settings (search_type, top_k, similarity_threshold, reranker_enabled) are per-KB, not global
+  - Engine retrieval node reads KB settings from DB directly, no need for AgentService
+  - Agent knowledge_base_ids is stored as JSON TEXT array (same pattern as tools_json, handoffs_json)
 ---
