@@ -53,6 +53,8 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
 - Shared model API helper: `_send_prompt_to_model()` returns dict with optional `error` field (doesn't raise) — safe for asyncio.gather parallel calls
 - React islands: use `client:only="react"` for DOM-heavy components (e.g., ReactFlow); requires @astrojs/react integration + tsconfig jsx settings
 - Canvas island lives at `src/islands/Canvas/CanvasIsland.tsx`; sync theme via MutationObserver on `data-theme` attribute
+- Workflows table stores canvas state as JSON TEXT columns: `nodes_json`, `edges_json`, `viewport_json`; workflow routes at `/api/workflows`
+- CanvasIsland accepts optional `workflowId` prop — loads from GET /api/workflows/:id on mount, auto-saves with 500ms debounce via PUT
 
 ---
 
@@ -715,5 +717,25 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - `useReactFlow()` provides `zoomIn()`, `zoomOut()`, `fitView()` with optional `duration` param for smooth animation
   - Platform detection for shortcut labels: `navigator.userAgent` test for Mac → use ⌘ symbol, otherwise "Ctrl+"
   - Keyboard shortcuts must check `e.target.tagName` to avoid intercepting when user is typing in input/textarea
+  - Manual browser verification needed (no browser testing tool available)
+---
+
+## 2026-02-16 23:05 - US-044
+- What was implemented: Canvas state persistence — workflows table, CRUD API, load/save in CanvasIsland
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/migrations/012_create_workflows.sql (new — workflows table with nodes_json, edges_json, viewport_json columns)
+  - packages/orbiter-web/src/orbiter_web/routes/workflows.py (new — CRUD API: list, create, get, update, delete)
+  - packages/orbiter-web/src/orbiter_web/app.py (updated — registered workflows_router)
+  - packages/orbiter-web/src/pages/workflows/[id].astro (new — dynamic route passing workflowId to CanvasIsland)
+  - packages/orbiter-web/src/islands/Canvas/CanvasIsland.tsx (updated — added workflowId prop, useAutoSave hook, load on mount, debounced save, viewport tracking)
+- **Learnings for future iterations:**
+  - Canvas state stored as JSON TEXT columns: nodes_json, edges_json, viewport_json — parse on load, stringify on save
+  - Workflow CRUD follows same pattern as applications route (APIRouter, Pydantic models, _verify_ownership helper)
+  - CanvasIsland accepts optional workflowId prop — without it, works as standalone canvas (backwards compatible)
+  - Use `useAutoSave` hook pattern: debounced save with `savingRef` to prevent concurrent saves
+  - Track viewport via `onMoveEnd` callback from ReactFlow — stores {x, y, zoom} in ref
+  - When loading saved viewport, use `setViewport()` from `useReactFlow()` and disable `fitView` prop
+  - `loaded` state gate prevents auto-save from firing during initial load (avoids saving empty state)
+  - React.MutableRefObject is deprecated in newer React types — use React.RefObject instead
   - Manual browser verification needed (no browser testing tool available)
 ---
