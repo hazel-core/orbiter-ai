@@ -39,6 +39,8 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
 - Auth redirect lives in PageLayout — all app pages are protected automatically; standalone pages (login) use BaseLayout directly
 - Login page uses BaseLayout, not PageLayout, since it doesn't need sidebar/topbar chrome
 - Auth middleware: `get_current_user` from `routes/auth.py` is a FastAPI `Depends()` — use in any protected route
+- API keys: encrypt with `encrypt_api_key()` on write, use `api_key_set: bool` in response models — never expose encrypted or plaintext keys in API responses
+- Provider test endpoint: use httpx AsyncClient for lightweight API calls; lazy-import httpx to avoid overhead on CRUD routes
 
 ---
 
@@ -335,4 +337,38 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - SQLite CHECK constraints enforce enum-like values: `CHECK (provider_type IN ('openai', 'anthropic', ...))`
   - `encrypt_api_key()` / `decrypt_api_key()` in `orbiter_web/crypto.py` — use for any sensitive field storage
   - cryptography package was already transitively installed; adding explicit dependency ensures it's always available
+---
+
+## 2026-02-16 22:00 - US-021
+- What was implemented: Provider CRUD REST API with 6 endpoints (list, create, get, update, delete, test connection)
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/routes/providers.py (new — APIRouter with ProviderCreate, ProviderUpdate, ProviderResponse, TestResult Pydantic models, 6 endpoints)
+  - packages/orbiter-web/src/orbiter_web/app.py (updated — include providers_router)
+  - packages/orbiter-web/pyproject.toml (added httpx>=0.27 dependency for provider connection testing)
+  - uv.lock (updated with httpx)
+- **Learnings for future iterations:**
+  - API keys are encrypted at rest using crypto.py helpers — response model uses `api_key_set: bool` instead of exposing encrypted/plain key
+  - `_row_to_response()` pops `encrypted_api_key` from the dict and replaces with `api_key_set` bool — keeps key out of API responses
+  - Provider update accepts `api_key` in the body but maps it to `encrypted_api_key` column before building the SET clause
+  - Test endpoint uses httpx for async HTTP calls — each provider type has a different lightweight test URL (models listing, tags, etc.)
+  - Vertex requires base_url (service account auth), Ollama defaults to localhost:11434, custom providers also need base_url
+  - httpx lazy-imported inside the test function to avoid import overhead for CRUD-only usage
+  - All provider routes use `get_current_user` dependency for authentication — no more `_DEFAULT_USER_ID`
+---
+
+## 2026-02-16 22:30 - US-022
+- What was implemented: Settings > Models page UI — replaced placeholder "API Keys" tab with full "Models" tab featuring provider management
+- Files changed:
+  - packages/orbiter-web/src/pages/settings.astro (major update — added Models tab with provider card list, add/edit/delete modals, test connection button, provider type icons, status indicators)
+- **Learnings for future iterations:**
+  - Replaced the "API Keys" placeholder tab with "Models" tab — panel ID changed from `panel-api-keys` to `panel-models`
+  - Provider cards use `<template>` + `cloneNode(true)` pattern (consistent with projects page)
+  - Providers are lazy-loaded: `fetchProviders()` only called when Models tab is first clicked (`providersLoaded` flag)
+  - Provider type icons are stored as HTML strings in a JS object and injected via `innerHTML` — same pattern as sidebar icons
+  - Status badge shows green dot ("Connected") when `api_key_set: true`, gray dot ("No Key") when false
+  - Test connection result auto-hides after 8 seconds via `setTimeout`
+  - Edit modal pre-fills all fields from provider data; API key field is blank with placeholder "Leave blank to keep current key"
+  - Delete confirmation modal uses a `deleteTargetId` closure variable to track which provider to delete
+  - Three modals (add, edit, delete) all use the existing Modal.astro component and `data-modal-close` pattern
+  - Manual browser verification needed (no browser testing tool available)
 ---

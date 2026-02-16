@@ -360,7 +360,7 @@
         "Typecheck passes"
       ],
       "priority": 21,
-      "passes": false,
+      "passes": true,
       "notes": "From PRD US-006"
     },
     {
@@ -377,7 +377,7 @@
         "Verify in browser using dev-browser skill"
       ],
       "priority": 22,
-      "passes": false,
+      "passes": true,
       "notes": "From PRD US-006"
     },
     {
