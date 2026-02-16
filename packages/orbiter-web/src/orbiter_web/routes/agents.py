@@ -68,6 +68,7 @@ class AgentCreate(BaseModel):
     persona_role: str = ""
     persona_goal: str = ""
     persona_backstory: str = ""
+    autonomous_mode: bool = False
 
 
 class AgentUpdate(BaseModel):
@@ -86,6 +87,7 @@ class AgentUpdate(BaseModel):
     persona_role: str | None = None
     persona_goal: str | None = None
     persona_backstory: str | None = None
+    autonomous_mode: bool | None = None
 
 
 class AgentResponse(BaseModel):
@@ -105,6 +107,7 @@ class AgentResponse(BaseModel):
     persona_role: str
     persona_goal: str
     persona_backstory: str
+    autonomous_mode: bool
     project_id: str
     user_id: str
     created_at: str
@@ -141,7 +144,9 @@ class SubAgentRelationshipResponse(BaseModel):
 
 def _row_to_dict(row: Any) -> dict[str, Any]:
     """Convert an aiosqlite.Row to a plain dict."""
-    return dict(row)
+    d = dict(row)
+    d["autonomous_mode"] = bool(d.get("autonomous_mode", 0))
+    return d
 
 
 async def _verify_ownership(db: Any, agent_id: str, user_id: str) -> dict[str, Any]:
@@ -584,8 +589,9 @@ async def create_agent(
                 model_provider, model_name, temperature, max_tokens, max_steps,
                 output_type_json, tools_json, handoffs_json, hooks_json,
                 persona_role, persona_goal, persona_backstory,
+                autonomous_mode,
                 project_id, user_id, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 agent_id,
@@ -604,6 +610,7 @@ async def create_agent(
                 body.persona_role,
                 body.persona_goal,
                 body.persona_backstory,
+                int(body.autonomous_mode),
                 body.project_id,
                 user["id"],
                 now,
@@ -637,6 +644,10 @@ async def update_agent(
     updates = body.model_dump(exclude_none=True)
     if not updates:
         raise HTTPException(status_code=422, detail="No fields to update")
+
+    # SQLite stores bools as integers
+    if "autonomous_mode" in updates:
+        updates["autonomous_mode"] = int(updates["autonomous_mode"])
 
     async with get_db() as db:
         await _verify_ownership(db, agent_id, user["id"])

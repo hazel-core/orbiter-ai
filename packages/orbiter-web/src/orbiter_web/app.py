@@ -16,6 +16,7 @@ from orbiter_web.routes.conversations import router as conversations_router
 from orbiter_web.routes.costs import router as costs_router
 from orbiter_web.routes.crews import router as crews_router
 from orbiter_web.routes.models import router as models_router
+from orbiter_web.routes.plans import router as plans_router
 from orbiter_web.routes.playground import router as playground_router
 from orbiter_web.routes.plugins import router as plugins_router
 from orbiter_web.routes.projects import router as projects_router
@@ -44,6 +45,7 @@ app = FastAPI(
 
 
 app.include_router(agents_router)
+app.include_router(plans_router)
 app.include_router(applications_router)
 app.include_router(conversations_router)
 app.include_router(costs_router)
