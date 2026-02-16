@@ -1,4 +1,25 @@
 @import "tailwindcss";
+@import "@fontsource/bricolage-grotesque/400.css";
+@import "@fontsource/bricolage-grotesque/500.css";
+@import "@fontsource/bricolage-grotesque/600.css";
+@import "@fontsource/bricolage-grotesque/700.css";
+
+/* Junicode variable font */
+@font-face {
+  font-family: "Junicode";
+  src: url("/fonts/JunicodeVF-Roman.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Junicode";
+  src: url("/fonts/JunicodeVF-Italic.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: italic;
+  font-display: swap;
+}
 
 /* Design system color tokens as CSS custom properties */
 :root {
@@ -30,4 +51,18 @@
   --color-coral: var(--zen-coral);
   --color-zen-blue: var(--zen-blue);
   --color-zen-green: var(--zen-green);
+
+  --font-sans: "Bricolage Grotesque", system-ui, sans-serif;
+  --font-junicode: "Junicode", Georgia, serif;
+}
+
+/* Default body typography */
+body {
+  font-family: var(--font-sans);
+  font-weight: 500;
+}
+
+/* Utility class for display headings */
+.font-junicode {
+  font-family: var(--font-junicode);
 }
