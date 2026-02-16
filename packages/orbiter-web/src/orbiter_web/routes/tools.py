@@ -492,6 +492,172 @@ class VisualSchemaCreate(BaseModel):
     http_config: dict[str, Any] | None = None
 
 
+class WorkflowNodeToolResponse(BaseModel):
+    id: str
+    name: str
+    description: str
+    node_id: str
+    node_type: str
+    workflow_id: str
+    workflow_name: str
+    schema_json: str
+    source: str = "workflow_node"
+
+
+# Handle data type → JSON Schema type mapping (mirrors handleTypes.ts)
+_HANDLE_TYPE_MAP: dict[str, str] = {
+    "message": "string",
+    "text": "string",
+    "number": "number",
+    "boolean": "boolean",
+    "json": "object",
+    "any": "string",
+}
+
+
+def _schema_from_node(node_data: dict[str, Any], node_type: str) -> dict[str, Any]:
+    """Generate a JSON Schema for a workflow node based on its handle types.
+
+    Input handles become properties, output handles define the return description.
+    """
+    # Replicate the handle spec logic from handleTypes.ts
+    handle_specs = _NODE_HANDLE_MAP.get(node_type, [
+        {"id": "input", "type": "target", "dataType": "any"},
+        {"id": "output", "type": "source", "dataType": "any"},
+    ])
+
+    inputs = [h for h in handle_specs if h["type"] == "target"]
+    outputs = [h for h in handle_specs if h["type"] == "source"]
+
+    properties: dict[str, Any] = {}
+    required: list[str] = []
+    for h in inputs:
+        json_type = _HANDLE_TYPE_MAP.get(h["dataType"], "string")
+        properties[h["id"]] = {
+            "type": json_type,
+            "description": f"{h['dataType']} input",
+        }
+        required.append(h["id"])
+
+    output_desc = ", ".join(
+        f"{h.get('label', h['id'])} ({h['dataType']})" for h in outputs
+    ) if outputs else "no output"
+
+    label = node_data.get("label", node_type)
+    schema: dict[str, Any] = {
+        "type": "object",
+        "description": f"Executes workflow node '{label}'. Returns: {output_desc}.",
+        "properties": properties,
+    }
+    if required:
+        schema["required"] = required
+    return schema
+
+
+# Subset of handle specs from handleTypes.ts (server-side mirror)
+_NODE_HANDLE_MAP: dict[str, list[dict[str, Any]]] = {
+    "chat_input": [{"id": "output", "type": "source", "dataType": "message"}],
+    "webhook": [{"id": "output", "type": "source", "dataType": "json"}],
+    "schedule": [{"id": "output", "type": "source", "dataType": "json"}],
+    "manual": [{"id": "output", "type": "source", "dataType": "message"}],
+    "llm_call": [
+        {"id": "input", "type": "target", "dataType": "message"},
+        {"id": "output", "type": "source", "dataType": "text"},
+    ],
+    "prompt_template": [
+        {"id": "input", "type": "target", "dataType": "any"},
+        {"id": "output", "type": "source", "dataType": "text"},
+    ],
+    "agent_node": [
+        {"id": "input", "type": "target", "dataType": "message"},
+        {"id": "output", "type": "source", "dataType": "message"},
+    ],
+    "function_tool": [
+        {"id": "input", "type": "target", "dataType": "json"},
+        {"id": "output", "type": "source", "dataType": "json"},
+    ],
+    "http_request": [
+        {"id": "input", "type": "target", "dataType": "any"},
+        {"id": "output", "type": "source", "dataType": "json"},
+    ],
+    "code_python": [
+        {"id": "input", "type": "target", "dataType": "any"},
+        {"id": "output", "type": "source", "dataType": "any"},
+    ],
+    "code_javascript": [
+        {"id": "input", "type": "target", "dataType": "any"},
+        {"id": "output", "type": "source", "dataType": "any"},
+    ],
+    "conditional": [
+        {"id": "input", "type": "target", "dataType": "any"},
+        {"id": "output-true", "type": "source", "dataType": "any", "label": "True"},
+        {"id": "output-false", "type": "source", "dataType": "any", "label": "False"},
+    ],
+    "knowledge_retrieval": [
+        {"id": "input", "type": "target", "dataType": "text"},
+        {"id": "output", "type": "source", "dataType": "json"},
+    ],
+    "chat_response": [{"id": "input", "type": "target", "dataType": "message"}],
+    "api_response": [{"id": "input", "type": "target", "dataType": "json"}],
+}
+
+
+@router.get("/workflow-nodes", response_model=list[WorkflowNodeToolResponse])
+async def list_workflow_node_tools(
+    project_id: str | None = Query(None),
+    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+) -> list[dict[str, Any]]:
+    """Return workflow nodes that have Tool Mode enabled as available tools."""
+    async with get_db() as db:
+        conditions = ["w.user_id = ?"]
+        params: list[str] = [user["id"]]
+        if project_id:
+            conditions.append("w.project_id = ?")
+            params.append(project_id)
+
+        where = " AND ".join(conditions)
+        cursor = await db.execute(
+            f"SELECT w.id, w.name, w.nodes_json FROM workflows w WHERE {where}",
+            params,
+        )
+        rows = await cursor.fetchall()
+
+    results: list[dict[str, Any]] = []
+    for row in rows:
+        workflow = _row_to_dict(row)
+        try:
+            nodes = json.loads(workflow.get("nodes_json") or "[]")
+        except (json.JSONDecodeError, TypeError):
+            continue
+
+        for node in nodes:
+            data = node.get("data", {})
+            if not data.get("tool_mode"):
+                continue
+
+            node_id = node.get("id", "")
+            node_type = data.get("nodeType", "default")
+            label = data.get("label", node_type)
+            schema = _schema_from_node(data, node_type)
+
+            # Tool name: sanitize label to a valid identifier
+            tool_name = label.lower().replace(" ", "_").replace("-", "_")
+
+            results.append({
+                "id": f"wfn_{workflow['id']}_{node_id}",
+                "name": tool_name,
+                "description": schema.get("description", f"Workflow node: {label}"),
+                "node_id": node_id,
+                "node_type": node_type,
+                "workflow_id": workflow["id"],
+                "workflow_name": workflow["name"],
+                "schema_json": json.dumps(schema),
+                "source": "workflow_node",
+            })
+
+    return results
+
+
 @router.post("/schema/save", response_model=ToolResponse, status_code=201)
 async def save_visual_schema(
     body: VisualSchemaCreate,

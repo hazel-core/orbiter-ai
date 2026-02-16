@@ -10,6 +10,7 @@ interface WorkflowNodeData {
   label?: string;
   nodeType?: string;
   categoryColor?: string;
+  tool_mode?: boolean;
   _relTint?: "root" | "upstream" | "downstream" | null;
   _missingConfig?: boolean;
   _unreachable?: boolean;
@@ -27,6 +28,7 @@ function WorkflowNode({ data, selected }: NodeProps) {
   const label = d.label ?? nodeType;
   const relTint = d._relTint ?? null;
 
+  const toolMode = d.tool_mode ?? false;
   const hasMissingConfig = d._missingConfig ?? false;
   const isUnreachable = d._unreachable ?? false;
   const disconnectedInputs = new Set(d._disconnectedInputs ?? []);
@@ -190,6 +192,32 @@ function WorkflowNode({ data, selected }: NodeProps) {
             boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
           }}
         />
+      )}
+
+      {/* Tool Mode wrench badge (top-left, below breakpoint) */}
+      {toolMode && (
+        <div
+          title="Tool Mode — available as agent tool"
+          style={{
+            position: "absolute",
+            top: hasBreakpoint ? 12 : -6,
+            left: -6,
+            width: 16,
+            height: 16,
+            borderRadius: 4,
+            background: "var(--zen-blue, #6287f5)",
+            color: "#fff",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 10,
+            boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+          }}
+        >
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+          </svg>
+        </div>
       )}
 
       {/* Warning badge for missing config (top-right corner, hidden during execution) */}

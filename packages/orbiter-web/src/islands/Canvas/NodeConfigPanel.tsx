@@ -460,6 +460,79 @@ export default function NodeConfigPanel({ node, onClose, onNodeUpdate }: NodeCon
           </div>
         </div>
 
+        {/* Tool Mode toggle */}
+        <div style={{ marginBottom: 16 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            <div>
+              <label
+                style={{
+                  display: "block",
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: "var(--zen-muted, #999)",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.05em",
+                }}
+              >
+                Tool Mode
+              </label>
+              <div
+                style={{
+                  fontSize: 11,
+                  color: "var(--zen-muted, #999)",
+                  marginTop: 2,
+                }}
+              >
+                Expose as an agent-callable tool
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                const current = (node.data.tool_mode as boolean) ?? false;
+                scheduleDataUpdate({ tool_mode: !current });
+              }}
+              style={{
+                position: "relative",
+                width: 36,
+                height: 20,
+                borderRadius: 10,
+                border: "none",
+                cursor: "pointer",
+                background: (node.data.tool_mode as boolean)
+                  ? "var(--zen-blue, #6287f5)"
+                  : "var(--zen-subtle, #e0ddd0)",
+                transition: "background 200ms",
+                flexShrink: 0,
+              }}
+              title={
+                (node.data.tool_mode as boolean)
+                  ? "Disable Tool Mode"
+                  : "Enable Tool Mode"
+              }
+            >
+              <div
+                style={{
+                  position: "absolute",
+                  top: 2,
+                  left: (node.data.tool_mode as boolean) ? 18 : 2,
+                  width: 16,
+                  height: 16,
+                  borderRadius: "50%",
+                  background: "#fff",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+                  transition: "left 200ms",
+                }}
+              />
+            </button>
+          </div>
+        </div>
+
         {/* Divider */}
         <div
           style={{
