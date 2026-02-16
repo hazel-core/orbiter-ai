@@ -14,12 +14,12 @@ import {
   type OnConnect,
   type Node,
   type Edge,
+  type Viewport,
 } from "@xyflow/react";
 
 import "@xyflow/react/dist/style.css";
 
-const initialNodes: Node[] = [];
-const initialEdges: Edge[] = [];
+const SAVE_DEBOUNCE_MS = 500;
 
 const GRID_SIZE = 20;
 const SNAP_GRID: [number, number] = [GRID_SIZE, GRID_SIZE];
@@ -201,19 +201,109 @@ const isMac =
 const mod = isMac ? "\u2318" : "Ctrl+";
 
 /* ------------------------------------------------------------------ */
+/* Auto-save hook                                                      */
+/* ------------------------------------------------------------------ */
+
+function useAutoSave(
+  workflowId: string | undefined,
+  nodes: Node[],
+  edges: Edge[],
+  viewportRef: React.RefObject<Viewport>,
+  loaded: boolean,
+) {
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const savingRef = useRef(false);
+
+  const save = useCallback(() => {
+    if (!workflowId || savingRef.current || !loaded) return;
+    savingRef.current = true;
+    fetch(`/api/workflows/${workflowId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        nodes_json: JSON.stringify(nodes),
+        edges_json: JSON.stringify(edges),
+        viewport_json: JSON.stringify(viewportRef.current),
+      }),
+    }).finally(() => {
+      savingRef.current = false;
+    });
+  }, [workflowId, nodes, edges, viewportRef, loaded]);
+
+  const scheduleSave = useCallback(() => {
+    if (!workflowId || !loaded) return;
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(save, SAVE_DEBOUNCE_MS);
+  }, [workflowId, save, loaded]);
+
+  /* Cleanup on unmount */
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
+
+  return { scheduleSave };
+}
+
+/* ------------------------------------------------------------------ */
 /* Canvas flow component                                               */
 /* ------------------------------------------------------------------ */
 
-function CanvasFlow() {
+function CanvasFlow({ workflowId }: { workflowId?: string }) {
   const colorMode = useThemeColorMode();
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
-  const { zoomIn, zoomOut, fitView } = useReactFlow();
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  const { zoomIn, zoomOut, fitView, setViewport } = useReactFlow();
   const [locked, setLocked] = useState(false);
+  const [loaded, setLoaded] = useState(!workflowId);
+  const viewportRef = useRef<Viewport>({ x: 0, y: 0, zoom: 1 });
 
   /* History tracking */
   const { past, future, record, canUndo, canRedo, skipRecord } =
     useUndoRedo(nodes, edges);
+
+  /* Auto-save */
+  const { scheduleSave } = useAutoSave(workflowId, nodes, edges, viewportRef, loaded);
+
+  /* Load canvas state from backend */
+  useEffect(() => {
+    if (!workflowId) return;
+    fetch(`/api/workflows/${workflowId}`)
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to load workflow");
+        return res.json();
+      })
+      .then((data) => {
+        const loadedNodes: Node[] = JSON.parse(data.nodes_json || "[]");
+        const loadedEdges: Edge[] = JSON.parse(data.edges_json || "[]");
+        const vp: Viewport = JSON.parse(
+          data.viewport_json || '{"x":0,"y":0,"zoom":1}',
+        );
+        setNodes(loadedNodes);
+        setEdges(loadedEdges);
+        viewportRef.current = vp;
+        setViewport(vp);
+        setLoaded(true);
+      })
+      .catch(() => {
+        setLoaded(true);
+      });
+  }, [workflowId, setNodes, setEdges, setViewport]);
+
+  /* Trigger auto-save on node/edge changes */
+  useEffect(() => {
+    if (loaded) scheduleSave();
+  }, [nodes, edges, loaded, scheduleSave]);
+
+  /* Track viewport changes */
+  const onMoveEnd = useCallback(
+    (_event: unknown, vp: Viewport) => {
+      viewportRef.current = vp;
+      scheduleSave();
+    },
+    [scheduleSave],
+  );
 
   /* Record state before connection changes */
   const onConnect: OnConnect = useCallback(
@@ -351,10 +441,11 @@ function CanvasFlow() {
       onNodesChange={handleNodesChange}
       onEdgesChange={handleEdgesChange}
       onConnect={onConnect}
+      onMoveEnd={onMoveEnd}
       colorMode={colorMode}
       snapToGrid
       snapGrid={SNAP_GRID}
-      fitView
+      fitView={!workflowId}
       nodesDraggable={!locked}
       nodesConnectable={!locked}
       elementsSelectable={!locked}
@@ -420,10 +511,10 @@ function CanvasFlow() {
   );
 }
 
-export default function CanvasIsland() {
+export default function CanvasIsland({ workflowId }: { workflowId?: string }) {
   return (
     <ReactFlowProvider>
-      <CanvasFlow />
+      <CanvasFlow workflowId={workflowId} />
     </ReactFlowProvider>
   );
 }
