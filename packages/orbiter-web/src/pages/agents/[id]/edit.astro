@@ -150,6 +150,89 @@ const saveIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
             />
           </div>
 
+          <!-- Persona section (collapsible) -->
+          <div class="rounded-lg border border-dark/[0.08] bg-paper overflow-hidden">
+            <button
+              type="button"
+              id="persona-toggle"
+              class="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-subtle/50 transition-colors cursor-pointer"
+            >
+              <div class="flex items-center gap-2">
+                <span class="flex h-6 w-6 items-center justify-center rounded bg-coral/10 text-coral">
+                  <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                </span>
+                <span class="text-sm font-medium text-dark">Persona</span>
+                <span id="persona-badge" class="hidden text-[10px] font-medium text-coral bg-coral/10 rounded-full px-2 py-0.5">Set</span>
+              </div>
+              <svg id="persona-chevron" class="h-4 w-4 text-muted transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <div id="persona-content" class="hidden border-t border-dark/[0.06] px-4 py-4">
+              <div class="flex flex-col gap-4">
+                <!-- Template dropdown -->
+                <div class="flex items-center gap-2">
+                  <label class="text-xs font-medium text-muted">Template:</label>
+                  <select
+                    id="persona-template"
+                    class="bg-subtle/50 border border-dark/[0.06] rounded-md px-2 py-1 text-xs text-dark outline-none focus:border-coral transition-all cursor-pointer"
+                  >
+                    <option value="">Custom...</option>
+                    <option value="researcher">Researcher</option>
+                    <option value="writer">Writer</option>
+                    <option value="coder">Coder</option>
+                    <option value="reviewer">Reviewer</option>
+                    <option value="planner">Planner</option>
+                  </select>
+                  <button
+                    type="button"
+                    id="persona-preview-btn"
+                    class="ml-auto flex items-center gap-1 rounded-md bg-subtle px-2 py-1 text-[11px] font-medium text-muted hover:bg-dark/[0.08] hover:text-dark transition-colors cursor-pointer"
+                    title="Preview full system prompt with persona"
+                  >
+                    <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    Preview
+                  </button>
+                </div>
+
+                <!-- Role -->
+                <div class="flex flex-col gap-1">
+                  <label for="persona-role" class="text-xs font-medium text-dark">Role</label>
+                  <input
+                    type="text"
+                    id="persona-role"
+                    placeholder="e.g. Senior Research Analyst"
+                    class="w-full bg-subtle/50 border border-dark/[0.06] rounded-md px-3 py-1.5 text-sm text-dark placeholder:text-muted/50 outline-none focus:border-coral focus:ring-2 focus:ring-coral/20 transition-all"
+                  />
+                </div>
+
+                <!-- Goal -->
+                <div class="flex flex-col gap-1">
+                  <label for="persona-goal" class="text-xs font-medium text-dark">Goal</label>
+                  <input
+                    type="text"
+                    id="persona-goal"
+                    placeholder="e.g. Provide accurate, well-researched analysis"
+                    class="w-full bg-subtle/50 border border-dark/[0.06] rounded-md px-3 py-1.5 text-sm text-dark placeholder:text-muted/50 outline-none focus:border-coral focus:ring-2 focus:ring-coral/20 transition-all"
+                  />
+                </div>
+
+                <!-- Backstory -->
+                <div class="flex flex-col gap-1">
+                  <label for="persona-backstory" class="text-xs font-medium text-dark">Backstory</label>
+                  <textarea
+                    id="persona-backstory"
+                    rows="3"
+                    placeholder="e.g. You are an experienced analyst with decades of field research..."
+                    class="w-full bg-subtle/50 border border-dark/[0.06] rounded-md px-3 py-1.5 text-sm text-dark placeholder:text-muted/50 outline-none focus:border-coral focus:ring-2 focus:ring-coral/20 transition-all resize-y"
+                  ></textarea>
+                </div>
+
+                <p class="text-xs text-muted">When set, persona fields are auto-injected into the system prompt before your instructions.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Persona preview modal rendered below PageLayout -->
+
           <!-- Instructions / System Prompt (Enhanced Editor) -->
           <div class="flex flex-col lg:flex-row gap-4">
             <!-- Editor column -->
@@ -735,6 +818,14 @@ const saveIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
       </div>
     </div>
   </Modal>
+
+  <!-- Persona preview modal -->
+  <Modal id="persona-preview-modal" title="System Prompt Preview">
+    <div class="flex flex-col gap-3">
+      <p class="text-xs text-muted">This is the full system prompt that will be sent to the model, including persona fields.</p>
+      <div id="persona-preview-content" class="rounded-lg border border-dark/[0.08] bg-subtle/50 p-4 text-sm text-dark whitespace-pre-wrap font-mono leading-relaxed max-h-96 overflow-y-auto"></div>
+    </div>
+  </Modal>
 </PageLayout>
 
 <style>
@@ -769,6 +860,19 @@ const saveIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
     var variablesPanel = document.getElementById("variables-panel");
     var variablesList = document.getElementById("variables-list");
     var variableCount = document.getElementById("variable-count");
+
+    /* Persona fields */
+    var personaToggle = document.getElementById("persona-toggle");
+    var personaContent = document.getElementById("persona-content");
+    var personaChevron = document.getElementById("persona-chevron");
+    var personaBadge = document.getElementById("persona-badge");
+    var personaTemplate = document.getElementById("persona-template");
+    var personaRole = document.getElementById("persona-role");
+    var personaGoal = document.getElementById("persona-goal");
+    var personaBackstory = document.getElementById("persona-backstory");
+    var personaPreviewBtn = document.getElementById("persona-preview-btn");
+    var personaPreviewModal = document.getElementById("persona-preview-modal");
+    var personaPreviewContent = document.getElementById("persona-preview-content");
 
     /* Model tab fields */
     var providerSelect = document.getElementById("model-provider");
@@ -980,6 +1084,113 @@ const saveIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
         instructionsBackdrop.style.height = instructionsInput.offsetHeight + "px";
       });
       resizeObserver.observe(instructionsInput);
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Persona section                                                     */
+    /* ------------------------------------------------------------------ */
+
+    var personaTemplates = {
+      researcher: {
+        role: "Senior Research Analyst",
+        goal: "Provide accurate, well-researched analysis with citations and evidence-based conclusions",
+        backstory: "You are an experienced research analyst with decades of expertise in data analysis, academic research, and investigative journalism. You approach every question with intellectual rigor, always seeking primary sources and cross-referencing claims before presenting findings."
+      },
+      writer: {
+        role: "Creative Content Writer",
+        goal: "Produce engaging, well-structured content that informs and captivates the audience",
+        backstory: "You are a seasoned writer with experience across journalism, copywriting, and technical documentation. You have a keen eye for narrative flow, clarity, and audience engagement. You adapt your tone and style to match the context while maintaining authenticity."
+      },
+      coder: {
+        role: "Senior Software Engineer",
+        goal: "Write clean, efficient, well-tested code following best practices and modern patterns",
+        backstory: "You are a principal engineer with deep expertise across multiple programming languages and frameworks. You prioritize code readability, maintainability, and performance. You follow SOLID principles, write comprehensive tests, and always consider edge cases."
+      },
+      reviewer: {
+        role: "Quality Assurance Reviewer",
+        goal: "Identify issues, suggest improvements, and ensure output meets high quality standards",
+        backstory: "You are a meticulous reviewer with expertise in code review, content editing, and quality assurance. You have a sharp eye for errors, inconsistencies, and areas for improvement. You provide constructive, actionable feedback while acknowledging what works well."
+      },
+      planner: {
+        role: "Strategic Project Planner",
+        goal: "Create comprehensive, actionable plans with clear milestones and risk mitigation strategies",
+        backstory: "You are an experienced project manager and strategic planner. You excel at breaking complex goals into manageable tasks, identifying dependencies and risks, and creating realistic timelines. You balance ambition with pragmatism and always account for contingencies."
+      }
+    };
+
+    /* Collapse/expand toggle */
+    if (personaToggle) {
+      personaToggle.addEventListener("click", function () {
+        var isHidden = personaContent.classList.contains("hidden");
+        if (isHidden) {
+          personaContent.classList.remove("hidden");
+          personaChevron.style.transform = "rotate(180deg)";
+        } else {
+          personaContent.classList.add("hidden");
+          personaChevron.style.transform = "";
+        }
+      });
+    }
+
+    function updatePersonaBadge() {
+      var hasPersona = personaRole.value.trim() || personaGoal.value.trim() || personaBackstory.value.trim();
+      if (hasPersona) {
+        personaBadge.classList.remove("hidden");
+      } else {
+        personaBadge.classList.add("hidden");
+      }
+    }
+
+    if (personaRole) personaRole.addEventListener("input", updatePersonaBadge);
+    if (personaGoal) personaGoal.addEventListener("input", updatePersonaBadge);
+    if (personaBackstory) personaBackstory.addEventListener("input", updatePersonaBadge);
+
+    /* Template pre-fill */
+    if (personaTemplate) {
+      personaTemplate.addEventListener("change", function () {
+        var key = personaTemplate.value;
+        if (key && personaTemplates[key]) {
+          var t = personaTemplates[key];
+          personaRole.value = t.role;
+          personaGoal.value = t.goal;
+          personaBackstory.value = t.backstory;
+          updatePersonaBadge();
+        }
+      });
+    }
+
+    /* Build the full system prompt with persona injected */
+    function buildFullPromptWithPersona() {
+      var role = personaRole.value.trim();
+      var goal = personaGoal.value.trim();
+      var backstory = personaBackstory.value.trim();
+      var instructions = instructionsInput.value;
+
+      var parts = [];
+
+      if (role || goal || backstory) {
+        parts.push("## Persona");
+        if (role) parts.push("**Role:** " + role);
+        if (goal) parts.push("**Goal:** " + goal);
+        if (backstory) parts.push("**Backstory:** " + backstory);
+        parts.push("");
+      }
+
+      if (instructions.trim()) {
+        parts.push("## Instructions");
+        parts.push(instructions);
+      }
+
+      return parts.join("\n");
+    }
+
+    /* Preview button */
+    if (personaPreviewBtn && personaPreviewModal) {
+      personaPreviewBtn.addEventListener("click", function () {
+        var fullPrompt = buildFullPromptWithPersona();
+        personaPreviewContent.textContent = fullPrompt || "(Empty — no persona or instructions set)";
+        personaPreviewModal.showModal();
+      });
     }
 
     /* ------------------------------------------------------------------ */
@@ -2116,6 +2327,17 @@ const saveIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
       updateTokenCounter();
       renderVariablesPanel();
 
+      /* Persona fields */
+      personaRole.value = agent.persona_role || "";
+      personaGoal.value = agent.persona_goal || "";
+      personaBackstory.value = agent.persona_backstory || "";
+      updatePersonaBadge();
+      /* If persona has data, auto-expand the section */
+      if (agent.persona_role || agent.persona_goal || agent.persona_backstory) {
+        personaContent.classList.remove("hidden");
+        personaChevron.style.transform = "rotate(180deg)";
+      }
+
       /* Model tab */
       if (agent.temperature != null) {
         temperatureSlider.value = agent.temperature;
@@ -2297,6 +2519,9 @@ const saveIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
           handoffs_json: JSON.stringify(assignedHandoffs),
           hooks_json: JSON.stringify(hooksObj),
           output_type_json: outputTypeVal,
+          persona_role: personaRole.value.trim(),
+          persona_goal: personaGoal.value.trim(),
+          persona_backstory: personaBackstory.value.trim(),
         };
 
         var maxTokens = maxTokensInput.value.trim();

@@ -33,6 +33,9 @@ class AgentCreate(BaseModel):
     tools_json: str = "[]"
     handoffs_json: str = "[]"
     hooks_json: str = "{}"
+    persona_role: str = ""
+    persona_goal: str = ""
+    persona_backstory: str = ""
 
 
 class AgentUpdate(BaseModel):
@@ -48,6 +51,9 @@ class AgentUpdate(BaseModel):
     tools_json: str | None = None
     handoffs_json: str | None = None
     hooks_json: str | None = None
+    persona_role: str | None = None
+    persona_goal: str | None = None
+    persona_backstory: str | None = None
 
 
 class AgentResponse(BaseModel):
@@ -64,6 +70,9 @@ class AgentResponse(BaseModel):
     tools_json: str
     handoffs_json: str
     hooks_json: str
+    persona_role: str
+    persona_goal: str
+    persona_backstory: str
     project_id: str
     user_id: str
     created_at: str
@@ -144,15 +153,17 @@ async def create_agent(
                 id, name, description, instructions,
                 model_provider, model_name, temperature, max_tokens, max_steps,
                 output_type_json, tools_json, handoffs_json, hooks_json,
+                persona_role, persona_goal, persona_backstory,
                 project_id, user_id, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 agent_id, body.name, body.description, body.instructions,
                 body.model_provider, body.model_name, body.temperature,
                 body.max_tokens, body.max_steps,
                 body.output_type_json, body.tools_json, body.handoffs_json,
-                body.hooks_json, body.project_id, user["id"], now, now,
+                body.hooks_json, body.persona_role, body.persona_goal,
+                body.persona_backstory, body.project_id, user["id"], now, now,
             ),
         )
         await db.commit()
