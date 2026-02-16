@@ -73,6 +73,14 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
       <button
         role="tab"
         aria-selected="false"
+        data-settings-tab="knowledge"
+        class="settings-tab px-4 py-2.5 text-sm font-medium text-muted border-b-2 border-transparent hover:text-dark transition-colors duration-150 cursor-pointer whitespace-nowrap"
+      >
+        Knowledge
+      </button>
+      <button
+        role="tab"
+        aria-selected="false"
         data-settings-tab="workspace"
         class="settings-tab px-4 py-2.5 text-sm font-medium text-muted border-b-2 border-transparent hover:text-dark transition-colors duration-150 cursor-pointer whitespace-nowrap"
       >
@@ -165,6 +173,126 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
             No providers configured yet. Add a provider to start using AI models.
           </p>
         </div>
+      </div>
+    </div>
+
+    <!-- Knowledge / Vector Store section -->
+    <div id="panel-knowledge" class="settings-panel hidden" role="tabpanel">
+      <div class="rounded-xl bg-subtle/80 border border-dark/[0.08] p-6">
+        <div class="flex items-center justify-between mb-6">
+          <div>
+            <h2 class="text-lg font-semibold text-dark mb-1">Vector Store</h2>
+            <p class="text-sm text-muted">Configure the vector store backend used for embeddings and similarity search</p>
+          </div>
+          <!-- Status indicator -->
+          <div id="vs-status" class="flex items-center gap-2">
+            <span id="vs-status-dot" class="inline-block h-2.5 w-2.5 rounded-full bg-muted"></span>
+            <span id="vs-status-text" class="text-xs text-muted">Loading...</span>
+          </div>
+        </div>
+
+        <!-- Loading state -->
+        <div id="vs-loading" class="text-sm text-muted py-4">Loading vector store configuration...</div>
+
+        <!-- Config form -->
+        <form id="vs-form" class="hidden flex flex-col gap-5">
+          <!-- Backend selector -->
+          <div class="flex flex-col gap-1.5">
+            <label for="vs-backend" class="text-sm font-medium text-dark">Backend</label>
+            <select
+              id="vs-backend"
+              name="backend"
+              class="w-full bg-paper border border-dark/[0.08] rounded-lg px-3 py-2 text-sm text-dark outline-none focus:border-coral focus:ring-2 focus:ring-coral/20 appearance-none pr-8 cursor-pointer"
+            >
+              <option value="sqlite_vss">SQLite-VSS (default, built-in)</option>
+              <option value="milvus">Milvus / Zilliz</option>
+              <option value="qdrant">Qdrant</option>
+              <option value="chromadb">ChromaDB</option>
+              <option value="pinecone">Pinecone</option>
+            </select>
+            <p class="text-xs text-muted">SQLite-VSS requires no external service. Other backends need connection details.</p>
+          </div>
+
+          <!-- Connection fields (shown for external backends) -->
+          <div id="vs-connection-fields" class="hidden flex flex-col gap-4 rounded-lg border border-dark/[0.06] bg-paper p-4">
+            <h3 class="text-sm font-medium text-dark">Connection</h3>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div class="flex flex-col gap-1.5" id="vs-host-group">
+                <label for="vs-host" class="text-xs font-medium text-dark">Host</label>
+                <input
+                  id="vs-host"
+                  name="host"
+                  type="text"
+                  placeholder="localhost"
+                  class="w-full bg-paper border border-dark/[0.08] rounded-lg px-3 py-2 text-sm text-dark placeholder:text-muted/60 outline-none focus:border-coral focus:ring-2 focus:ring-coral/20"
+                />
+              </div>
+              <div class="flex flex-col gap-1.5" id="vs-port-group">
+                <label for="vs-port" class="text-xs font-medium text-dark">Port</label>
+                <input
+                  id="vs-port"
+                  name="port"
+                  type="number"
+                  min="1"
+                  max="65535"
+                  placeholder="19530"
+                  class="w-full bg-paper border border-dark/[0.08] rounded-lg px-3 py-2 text-sm text-dark placeholder:text-muted/60 outline-none focus:border-coral focus:ring-2 focus:ring-coral/20"
+                />
+              </div>
+            </div>
+
+            <div class="flex flex-col gap-1.5" id="vs-apikey-group">
+              <label for="vs-apikey" class="text-xs font-medium text-dark">API Key</label>
+              <input
+                id="vs-apikey"
+                name="api_key"
+                type="password"
+                placeholder="Leave blank to keep current key"
+                class="w-full bg-paper border border-dark/[0.08] rounded-lg px-3 py-2 text-sm text-dark placeholder:text-muted/60 outline-none focus:border-coral focus:ring-2 focus:ring-coral/20"
+              />
+            </div>
+
+            <div class="flex flex-col gap-1.5" id="vs-collection-group">
+              <label for="vs-collection" class="text-xs font-medium text-dark">Collection Name</label>
+              <input
+                id="vs-collection"
+                name="collection_name"
+                type="text"
+                placeholder="orbiter"
+                class="w-full bg-paper border border-dark/[0.08] rounded-lg px-3 py-2 text-sm text-dark placeholder:text-muted/60 outline-none focus:border-coral focus:ring-2 focus:ring-coral/20"
+              />
+            </div>
+          </div>
+
+          <!-- Error display -->
+          <div id="vs-error" class="text-sm text-coral hidden"></div>
+
+          <!-- Actions -->
+          <div class="flex items-center justify-between">
+            <button
+              type="button"
+              id="vs-test-btn"
+              class="inline-flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg text-muted border border-dark/[0.08] hover:bg-dark/5 hover:text-dark transition-colors cursor-pointer"
+            >
+              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+              Test Connection
+            </button>
+            <button
+              type="submit"
+              id="vs-save-btn"
+              class="inline-flex items-center gap-1.5 text-sm px-4 py-2 rounded-lg bg-coral text-white hover:bg-coral/90 transition-colors cursor-pointer font-medium"
+            >
+              Save
+            </button>
+          </div>
+
+          <!-- Test result -->
+          <div id="vs-test-result" class="hidden text-sm rounded-lg border px-4 py-3"></div>
+        </form>
+
+        <!-- Saved confirmation -->
+        <div id="vs-saved" class="hidden text-sm text-zen-green mt-3">Vector store configuration saved.</div>
       </div>
     </div>
 
@@ -444,6 +572,11 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
         // Load providers when Models tab is first shown
         if (target === "models" && !providersLoaded) {
           fetchProviders();
+        }
+
+        // Load vector store config when Knowledge tab is first shown
+        if (target === "knowledge" && !vsLoaded) {
+          fetchVectorStoreConfig();
         }
       });
     });
@@ -1159,6 +1292,204 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
           .finally(function () {
             confirmDeleteKeyBtn.disabled = false;
             confirmDeleteKeyBtn.textContent = "Delete Key";
+          });
+      });
+    }
+
+    // ------- Knowledge / Vector Store -------
+    var vsLoaded = false;
+    var vsForm = document.getElementById("vs-form");
+    var vsLoading = document.getElementById("vs-loading");
+    var vsBackendSelect = document.getElementById("vs-backend");
+    var vsConnectionFields = document.getElementById("vs-connection-fields");
+    var vsHostInput = document.getElementById("vs-host");
+    var vsPortInput = document.getElementById("vs-port");
+    var vsApiKeyInput = document.getElementById("vs-apikey");
+    var vsCollectionInput = document.getElementById("vs-collection");
+    var vsHostGroup = document.getElementById("vs-host-group");
+    var vsPortGroup = document.getElementById("vs-port-group");
+    var vsApiKeyGroup = document.getElementById("vs-apikey-group");
+    var vsTestBtn = document.getElementById("vs-test-btn");
+    var vsTestResult = document.getElementById("vs-test-result");
+    var vsError = document.getElementById("vs-error");
+    var vsSaved = document.getElementById("vs-saved");
+    var vsStatusDot = document.getElementById("vs-status-dot");
+    var vsStatusText = document.getElementById("vs-status-text");
+
+    var vsPortDefaults = {
+      milvus: 19530,
+      qdrant: 6333,
+      chromadb: 8000,
+      pinecone: null,
+      sqlite_vss: null
+    };
+
+    function updateVsFieldVisibility() {
+      if (!vsBackendSelect) return;
+      var backend = vsBackendSelect.value;
+      var isExternal = backend !== "sqlite_vss";
+
+      if (vsConnectionFields) {
+        if (isExternal) {
+          vsConnectionFields.classList.remove("hidden");
+        } else {
+          vsConnectionFields.classList.add("hidden");
+        }
+      }
+
+      // Pinecone needs API key but not host/port
+      if (backend === "pinecone") {
+        if (vsHostGroup) vsHostGroup.classList.add("hidden");
+        if (vsPortGroup) vsPortGroup.classList.add("hidden");
+        if (vsApiKeyGroup) vsApiKeyGroup.classList.remove("hidden");
+      } else if (isExternal) {
+        if (vsHostGroup) vsHostGroup.classList.remove("hidden");
+        if (vsPortGroup) vsPortGroup.classList.remove("hidden");
+        if (vsApiKeyGroup) vsApiKeyGroup.classList.remove("hidden");
+      }
+
+      // Update port placeholder
+      if (vsPortInput && vsPortDefaults[backend]) {
+        vsPortInput.placeholder = String(vsPortDefaults[backend]);
+      }
+    }
+
+    if (vsBackendSelect) {
+      vsBackendSelect.addEventListener("change", updateVsFieldVisibility);
+    }
+
+    function fetchVectorStoreConfig() {
+      fetch("/api/vector-stores", { credentials: "same-origin" })
+        .then(function (res) {
+          if (!res.ok) throw new Error("Failed to load config");
+          return res.json();
+        })
+        .then(function (config) {
+          vsLoaded = true;
+          if (vsLoading) vsLoading.classList.add("hidden");
+          if (vsForm) vsForm.classList.remove("hidden");
+
+          // Populate form
+          if (vsBackendSelect) vsBackendSelect.value = config.backend || "sqlite_vss";
+          if (vsHostInput) vsHostInput.value = config.host || "";
+          if (vsPortInput) vsPortInput.value = config.port || "";
+          if (vsCollectionInput) vsCollectionInput.value = config.collection_name || "";
+          if (vsApiKeyInput) vsApiKeyInput.placeholder = config.api_key_set ? "Key is set (leave blank to keep)" : "Enter API key";
+
+          updateVsFieldVisibility();
+          updateVsStatus(config.backend, config.backend_label, config.api_key_set);
+        })
+        .catch(function () {
+          if (vsLoading) vsLoading.textContent = "Failed to load vector store configuration.";
+        });
+    }
+
+    function updateVsStatus(backend, label, hasKey) {
+      if (!vsStatusDot || !vsStatusText) return;
+      if (backend === "sqlite_vss") {
+        vsStatusDot.className = "inline-block h-2.5 w-2.5 rounded-full bg-zen-green";
+        vsStatusText.textContent = label + " (built-in)";
+        vsStatusText.className = "text-xs text-zen-green font-medium";
+      } else if (hasKey || backend === "chromadb" || backend === "milvus" || backend === "qdrant") {
+        vsStatusDot.className = "inline-block h-2.5 w-2.5 rounded-full bg-zen-blue";
+        vsStatusText.textContent = label + " configured";
+        vsStatusText.className = "text-xs text-zen-blue font-medium";
+      } else {
+        vsStatusDot.className = "inline-block h-2.5 w-2.5 rounded-full bg-muted";
+        vsStatusText.textContent = label + " (not configured)";
+        vsStatusText.className = "text-xs text-muted";
+      }
+    }
+
+    // Save vector store config
+    if (vsForm) {
+      vsForm.addEventListener("submit", function (e) {
+        e.preventDefault();
+        if (vsError) vsError.classList.add("hidden");
+        if (vsSaved) vsSaved.classList.add("hidden");
+
+        var payload = {};
+        if (vsBackendSelect) payload.backend = vsBackendSelect.value;
+        if (vsHostInput && vsHostInput.value) payload.host = vsHostInput.value;
+        if (vsPortInput && vsPortInput.value) payload.port = parseInt(vsPortInput.value, 10);
+        if (vsApiKeyInput && vsApiKeyInput.value) payload.api_key = vsApiKeyInput.value;
+        if (vsCollectionInput) payload.collection_name = vsCollectionInput.value;
+
+        // If switching to sqlite_vss, clear connection fields
+        if (payload.backend === "sqlite_vss") {
+          payload.host = "";
+          payload.port = null;
+          payload.api_key = "";
+          payload.collection_name = "";
+        }
+
+        fetch("/api/vector-stores", {
+          method: "PUT",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        })
+          .then(function (res) {
+            if (!res.ok) return res.json().then(function (d) { throw new Error(d.detail || "Save failed"); });
+            return res.json();
+          })
+          .then(function (config) {
+            if (vsApiKeyInput) {
+              vsApiKeyInput.value = "";
+              vsApiKeyInput.placeholder = config.api_key_set ? "Key is set (leave blank to keep)" : "Enter API key";
+            }
+            updateVsStatus(config.backend, config.backend_label, config.api_key_set);
+
+            if (vsSaved) {
+              vsSaved.classList.remove("hidden");
+              setTimeout(function () { vsSaved.classList.add("hidden"); }, 2000);
+            }
+          })
+          .catch(function (err) {
+            if (vsError) {
+              vsError.textContent = err.message || "Failed to save configuration";
+              vsError.classList.remove("hidden");
+            }
+          });
+      });
+    }
+
+    // Test connection
+    if (vsTestBtn) {
+      vsTestBtn.addEventListener("click", function () {
+        if (vsTestResult) {
+          vsTestResult.classList.remove("hidden");
+          vsTestResult.className = "text-sm rounded-lg border px-4 py-3 border-dark/[0.08] text-muted";
+          vsTestResult.textContent = "Testing connection...";
+        }
+        vsTestBtn.disabled = true;
+
+        fetch("/api/vector-stores/test", {
+          method: "POST",
+          credentials: "same-origin"
+        })
+          .then(function (res) { return res.json(); })
+          .then(function (result) {
+            if (!vsTestResult) return;
+            vsTestResult.classList.remove("hidden");
+
+            if (result.success) {
+              vsTestResult.className = "text-sm rounded-lg border px-4 py-3 border-zen-green/30 bg-zen-green/5 text-zen-green";
+              vsTestResult.innerHTML = '<div class="flex items-center gap-2"><svg class="h-4 w-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><span>Connected to <strong>' + result.backend_label + '</strong> successfully</span></div>';
+            } else {
+              vsTestResult.className = "text-sm rounded-lg border px-4 py-3 border-coral/30 bg-coral/5 text-coral";
+              vsTestResult.innerHTML = '<div class="flex items-center gap-2"><svg class="h-4 w-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg><span>Failed: ' + (result.error || "Unknown error") + '</span></div>';
+            }
+          })
+          .catch(function () {
+            if (vsTestResult) {
+              vsTestResult.className = "text-sm rounded-lg border px-4 py-3 border-coral/30 bg-coral/5 text-coral";
+              vsTestResult.textContent = "Connection test failed. Is the API server running?";
+              vsTestResult.classList.remove("hidden");
+            }
+          })
+          .finally(function () {
+            vsTestBtn.disabled = false;
           });
       });
     }
