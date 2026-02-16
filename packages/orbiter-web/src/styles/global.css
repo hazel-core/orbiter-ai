@@ -67,6 +67,32 @@ body {
   font-family: var(--font-junicode);
 }
 
+/* Section divider pattern — gradient line + constrained container */
+.section-divider {
+  border-top: 1px solid transparent;
+  border-image: linear-gradient(
+    to right,
+    transparent,
+    var(--zen-dark),
+    transparent
+  ) 1;
+  margin-inline: auto;
+  max-width: 72rem; /* max-w-6xl */
+  padding-inline: 1rem;
+}
+
+@media (min-width: 640px) {
+  .section-divider {
+    padding-inline: 1.5rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .section-divider {
+    padding-inline: 2rem;
+  }
+}
+
 /* Animation keyframes for data-animate elements */
 @keyframes zenReveal {
   from {
