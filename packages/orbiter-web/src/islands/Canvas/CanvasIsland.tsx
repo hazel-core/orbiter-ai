@@ -17,6 +17,8 @@ import {
   type Viewport,
 } from "@xyflow/react";
 
+import NodeSidebar, { NODE_CATEGORIES } from "./NodeSidebar";
+
 import "@xyflow/react/dist/style.css";
 
 const SAVE_DEBOUNCE_MS = 500;
@@ -254,10 +256,11 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
   const colorMode = useThemeColorMode();
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
-  const { zoomIn, zoomOut, fitView, setViewport } = useReactFlow();
+  const { zoomIn, zoomOut, fitView, setViewport, screenToFlowPosition } = useReactFlow();
   const [locked, setLocked] = useState(false);
   const [loaded, setLoaded] = useState(!workflowId);
   const viewportRef = useRef<Viewport>({ x: 0, y: 0, zoom: 1 });
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   /* History tracking */
   const { past, future, record, canUndo, canRedo, skipRecord } =
@@ -434,6 +437,46 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
     tick();
   }, [nodes, edges, tick]);
 
+  /* Look up category color for a node type */
+  const getNodeColor = useCallback((typeId: string): string => {
+    for (const cat of NODE_CATEGORIES) {
+      if (cat.types.some((t) => t.id === typeId)) return cat.color;
+    }
+    return "#999";
+  }, []);
+
+  /* Drop handler — create a new node when dragging from sidebar */
+  const onDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+  }, []);
+
+  const onDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      const nodeType = e.dataTransfer.getData("application/reactflow-type");
+      const label = e.dataTransfer.getData("application/reactflow-label");
+      if (!nodeType) return;
+
+      const position = screenToFlowPosition({ x: e.clientX, y: e.clientY });
+      const color = getNodeColor(nodeType);
+
+      record();
+      const newNode: Node = {
+        id: `${nodeType}_${Date.now()}`,
+        type: "default",
+        position,
+        data: {
+          label,
+          nodeType,
+          categoryColor: color,
+        },
+      };
+      setNodes((nds) => [...nds, newNode]);
+    },
+    [screenToFlowPosition, record, setNodes, getNodeColor],
+  );
+
   return (
     <ReactFlow
       nodes={nodes}
@@ -442,6 +485,8 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
       onEdgesChange={handleEdgesChange}
       onConnect={onConnect}
       onMoveEnd={onMoveEnd}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
       colorMode={colorMode}
       snapToGrid
       snapGrid={SNAP_GRID}
@@ -455,6 +500,12 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
       zoomOnDoubleClick={!locked}
     >
       <Background variant={BackgroundVariant.Dots} gap={GRID_SIZE} size={1.5} />
+
+      {/* Node type sidebar */}
+      <NodeSidebar
+        collapsed={sidebarCollapsed}
+        onToggle={() => setSidebarCollapsed((v) => !v)}
+      />
 
       {/* Custom toolbar */}
       <Panel position="top-center">
