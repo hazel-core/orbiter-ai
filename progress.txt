@@ -95,6 +95,7 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
 - Agent KB assignment: `knowledge_base_ids` column (JSON TEXT array) on agents table — stores list of KB IDs the agent can query
 - Vector store config: singleton per user in `vector_store_config` table; auto-created on first GET; routes at `/api/vector-stores` (GET, PUT, POST /test)
 - Settings tabs: add tab button + panel div + lazy-load check in tab click handler; use `vsLoaded` / `providersLoaded` pattern for one-time fetch
+- Context config fields: stored as proper columns on agents table (not in hooks_json meta); automation_level, max_tokens_per_step, max_total_tokens, memory_type, workspace_enabled
 
 ---
 
@@ -1903,4 +1904,24 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Settings tab pattern: add button in tab nav bar, add panel div, add lazy-load check in tab click handler (`if (target === "knowledge" && !vsLoaded)`)
   - Backend field visibility: use JS to show/hide connection fields based on backend selection; Pinecone needs API key but not host/port
   - Test connection for TCP backends: use `asyncio.open_connection` with `asyncio.wait_for(timeout=5.0)`
+---
+
+## 2026-02-17 - US-104
+- Implemented context configuration panel for agent builder
+- Context tab added between Hooks and Advanced tabs with:
+  - Automation level selector (Pilot/Copilot/Navigator) with visual card buttons
+  - Token budget inputs (max tokens per step, max total tokens) as number fields
+  - Memory toggle with type selector (conversation, summary, sliding_window) as radio buttons
+  - Workspace toggle for artifact storage
+- Backend: migration 032 adds context_automation_level, context_max_tokens_per_step, context_max_total_tokens, context_memory_type, context_workspace_enabled columns to agents table
+- API: updated AgentCreate, AgentUpdate, AgentResponse Pydantic models and INSERT/UPDATE SQL
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/migrations/032_add_agent_context_config.sql (new)
+  - packages/orbiter-web/src/orbiter_web/routes/agents.py (added 5 context fields to models, INSERT, _row_to_dict)
+  - packages/orbiter-web/src/pages/agents/[id]/edit.astro (added Context tab HTML + JS)
+- **Learnings for future iterations:**
+  - Context config is stored as proper DB columns (not in hooks_json meta flags) for clean mapping to ContextConfig
+  - Automation levels: pilot (fully autonomous), copilot (suggests, user approves), navigator (plans only)
+  - Boolean columns in SQLite: use int() on write, bool() on read via _row_to_dict
+  - Tab addition pattern: add button in nav, add panel div, add JS variables + event handlers, wire into showAgent() and save handler
 ---
