@@ -983,3 +983,20 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Token usage displayed as small metadata below agent messages when provided by the "done" WebSocket event
   - Manual browser verification needed (no browser testing tool available)
 ---
+
+## 2026-02-17 - US-060
+- What was implemented: Chat message features — markdown rendering in agent responses (via `marked` library), copy message button on hover for all messages, scroll-to-bottom button when user scrolls up, improved auto-scroll behavior
+- Files changed:
+  - packages/orbiter-web/src/pages/playground.astro (rewritten — switched from `is:inline` to module `<script>` for `marked` import, added markdown rendering on stream finish, copy buttons with clipboard API, scroll-to-bottom button, improved scroll tracking)
+  - packages/orbiter-web/src/styles/global.css (added `.chat-prose` styles for markdown — headings, code blocks, lists, tables, blockquotes, links, hr)
+  - packages/orbiter-web/package.json (added `marked` dependency)
+- **Learnings for future iterations:**
+  - Markdown rendered only on stream finish (not during streaming) for performance — `textContent` during streaming, `innerHTML` with `marked.parse()` on finishStream
+  - Switched from `is:inline define:vars` to module `<script>` to enable npm imports — icons are now inline HTML strings in the script instead of passed via `define:vars`
+  - `.chat-prose` class resets whitespace-pre-wrap and applies prose-like styles; Tailwind v4 doesn't include `@tailwindcss/typography`, so custom prose styles needed
+  - Copy button uses `navigator.clipboard.writeText()` with check icon feedback; positioned absolute within `group` container for hover reveal
+  - Scroll-to-bottom button: track `userScrolledUp` boolean, show button when not near bottom (80px threshold), reset on send/clear
+  - Messages area wrapped in `relative flex-1` container with `absolute inset-0` inner div to properly contain overflow — fixes scroll area sizing
+  - `marked` library is ~7KB gzipped, lightweight enough for playground use; configured with `breaks: true` and `gfm: true`
+  - Manual browser verification needed (no browser testing tool available)
+---
