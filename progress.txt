@@ -1470,3 +1470,18 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Tab bar pattern: use `span:last-child` for the active indicator line, toggle `opacity-0` for inactive
   - `fetchInstalled()` updates the badge count regardless of active tab, so badge is always current
 ---
+
+## 2026-02-17 - US-088
+- What was implemented: Agent hierarchy graph view page at `/agents/graph` using Xyflow ReactFlow
+- Files changed:
+  - packages/orbiter-web/src/islands/AgentGraph/AgentGraphIsland.tsx (new — React island with dagre auto-layout, custom AgentNode, custom AgentEdge, click-to-navigate)
+  - packages/orbiter-web/src/pages/agents/graph.astro (new — Astro page wrapper with PageLayout)
+  - packages/orbiter-web/package.json (added @dagrejs/dagre dependency)
+- **Learnings for future iterations:**
+  - `useNodesState<Node>([])` and `useEdgesState<Edge>([])` need explicit type params to avoid `never[]` inference in Astro strict mode
+  - @dagrejs/dagre v2 includes TypeScript types in `dist/dagre.d.ts`
+  - ReactFlow `client:only="react"` islands follow same pattern as CanvasIsland — wrap inner component with ReactFlowProvider
+  - Handoffs stored as `{id, name, description}` in `handoffs_json` — id references the target agent
+  - Delegation connections can be inferred from `_delegates_to` array in `hooks_json`
+  - Custom edge types: use `getBezierPath` + foreignObject for labels; strokeDasharray for dashed edges
+---
