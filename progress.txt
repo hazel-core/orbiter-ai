@@ -1350,3 +1350,27 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - `__builtins__` type varies between modules (dict in __main__, module elsewhere) — handle both with isinstance check
   - Schema generation endpoint (`POST /api/tools/schema`) is useful for live preview without saving to DB
 ---
+
+## 2026-02-17 02:30 - US-082
+- What was implemented: Custom tool creation UI at /tools/new
+  - Full page with monospace code editor (dark theme, line numbers, tab key support)
+  - Pre-filled Python template with `from orbiter.tool import tool` + `@tool` decorator pattern
+  - Auto-analysis: debounced (1s) schema extraction via POST /api/tools/schema
+  - Parameter table auto-populated from function signature analysis
+  - JSON Schema preview panel with syntax highlighting
+  - Test Tool button: saves tool first, then POSTs to /api/tools/custom/{id}/test with typed inputs
+  - Test result panel showing success/error with traceback
+  - Save button: creates via POST /api/tools/custom, updates via PUT /api/tools/custom/{id}
+  - Project selector dropdown (loads from GET /api/projects)
+  - "Create Tool" button added to tools index page header
+- Files changed:
+  - packages/orbiter-web/src/pages/tools/new.astro (created, ~560 lines)
+  - packages/orbiter-web/src/pages/tools/index.astro (added Button import, plus icon, Create Tool link)
+- **Learnings for future iterations:**
+  - The backend already had all needed endpoints (POST /api/tools/schema, POST /api/tools/custom, PUT /api/tools/custom/{id}, POST /api/tools/custom/{id}/test) — always check routes/ before building API endpoints
+  - Custom tool creation requires project_id — tools are scoped to projects
+  - Use `is:inline` scripts for page-specific JS in Astro; IIFE pattern prevents global scope pollution
+  - Line number sync: use translateY on scroll event for the line numbers div, synced to textarea.scrollTop
+  - Tab key in textarea: must preventDefault and insert spaces manually
+  - Manual browser verification needed (no dev-browser skill configured)
+---
