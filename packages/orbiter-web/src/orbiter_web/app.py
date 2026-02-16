@@ -16,6 +16,7 @@ from orbiter_web.routes.conversations import router as conversations_router
 from orbiter_web.routes.costs import router as costs_router
 from orbiter_web.routes.models import router as models_router
 from orbiter_web.routes.playground import router as playground_router
+from orbiter_web.routes.plugins import router as plugins_router
 from orbiter_web.routes.projects import router as projects_router
 from orbiter_web.routes.prompt_templates import router as prompt_templates_router
 from orbiter_web.routes.provider_keys import router as provider_keys_router
@@ -48,6 +49,7 @@ app.include_router(costs_router)
 app.include_router(auth_router)
 app.include_router(models_router)
 app.include_router(playground_router)
+app.include_router(plugins_router)
 app.include_router(projects_router)
 app.include_router(prompt_templates_router)
 app.include_router(provider_keys_router)
