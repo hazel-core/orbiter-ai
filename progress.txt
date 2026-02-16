@@ -61,6 +61,8 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
 - `fitView({ nodes: [{ id }], padding: 0.5, duration: 400 })` centers viewport on a specific node — useful for navigate-to-node from panels
 - WebSocket auth: extract session cookie manually via `websocket.cookies.get("orbiter_session")`, validate before `websocket.accept()`; no `Depends()` for WS
 - Provider streaming: OpenAI/Anthropic use SSE (`data: ` prefix), Ollama uses NDJSON; use httpx `client.stream()` + `resp.aiter_lines()`
+- Vite proxy needs `ws: true` for WebSocket forwarding — `/api` proxy only forwards HTTP by default
+- WebSocket chat pattern: connect on agent select, send `{content: "..."}`, receive `{type: "token"|"done"|"error", ...}`; reconnect on clear to reset server-side history
 
 ---
 
@@ -963,4 +965,21 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Ollama streaming: NDJSON (not SSE) — parse each line as JSON, content in `message.content`, final chunk has `done: true` with eval counts
   - Conversation history maintained in-memory per WebSocket connection; future stories (US-061) will persist to DB
   - Provider lookup: agent stores `model_provider` as type string (e.g., "openai"), need `_find_provider_by_type()` to resolve to provider_id
+---
+
+## 2026-02-17 - US-059
+- What was implemented: Full-screen chat playground interface at /playground — agent selector dropdown, streaming chat via WebSocket, message bubbles with user (right-aligned, bg-subtle) and agent (left-aligned with avatar), token-by-token display, auto-resize textarea, clear conversation button, connection status feedback
+- Files changed:
+  - packages/orbiter-web/src/pages/playground.astro (new — full chat playground page with agent selector, message rendering, WebSocket management, auto-resize input)
+  - packages/orbiter-web/astro.config.mjs (added ws: true to Vite proxy config for WebSocket support)
+- **Learnings for future iterations:**
+  - Vite proxy needs `ws: true` to forward WebSocket connections — without it, only HTTP /api requests are proxied
+  - WebSocket URL construction: use `location.protocol === "https:" ? "wss:" : "ws:"` + `location.host` for protocol-agnostic URLs
+  - Streaming chat pattern: start agent message bubble on send, append tokens to it, finalize on "done" message; track state with `isStreaming` flag
+  - Auto-resize textarea: set `height: auto` first, then `height = Math.min(scrollHeight, maxHeight)` on every input event
+  - `is:inline` script with `define:vars` for passing icon HTML from frontmatter to JS (botIconHtml, userIconHtml)
+  - Clear conversation reconnects WebSocket to reset server-side in-memory conversation history
+  - Disable input + send button during streaming to prevent overlapping requests
+  - Token usage displayed as small metadata below agent messages when provided by the "done" WebSocket event
+  - Manual browser verification needed (no browser testing tool available)
 ---
