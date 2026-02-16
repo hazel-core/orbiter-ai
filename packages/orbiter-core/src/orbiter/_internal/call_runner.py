@@ -13,12 +13,15 @@ from typing import Any
 
 from orbiter._internal.message_builder import build_messages
 from orbiter._internal.state import RunState
+from orbiter.observability.logging import get_logger  # pyright: ignore[reportMissingImports]
 from orbiter.types import (
     AgentOutput,
     Message,
     OrbiterError,
     RunResult,
 )
+
+_log = get_logger(__name__)
 
 
 class CallRunnerError(OrbiterError):
@@ -114,6 +117,7 @@ async def call_runner(
 
     except Exception as exc:
         error_msg = str(exc)
+        _log.error("Call runner failed for '%s': %s", agent.name, error_msg)
         node.fail(error_msg)
         state.fail(error_msg)
         raise CallRunnerError(f"Call runner failed for agent '{agent.name}': {error_msg}") from exc
@@ -155,6 +159,7 @@ def _check_loop(
         current.metadata["tool_signature"] = signature
 
     if consecutive >= threshold:
+        _log.error("Loop detected: %d repeated tool patterns", consecutive)
         raise CallRunnerError(
             f"Endless loop detected: same tool calls repeated "
             f"{consecutive} times (threshold={threshold})"

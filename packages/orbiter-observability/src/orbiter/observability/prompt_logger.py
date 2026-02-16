@@ -7,7 +7,9 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-logger = logging.getLogger("orbiter.trace.prompt")
+from orbiter.observability.logging import get_logger  # pyright: ignore[reportMissingImports]
+
+logger = get_logger("prompt")
 
 # ---------------------------------------------------------------------------
 # Role-based token counting
@@ -48,7 +50,7 @@ class TokenBreakdown:
         return self.system + self.user + self.assistant + self.tool + self.other
 
     def percentages(self, context_window: int) -> dict[str, float]:
-        """Return role→percentage mapping relative to *context_window*."""
+        """Return role->percentage mapping relative to *context_window*."""
         if context_window <= 0:
             return {r: 0.0 for r in ("system", "user", "assistant", "tool", "other", "free")}
         total = self.total

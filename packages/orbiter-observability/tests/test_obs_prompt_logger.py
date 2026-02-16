@@ -6,7 +6,7 @@ import logging
 
 import pytest
 
-from orbiter.trace.prompt_logger import (  # pyright: ignore[reportMissingImports]
+from orbiter.observability.prompt_logger import (  # pyright: ignore[reportMissingImports]
     DEFAULT_CHAR_TOKEN_RATIO,
     ExecutionLogEntry,
     PromptLogger,
@@ -64,12 +64,8 @@ class TestTokenBreakdown:
 
     def test_frozen(self) -> None:
         bd = TokenBreakdown()
-        try:
+        with pytest.raises(AttributeError):
             bd.system = 5  # type: ignore[misc]
-            raised = False
-        except AttributeError:
-            raised = True
-        assert raised
 
 
 # ---------------------------------------------------------------------------
@@ -266,14 +262,14 @@ class TestPromptLogger:
     def test_log_execution_emits_log(self, caplog: pytest.LogCaptureFixture) -> None:
         pl = PromptLogger()
         msgs = [{"role": "user", "content": "test"}]
-        with caplog.at_level(logging.INFO, logger="orbiter.trace.prompt"):
+        with caplog.at_level(logging.INFO, logger="orbiter.prompt"):
             pl.log_execution(msgs, agent_name="a")
         assert "LLM Execution" in caplog.text
 
     def test_log_execution_custom_level(self, caplog: pytest.LogCaptureFixture) -> None:
         pl = PromptLogger()
         msgs = [{"role": "user", "content": "test"}]
-        with caplog.at_level(logging.DEBUG, logger="orbiter.trace.prompt"):
+        with caplog.at_level(logging.DEBUG, logger="orbiter.prompt"):
             pl.log_execution(msgs, agent_name="a", level=logging.DEBUG)
         assert "LLM Execution" in caplog.text
 

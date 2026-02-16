@@ -1,4 +1,4 @@
-"""Tests for orbiter.trace.propagation — W3C Baggage propagation and span consumer system."""
+"""Tests for orbiter.observability.propagation — W3C Baggage propagation and span consumer system."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from orbiter.trace.propagation import (  # pyright: ignore[reportMissingImports]
+from orbiter.observability.propagation import (  # pyright: ignore[reportMissingImports]
     BAGGAGE_HEADER,
     MAX_HEADER_LENGTH,
     MAX_PAIR_LENGTH,

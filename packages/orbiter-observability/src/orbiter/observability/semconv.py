@@ -1,87 +1,15 @@
-"""Trace configuration and semantic conventions for agent/tool observability."""
+"""Semantic conventions for agent, tool, LLM, and task observability.
+
+Standardised attribute names used across spans, metrics, and log records
+so that all Orbiter telemetry is consistent and queryable.
+
+Ported from ``orbiter.trace.config`` with new cost conventions added.
+"""
 
 from __future__ import annotations
 
-from enum import StrEnum
-from typing import Any
-
-from pydantic import BaseModel, Field, model_validator
-
 # ---------------------------------------------------------------------------
-# Trace backend selection
-# ---------------------------------------------------------------------------
-
-
-class TraceBackend(StrEnum):
-    """Supported trace export backends."""
-
-    OTLP = "otlp"
-    MEMORY = "memory"
-    CONSOLE = "console"
-
-
-# ---------------------------------------------------------------------------
-# Trace configuration
-# ---------------------------------------------------------------------------
-
-
-class TraceConfig(BaseModel, frozen=True):
-    """Immutable configuration for the trace / observability layer.
-
-    Controls backend selection, sampling, export endpoint, and attribute
-    namespace used for all Orbiter-specific span attributes.
-    """
-
-    backend: TraceBackend = Field(
-        default=TraceBackend.OTLP,
-        description="Trace export backend",
-    )
-
-    endpoint: str | None = Field(
-        default=None,
-        description="OTLP collector endpoint (e.g. http://localhost:4318)",
-    )
-
-    service_name: str = Field(
-        default="orbiter",
-        description="Service name reported in exported spans",
-    )
-
-    sample_rate: float = Field(
-        default=1.0,
-        ge=0.0,
-        le=1.0,
-        description="Probability of sampling a trace (0.0 = none, 1.0 = all)",
-    )
-
-    enabled: bool = Field(
-        default=True,
-        description="Global toggle — when False, tracing is a no-op",
-    )
-
-    headers: dict[str, str] = Field(
-        default_factory=dict,
-        description="Extra headers sent with each export request",
-    )
-
-    namespace: str = Field(
-        default="orbiter",
-        description="Attribute namespace prefix (e.g. orbiter.agent.name)",
-    )
-
-    extra: dict[str, Any] = Field(
-        default_factory=dict,
-        description="Extension point for custom exporter/processor config",
-    )
-
-    @model_validator(mode="after")
-    def _validate_endpoint(self) -> TraceConfig:
-        """OTLP backend should have an endpoint (warn-only: no hard error)."""
-        return self
-
-
-# ---------------------------------------------------------------------------
-# Semantic conventions — gen_ai.*
+# GenAI semantic conventions — gen_ai.*
 # ---------------------------------------------------------------------------
 
 # Standard OpenTelemetry GenAI semantic conventions.
@@ -108,7 +36,7 @@ GEN_AI_OPERATION_NAME = "gen_ai.operation.name"
 GEN_AI_SERVER_ADDRESS = "gen_ai.server.address"
 
 # ---------------------------------------------------------------------------
-# Semantic conventions — agent.*
+# Agent conventions — orbiter.agent.*
 # ---------------------------------------------------------------------------
 
 AGENT_ID = "orbiter.agent.id"
@@ -120,7 +48,7 @@ AGENT_MAX_STEPS = "orbiter.agent.max_steps"
 AGENT_RUN_SUCCESS = "orbiter.agent.run.success"
 
 # ---------------------------------------------------------------------------
-# Semantic conventions — tool.*
+# Tool conventions — orbiter.tool.*
 # ---------------------------------------------------------------------------
 
 TOOL_NAME = "orbiter.tool.name"
@@ -132,7 +60,7 @@ TOOL_DURATION = "orbiter.tool.duration"
 TOOL_STEP_SUCCESS = "orbiter.tool.step.success"
 
 # ---------------------------------------------------------------------------
-# Semantic conventions — task / session / user
+# Task / session / user conventions
 # ---------------------------------------------------------------------------
 
 TASK_ID = "orbiter.task.id"
@@ -140,6 +68,14 @@ TASK_INPUT = "orbiter.task.input"
 SESSION_ID = "orbiter.session.id"
 USER_ID = "orbiter.user.id"
 TRACE_ID = "orbiter.trace.id"
+
+# ---------------------------------------------------------------------------
+# Cost conventions (new) — orbiter.cost.*
+# ---------------------------------------------------------------------------
+
+COST_INPUT_TOKENS = "orbiter.cost.input_tokens"
+COST_OUTPUT_TOKENS = "orbiter.cost.output_tokens"
+COST_TOTAL_USD = "orbiter.cost.total_usd"
 
 # ---------------------------------------------------------------------------
 # Span name prefixes

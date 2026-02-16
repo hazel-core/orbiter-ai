@@ -1,7 +1,7 @@
 [project]
-name = "orbiter-core"
+name = "orbiter-observability"
 version = "0.1.0"
-description = "Core agent framework: Agent, Tool, Runner, Config, Events, Hooks, Swarm"
+description = "Unified observability: structured logging, tracing, metrics, cost tracking"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
@@ -17,18 +17,17 @@ classifiers = [
 ]
 dependencies = [
     "pydantic>=2.0",
-    "pyyaml>=6.0",
-    "orbiter-observability>=0.1.0",
 ]
-
-[tool.uv.sources]
-orbiter-observability = { workspace = true }
 
 [project.urls]
 Homepage = "https://github.com/inclusionAI/AWorld"
 Documentation = "https://inclusionai.github.io/AWorld/"
 Repository = "https://github.com/inclusionAI/AWorld"
 Issues = "https://github.com/inclusionAI/AWorld/issues"
+
+[project.optional-dependencies]
+otel = ["opentelemetry-api>=1.20", "opentelemetry-sdk>=1.20"]
+otlp = ["opentelemetry-exporter-otlp>=1.20"]
 
 [build-system]
 requires = ["hatchling"]

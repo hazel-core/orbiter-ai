@@ -1,26 +1,29 @@
-"""Tests for the @traced decorator, span context managers, and metadata extraction."""
+"""Tests for the @traced decorator, span context managers, NullSpan, and metadata extraction."""
 
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 from opentelemetry import trace
 from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor, SpanExporter, SpanExportResult
 
-from orbiter.trace.decorator import (  # pyright: ignore[reportMissingImports]
+from orbiter.observability.tracing import (  # pyright: ignore[reportMissingImports]
+    HAS_OTEL,
+    NullSpan,
+    aspan,
     extract_metadata,
     get_user_frame,
     is_user_code,
-    span_async,
-    span_sync,
+    span,
     traced,
 )
 
 # ---------------------------------------------------------------------------
-# In-memory exporter (OTel SDK version may not ship InMemorySpanExporter)
+# In-memory exporter
 # ---------------------------------------------------------------------------
 
 
@@ -49,7 +52,6 @@ class _MemoryExporter(SpanExporter):
 @pytest.fixture(autouse=True)
 def _otel_setup() -> Any:
     """Set up an in-memory OTel provider for each test."""
-    # Reset the global singleton guard so we can install a fresh provider.
     trace._TRACER_PROVIDER_SET_ONCE._done = False  # type: ignore[attr-defined]
     trace._TRACER_PROVIDER = None  # type: ignore[attr-defined]
 
@@ -67,6 +69,47 @@ def exporter(_otel_setup: Any) -> _MemoryExporter:
 
 
 # ---------------------------------------------------------------------------
+# HAS_OTEL flag
+# ---------------------------------------------------------------------------
+
+
+class TestHasOtel:
+    def test_has_otel_is_true(self) -> None:
+        assert HAS_OTEL is True
+
+
+# ---------------------------------------------------------------------------
+# NullSpan
+# ---------------------------------------------------------------------------
+
+
+class TestNullSpan:
+    def test_set_attribute_noop(self) -> None:
+        ns = NullSpan()
+        ns.set_attribute("key", "value")  # should not raise
+
+    def test_record_exception_noop(self) -> None:
+        ns = NullSpan()
+        ns.record_exception(ValueError("test"))  # should not raise
+
+    def test_set_status_noop(self) -> None:
+        ns = NullSpan()
+        ns.set_status("ok")  # should not raise
+
+    def test_context_manager(self) -> None:
+        ns = NullSpan()
+        with ns as s:
+            assert s is ns
+
+    def test_is_singleton_like(self) -> None:
+        from orbiter.observability.tracing import (  # pyright: ignore[reportMissingImports]
+            _NULL_SPAN,
+        )
+
+        assert isinstance(_NULL_SPAN, NullSpan)
+
+
+# ---------------------------------------------------------------------------
 # is_user_code
 # ---------------------------------------------------------------------------
 
@@ -81,8 +124,8 @@ class TestIsUserCode:
     def test_eval_code(self) -> None:
         assert is_user_code("<module>") is False
 
-    def test_trace_module_filtered(self) -> None:
-        import orbiter.trace.decorator as mod  # pyright: ignore[reportMissingImports]
+    def test_observability_module_filtered(self) -> None:
+        import orbiter.observability.tracing as mod  # pyright: ignore[reportMissingImports]
 
         assert is_user_code(mod.__file__) is False
 
@@ -96,7 +139,7 @@ class TestGetUserFrame:
     def test_returns_frame_info(self) -> None:
         frame = get_user_frame()
         assert frame is not None
-        assert "test_trace_decorator" in frame.filename
+        assert "test_obs_tracing" in frame.filename
 
     def test_lineno_is_positive(self) -> None:
         frame = get_user_frame()
@@ -130,7 +173,7 @@ class TestExtractMetadata:
 
     def test_module(self) -> None:
         meta = extract_metadata(_sample_func)
-        assert "test_trace_decorator" in meta["code.module"]
+        assert "test_obs_tracing" in meta["code.module"]
 
     def test_lineno(self) -> None:
         meta = extract_metadata(_sample_func)
@@ -158,32 +201,31 @@ class TestExtractMetadata:
     def test_builtin_graceful(self) -> None:
         meta = extract_metadata(len)
         assert meta["code.function"] == "len"
-        # builtins may or may not expose parameters depending on Python version
         assert isinstance(meta["code.parameters"], list)
 
 
 # ---------------------------------------------------------------------------
-# span_sync / span_async
+# span() / aspan() — with OTel
 # ---------------------------------------------------------------------------
 
 
-class TestSpanSync:
+class TestSpanWithOtel:
     def test_creates_span(self, exporter: _MemoryExporter) -> None:
-        with span_sync("test-span") as s:
+        with span("test-span") as s:
             s.set_attribute("key", "val")
         spans = exporter.get_finished_spans()
         assert len(spans) == 1
         assert spans[0].name == "test-span"
 
     def test_attributes(self, exporter: _MemoryExporter) -> None:
-        with span_sync("attr-span", attributes={"custom": "value"}):
+        with span("attr-span", attributes={"custom": "value"}):
             pass
         spans = exporter.get_finished_spans()
         assert spans[0].attributes is not None
         assert spans[0].attributes.get("custom") == "value"
 
     def test_records_exception(self, exporter: _MemoryExporter) -> None:
-        with pytest.raises(ValueError, match="boom"), span_sync("err-span"):
+        with pytest.raises(ValueError, match="boom"), span("err-span"):
             raise ValueError("boom")
         spans = exporter.get_finished_spans()
         assert len(spans) == 1
@@ -191,9 +233,9 @@ class TestSpanSync:
         assert any(e.name == "exception" for e in events)
 
 
-class TestSpanAsync:
+class TestAspanWithOtel:
     async def test_creates_span(self, exporter: _MemoryExporter) -> None:
-        async with span_async("async-span") as s:
+        async with aspan("async-span") as s:
             s.set_attribute("async_key", 42)
         spans = exporter.get_finished_spans()
         assert len(spans) == 1
@@ -201,14 +243,30 @@ class TestSpanAsync:
 
     async def test_records_exception(self, exporter: _MemoryExporter) -> None:
         with pytest.raises(RuntimeError, match="async boom"):
-            async with span_async("async-err"):
+            async with aspan("async-err"):
                 raise RuntimeError("async boom")
         spans = exporter.get_finished_spans()
         assert any(e.name == "exception" for e in spans[0].events)
 
 
 # ---------------------------------------------------------------------------
-# @traced — sync functions
+# span() / aspan() — without OTel (mocked)
+# ---------------------------------------------------------------------------
+
+
+class TestSpanWithoutOtel:
+    def test_yields_null_span(self) -> None:
+        with patch("orbiter.observability.tracing.HAS_OTEL", False), span("no-otel") as s:
+            assert isinstance(s, NullSpan)
+
+    async def test_aspan_yields_null_span(self) -> None:
+        with patch("orbiter.observability.tracing.HAS_OTEL", False):
+            async with aspan("no-otel-async") as s:
+                assert isinstance(s, NullSpan)
+
+
+# ---------------------------------------------------------------------------
+# @traced — sync functions (with OTel)
 # ---------------------------------------------------------------------------
 
 
@@ -285,7 +343,7 @@ class TestTracedSync:
 
 
 # ---------------------------------------------------------------------------
-# @traced — async functions
+# @traced — async functions (with OTel)
 # ---------------------------------------------------------------------------
 
 
@@ -323,7 +381,7 @@ class TestTracedAsync:
 
 
 # ---------------------------------------------------------------------------
-# @traced — generators
+# @traced — generators (with OTel)
 # ---------------------------------------------------------------------------
 
 
@@ -382,6 +440,62 @@ class TestTracedAsyncGenerator:
 
 
 # ---------------------------------------------------------------------------
+# @traced — without OTel (mocked HAS_OTEL=False)
+# ---------------------------------------------------------------------------
+
+
+class TestTracedWithoutOtel:
+    def test_sync_passthrough(self) -> None:
+        with patch("orbiter.observability.tracing.HAS_OTEL", False):
+
+            @traced()
+            def add(a: int, b: int) -> int:
+                return a + b
+
+            # When HAS_OTEL is False, the decorator returns the original function.
+            assert add(1, 2) == 3
+
+    async def test_async_passthrough(self) -> None:
+        with patch("orbiter.observability.tracing.HAS_OTEL", False):
+
+            @traced()
+            async def async_add(a: int, b: int) -> int:
+                return a + b
+
+            assert await async_add(3, 4) == 7
+
+    def test_generator_passthrough(self) -> None:
+        with patch("orbiter.observability.tracing.HAS_OTEL", False):
+
+            @traced()
+            def gen_range(n: int) -> Any:
+                yield from range(n)
+
+            assert list(gen_range(3)) == [0, 1, 2]
+
+    async def test_async_gen_passthrough(self) -> None:
+        with patch("orbiter.observability.tracing.HAS_OTEL", False):
+
+            @traced()
+            async def async_gen(n: int) -> AsyncIterator[int]:
+                for i in range(n):
+                    yield i
+
+            result = [item async for item in async_gen(3)]
+            assert result == [0, 1, 2]
+
+    def test_preserves_name_without_otel(self) -> None:
+        with patch("orbiter.observability.tracing.HAS_OTEL", False):
+
+            @traced()
+            def documented() -> None:
+                """A documented function."""
+
+            assert documented.__name__ == "documented"
+            assert documented.__doc__ == "A documented function."
+
+
+# ---------------------------------------------------------------------------
 # Edge cases
 # ---------------------------------------------------------------------------
 
@@ -418,7 +532,7 @@ class TestTracedEdgeCases:
             return "ok"
 
         await premium_op()
-        span = exporter.get_finished_spans()[0]
-        assert span.name == "custom-async"
-        assert span.attributes is not None
-        assert span.attributes.get("tier") == "premium"
+        s = exporter.get_finished_spans()[0]
+        assert s.name == "custom-async"
+        assert s.attributes is not None
+        assert s.attributes.get("tier") == "premium"
