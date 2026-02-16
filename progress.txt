@@ -71,6 +71,7 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
 - Workflow execution: `engine.py` has topological_sort (Kahn's) + execute_workflow; `routes/workflow_runs.py` has REST + WS endpoints; both share `/api/workflows` prefix
 - Background asyncio tasks: store in a module-level `set()` and use `task.add_done_callback(set.discard)` to prevent GC (ruff RUF006)
 - Ruff SIM105: use `contextlib.suppress(Exception)` instead of `try/except pass`
+- Debug execution pattern: asyncio.Queue bridges WebSocket commands to engine; _wait_for_debug_command handles side-effect commands inline while waiting for flow-control
 
 ---
 
@@ -1206,4 +1207,21 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - InputTab/OutputTab/LogsTab/TimingTab handle null data gracefully with italic placeholder text
   - For LLM nodes, LogsTab shows prompt and response separately extracted from input_json/output_json
   - inspectedNodeId and selectedNodeId are mutually exclusive — clicking an executed node sets inspected and clears selected, and vice versa
+---
+
+## 2026-02-17 - US-073
+- What was implemented: Step-through debug execution backend — debug mode pauses before each node, accepts WebSocket commands for stepping
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/engine.py (added execute_workflow_debug, register_debug_session, unregister_debug_session, send_debug_command, _wait_for_debug_command)
+  - packages/orbiter-web/src/orbiter_web/routes/workflow_runs.py (added POST /{workflow_id}/debug endpoint, WebSocket /{workflow_id}/runs/{run_id}/debug endpoint)
+  - prd.json (updated — US-073 passes: true)
+- **Learnings for future iterations:**
+  - Debug mode flattens topological layers into a sequential execution order — nodes execute one at a time instead of parallel within layers
+  - Command queue pattern: asyncio.Queue bridges WebSocket commands to the engine loop; _wait_for_debug_command processes side-effect commands (set_breakpoint, set_variable) inline while waiting for flow-control commands (continue, skip, stop)
+  - Debug WebSocket runs two concurrent loops: _send_events (engine→client) and _receive_commands (client→engine); uses asyncio.wait(FIRST_COMPLETED) to cancel the other when either finishes
+  - Variables dict tracks per-node output (keyed by node_id) — sent with debug_paused and node_completed events for client-side inspection
+  - Breakpoints stored as a set[str] of node_ids — toggled via set_breakpoint command (currently pauses at every node; UI story US-074 will add selective breakpoint-only pausing)
+  - POST /debug creates the run record and registers the command queue, but doesn't start execution — the WebSocket connection triggers execution start
+  - On client disconnect, a "stop" command is sent to the engine to cleanly abort the debug run
+  - Manual browser verification needed (no browser testing tool available)
 ---
