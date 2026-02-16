@@ -2809,7 +2809,7 @@
         "Typecheck passes"
       ],
       "priority": 19,
-      "passes": false,
+      "passes": true,
       "notes": "Gap fill: cookie-based auth with no CSRF protection is a classic vulnerability"
     },
     {

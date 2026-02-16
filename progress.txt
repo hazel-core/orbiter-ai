@@ -3,6 +3,8 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
 ---
 
 ## Codebase Patterns
+- CSRF: window.fetch is monkey-patched in PageLayout to auto-include X-CSRF-Token on POST/PUT/DELETE; no need to manually add headers in page scripts
+- CSRF exempt paths are in `middleware/csrf.py` `_EXEMPT_PATHS` — add new exempt routes there when needed
 - orbiter-web is a Node.js (Astro 5.x) package inside a UV Python workspace — it has its own package.json, not pyproject.toml for the frontend
 - Astro 5.x defaults to strict TypeScript; extend `astro/tsconfigs/strict` in tsconfig.json
 - Tailwind CSS v4 must be integrated via `@tailwindcss/vite`, NOT `@astrojs/tailwind`
@@ -1733,4 +1735,24 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Supervisor/nested agents: supported through DB agent relationships (agent_sub_agents table) — AgentService resolves delegation tools automatically
   - Frontend `agentTokens: Record<string, string>` accumulates streamed text per node_id, reset on new run
   - Existing infrastructure was well-designed: handle types, AgentNodeConfig UI, NodeConfigPanel, and AgentService were already complete — only the engine stub needed real implementation
+---
+
+## 2026-02-17 - US-160
+- What was implemented: CSRF protection middleware for all state-changing endpoints
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/middleware/__init__.py (new — middleware package init)
+  - packages/orbiter-web/src/orbiter_web/middleware/csrf.py (new — CSRFMiddleware: validates X-CSRF-Token header on POST/PUT/DELETE/PATCH)
+  - packages/orbiter-web/src/orbiter_web/migrations/027_add_csrf_token.sql (new — adds csrf_token column to sessions, backfills existing)
+  - packages/orbiter-web/src/orbiter_web/app.py (updated — registers CSRFMiddleware)
+  - packages/orbiter-web/src/orbiter_web/routes/auth.py (updated — generates CSRF token on login via secrets.token_urlsafe(32), added GET /api/auth/csrf endpoint)
+  - packages/orbiter-web/src/layouts/PageLayout.astro (updated — monkey-patches window.fetch to auto-include X-CSRF-Token on unsafe same-origin requests, exposes getCsrfToken()/clearCsrfToken() globally)
+  - packages/orbiter-web/src/pages/settings.astro (updated — clears CSRF token on logout)
+  - packages/orbiter-web/src/utils/csrf.ts (new — ES module getCsrfToken/clearCsrfToken for React islands)
+- **Learnings for future iterations:**
+  - CSRF middleware must be added AFTER CORSMiddleware in app.add_middleware() calls because Starlette middleware order is reversed (last added = first executed); CORS preflight must pass before CSRF check
+  - Login endpoint must be exempt from CSRF check since the user doesn't have a token yet
+  - Monkey-patching window.fetch in PageLayout is the cleanest way to add CSRF to all existing inline scripts without touching every page
+  - The patched fetch returns a Promise (from getCsrfToken().then(...)) instead of synchronously — this is compatible with all existing .then() chains but could break code expecting synchronous fetch behavior
+  - Existing sessions without csrf_token are backfilled by migration using hex(randomblob(24))
+  - React islands can import getCsrfToken from utils/csrf.ts, but their fetch calls also go through the patched window.fetch so it's optional
 ---
