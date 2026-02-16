@@ -72,6 +72,8 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
 - Background asyncio tasks: store in a module-level `set()` and use `task.add_done_callback(set.discard)` to prevent GC (ruff RUF006)
 - Ruff SIM105: use `contextlib.suppress(Exception)` instead of `try/except pass`
 - Debug execution pattern: asyncio.Queue bridges WebSocket commands to engine; _wait_for_debug_command handles side-effect commands inline while waiting for flow-control
+- Variable tracking: both normal and debug execution emit `variables` dict in WebSocket events (node_completed, execution_completed); keyed by node_id
+- Canvas panels: use `variablePanelOpen` state + Cmd+J shortcut for toggling; panel shows in both exec and debug modes
 
 ---
 
@@ -1256,5 +1258,20 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Single-node runs create a full `workflow_runs` + `workflow_run_logs` record pair, so the existing inspection panel can fetch data via the same GET endpoint
   - The `singleRunResult` state tracks the run_id separately from the full-workflow exec state — the inspection panel picks whichever run_id matches the inspected node
   - Mock input panel pre-populates with the node's current data (minus `_` prefixed internal props) for convenience
+  - Manual browser verification needed (no browser testing tool available)
+---
+
+## 2026-02-17 - US-076
+- What was implemented: Variable inspect panel — comprehensive bottom-of-canvas collapsible panel for viewing workflow variables, with table view (name, value, type, source node), filtering, real-time WebSocket updates, node navigation, and clipboard copy
+- Files changed:
+  - `packages/orbiter-web/src/islands/Canvas/VariableInspectPanel.tsx` — new component with table view, node/type filters, edit-in-debug-mode, copy-to-clipboard, type badges, and navigate-to-node buttons
+  - `packages/orbiter-web/src/islands/Canvas/CanvasIsland.tsx` — replaced old inline DebugVariablePanel with new VariableInspectPanel, added `variablePanelOpen` state, Cmd+J keyboard shortcut, toolbar button, variables tracking in ExecutionState, and Panel rendering for both exec and debug modes
+  - `packages/orbiter-web/src/orbiter_web/engine.py` — added `variables` dict tracking to normal (non-debug) execution path, emit variables in node_completed and execution_completed events
+- **Learnings for future iterations:**
+  - Normal execution (execute_workflow) didn't previously emit variables — only debug execution did. Added a parallel `variables` dict to match the debug execution pattern.
+  - The variable panel works across both normal execution and debug mode — in debug mode, editing is enabled; in normal mode, it's read-only
+  - `navigator.platform` is deprecated — use `navigator.userAgent.includes("Mac")` instead for platform detection
+  - React Flow `<Panel position="bottom-center">` can stack multiple panels — use `marginBottom` to space them relative to status/debug bars
+  - Type detection uses typeof + Array.isArray for determining variable types (string, number, boolean, array, object, null)
   - Manual browser verification needed (no browser testing tool available)
 ---
