@@ -501,3 +501,16 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - `<template>` elements work for both grid cards and list rows — use separate templates for different layouts rather than trying to reuse one
   - Manual browser verification needed (no browser testing tool available)
 ---
+
+## 2026-02-17 06:00 - US-031
+- What was implemented: Agent schema (migration) and REST API with 5 endpoints (list, create, get, update, delete)
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/migrations/008_create_agents.sql (new — agents table with all AgentConfig fields, FK to projects and users, indexes)
+  - packages/orbiter-web/src/orbiter_web/routes/agents.py (new — APIRouter with AgentCreate, AgentUpdate, AgentResponse Pydantic models, 5 CRUD endpoints)
+  - packages/orbiter-web/src/orbiter_web/app.py (updated — registered agents_router)
+- **Learnings for future iterations:**
+  - Agents route follows identical pattern to applications: `get_current_user` dependency, `_verify_ownership` helper, `_row_to_dict` converter
+  - AgentConfig fields stored as JSON TEXT columns: output_type_json, tools_json, handoffs_json, hooks_json — no DB-level JSON validation
+  - temperature is REAL (float), max_tokens and max_steps are INTEGER — all nullable for optional config
+  - Agent belongs to both a project (project_id FK) and a user (user_id FK) — same ownership pattern as applications
+---
