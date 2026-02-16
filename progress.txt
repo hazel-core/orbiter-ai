@@ -487,3 +487,17 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - After successful creation, navigates to `/applications/{id}` — builder pages will be implemented in later stories
   - Manual browser verification needed (no browser testing tool available)
 ---
+
+## 2026-02-17 05:30 - US-030
+- What was implemented: Application list page at /applications with grid/list view toggle, type badges (colored per type), status badges, search filter, type filter, duplicate action on each card, click-to-navigate to builder
+- Files changed:
+  - packages/orbiter-web/src/pages/applications.astro (new — full applications listing with grid/list views, filters, duplicate modal, type/status badges)
+- **Learnings for future iterations:**
+  - Grid/list view toggle persisted in localStorage (`orbiter_apps_view`) — set initial view before first render to avoid flash
+  - Applications don't have their own sidebar nav entry — they are accessed globally or from project detail pages
+  - Project names enriched via a second `/api/projects` fetch after loading apps — creates a projectMap lookup by ID
+  - Duplicate button on cards needs `position: relative; z-index: 10` to sit above the full-card `<a>` link overlay
+  - Type colors reuse the same scheme from US-029 New Application dialog: coral (chatbot), zen-blue (chatflow), zen-green (workflow), purple (agent), amber (text_generator)
+  - `<template>` elements work for both grid cards and list rows — use separate templates for different layouts rather than trying to reuse one
+  - Manual browser verification needed (no browser testing tool available)
+---
