@@ -27,6 +27,7 @@ from orbiter_web.routes.threads import router as threads_router
 from orbiter_web.routes.tools import router as tools_router
 from orbiter_web.routes.workflow_runs import router as workflow_runs_router
 from orbiter_web.routes.workflows import router as workflows_router
+from orbiter_web.websocket import router as ws_router
 
 
 @asynccontextmanager
@@ -62,6 +63,7 @@ app.include_router(threads_router)
 app.include_router(tools_router)
 app.include_router(workflow_runs_router)
 app.include_router(workflows_router)
+app.include_router(ws_router)
 
 
 @app.get("/api/health")
