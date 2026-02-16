@@ -1663,3 +1663,18 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Subscribe/unsubscribe via `{type: "subscribe", channel: "..."}` messages
   - `get_ws_user()` is a reusable auth helper — existing `_get_user_from_cookie()` duplicated across crews.py, playground.py, workflow_runs.py can eventually be replaced
 ---
+
+## 2026-02-17 - US-157
+- What was implemented: Client-side WebSocket singleton library (OrbiterSocket) that mirrors the server-side WebSocketManager from US-156
+- Files changed:
+  - packages/orbiter-web/src/utils/websocket.ts (new — OrbiterSocket class with singleton, channel subscriptions, reconnection, heartbeat, message queue)
+- **Learnings for future iterations:**
+  - OrbiterSocket is a singleton — use `OrbiterSocket.getInstance()` or the exported `orbiterSocket` convenience alias
+  - `subscribe(channel, callback)` auto-connects on first call; returns an unsubscribe function
+  - Messages queued while disconnected are flushed on reconnect; subscribe messages are re-sent too
+  - Reconnection uses exponential backoff: 1s → 2s → 4s → 8s → 16s → 30s max
+  - Heartbeat: server sends `{channel: "system", type: "ping", payload: {}}`, client responds with `{type: "pong"}`
+  - `onConnectionChange(callback)` fires immediately with current state, returns unsubscribe fn
+  - `close()` stops reconnection; to reconnect after close, a new subscribe() call will reconnect
+  - `resetInstance()` available for tests — tears down singleton completely
+---

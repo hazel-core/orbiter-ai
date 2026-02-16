@@ -2757,7 +2757,7 @@
         "Typecheck passes"
       ],
       "priority": 16,
-      "passes": false,
+      "passes": true,
       "notes": "Gap fill: client-side counterpart to US-156. Also covers gap #22 (reconnection with backoff)"
     },
     {
