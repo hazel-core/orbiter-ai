@@ -12,6 +12,8 @@ const compareIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke
 const thumbUpIcon = '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>';
 const thumbDownIcon = '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/></svg>';
 const downloadIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
+const micIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>';
+const speakerOffIcon = '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>';
 ---
 
 <PageLayout
@@ -50,6 +52,14 @@ const downloadIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" strok
         >
           <span set:html={traceIcon} />
           <span class="hidden sm:inline">Trace</span>
+        </button>
+        <button
+          id="tts-toggle-btn"
+          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-muted hover:text-dark transition-colors rounded-lg hover:bg-subtle"
+          title="Toggle text-to-speech for responses"
+        >
+          <span id="tts-icon" set:html={speakerOffIcon} />
+          <span class="hidden sm:inline">TTS</span>
         </button>
         <button
           id="clear-btn"
@@ -152,6 +162,15 @@ const downloadIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" strok
               class="flex-1 px-4 py-2.5 text-sm border border-dark/[0.08] rounded-xl bg-paper text-dark placeholder:text-muted/60 focus:outline-none focus:ring-2 focus:ring-coral/20 focus:border-coral transition-colors resize-none max-h-40 disabled:opacity-50"
             ></textarea>
             <button
+              id="mic-btn"
+              disabled
+              class="flex-shrink-0 p-2.5 text-muted hover:text-dark rounded-xl border border-dark/[0.08] hover:bg-subtle transition-colors disabled:opacity-40 disabled:cursor-not-allowed relative"
+              title="Voice input (click to start/stop recording)"
+            >
+              <span id="mic-icon" set:html={micIcon} />
+              <span id="mic-recording-dot" class="hidden absolute -top-1 -right-1 w-3 h-3 rounded-full bg-coral animate-pulse-dot"></span>
+            </button>
+            <button
               id="send-btn"
               disabled
               class="flex-shrink-0 p-2.5 bg-coral text-white rounded-xl hover:bg-coral/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
@@ -238,6 +257,22 @@ let isStreaming = false;
 let userScrolledUp = false;
 let tracePanelOpen = false;
 let traceCounter = 0;
+
+/* Voice input & TTS state */
+const micBtn = document.getElementById("mic-btn") as HTMLButtonElement;
+const micRecordingDot = document.getElementById("mic-recording-dot")!;
+const ttsToggleBtn = document.getElementById("tts-toggle-btn")!;
+const ttsIconEl = document.getElementById("tts-icon")!;
+let isRecording = false;
+let autoSendOnVoice = true;
+let ttsEnabled = false;
+
+const SpeechRecognitionAPI = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+let speechRecognition: any = null;
+const hasSpeechSynthesis = "speechSynthesis" in window;
+
+const SPEAKER_ON_SVG = '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>';
+const SPEAKER_OFF_SVG = '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>';
 
 /* Pricing & cumulative usage */
 interface PricingEntry {
@@ -742,6 +777,7 @@ function connectWebSocket(agentId: string, conversationId?: string) {
   ws.onopen = function() {
     messageInput.disabled = false;
     sendBtn.disabled = false;
+    micBtn.disabled = false;
     messageInput.focus();
     // Load existing conversation if specified
     if (conversationId && ws) {
@@ -759,8 +795,12 @@ function connectWebSocket(agentId: string, conversationId?: string) {
     }
     messageInput.disabled = true;
     sendBtn.disabled = true;
+    micBtn.disabled = true;
     isStreaming = false;
     ws = null;
+    if (isRecording && speechRecognition) {
+      speechRecognition.stop();
+    }
   };
 
   ws.onerror = function() {
@@ -811,6 +851,7 @@ function disconnectWebSocket() {
   currentAgentId = null;
   messageInput.disabled = true;
   sendBtn.disabled = true;
+  micBtn.disabled = true;
 }
 
 function showStatus(msg: string) {
@@ -945,6 +986,28 @@ function appendToken(token: string) {
   scrollToBottom();
 }
 
+function speakText(text: string) {
+  if (!ttsEnabled || !hasSpeechSynthesis) return;
+  /* Strip markdown formatting for cleaner speech */
+  const plain = text
+    .replace(/```[\s\S]*?```/g, " code block ")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/\*([^*]+)\*/g, "$1")
+    .replace(/#{1,6}\s+/g, "")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/!\[([^\]]*)\]\([^)]+\)/g, "image: $1")
+    .replace(/[-*_]{3,}/g, "")
+    .replace(/\n+/g, ". ")
+    .trim();
+  if (!plain) return;
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(plain);
+  utterance.rate = 1;
+  utterance.pitch = 1;
+  window.speechSynthesis.speak(utterance);
+}
+
 function finishStream(data: { usage?: { prompt_tokens?: number; completion_tokens?: number } | null; model?: string; finish_reason?: string; latency_ms?: number }) {
   const usage = data.usage || null;
   if (currentStreamBubble) {
@@ -983,6 +1046,9 @@ function finishStream(data: { usage?: { prompt_tokens?: number; completion_token
       finish_reason: data.finish_reason,
       latency_ms: data.latency_ms,
     }, rawText);
+
+    /* Speak response if TTS is enabled */
+    speakText(rawText);
   }
   currentStreamBubble = null;
   streamedContent = "";
@@ -1621,6 +1687,82 @@ function exportCompareResults() {
 }
 
 compareExportBtn.addEventListener("click", exportCompareResults);
+
+/* ---- Voice input setup ---- */
+if (SpeechRecognitionAPI) {
+  speechRecognition = new SpeechRecognitionAPI();
+  speechRecognition.continuous = false;
+  speechRecognition.interimResults = true;
+  speechRecognition.lang = navigator.language || "en-US";
+
+  speechRecognition.onresult = function(event: any) {
+    let transcript = "";
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      transcript += event.results[i][0].transcript;
+    }
+    messageInput.value = transcript;
+    autoResize();
+  };
+
+  speechRecognition.onend = function() {
+    isRecording = false;
+    micRecordingDot.classList.add("hidden");
+    micBtn.classList.remove("text-coral", "border-coral");
+    micBtn.classList.add("text-muted");
+    if (autoSendOnVoice && messageInput.value.trim()) {
+      sendMessage();
+    }
+  };
+
+  speechRecognition.onerror = function(event: any) {
+    isRecording = false;
+    micRecordingDot.classList.add("hidden");
+    micBtn.classList.remove("text-coral", "border-coral");
+    micBtn.classList.add("text-muted");
+    if (event.error !== "aborted" && event.error !== "no-speech") {
+      appendError("Voice input error: " + event.error);
+    }
+  };
+} else {
+  micBtn.title = "Voice input is not supported in this browser";
+}
+
+micBtn.addEventListener("click", function() {
+  if (!speechRecognition) {
+    appendError("Voice input is not supported in this browser. Please use Chrome or Edge.");
+    return;
+  }
+  if (isRecording) {
+    speechRecognition.stop();
+    return;
+  }
+  isRecording = true;
+  micRecordingDot.classList.remove("hidden");
+  micBtn.classList.add("text-coral", "border-coral");
+  micBtn.classList.remove("text-muted");
+  messageInput.value = "";
+  autoResize();
+  speechRecognition.start();
+});
+
+/* ---- TTS toggle ---- */
+ttsToggleBtn.addEventListener("click", function() {
+  if (!hasSpeechSynthesis) {
+    appendError("Text-to-speech is not supported in this browser. Please use Chrome, Edge, or Safari.");
+    return;
+  }
+  ttsEnabled = !ttsEnabled;
+  if (ttsEnabled) {
+    ttsToggleBtn.classList.add("text-coral");
+    ttsToggleBtn.classList.remove("text-muted");
+    ttsIconEl.innerHTML = SPEAKER_ON_SVG;
+  } else {
+    ttsToggleBtn.classList.remove("text-coral");
+    ttsToggleBtn.classList.add("text-muted");
+    ttsIconEl.innerHTML = SPEAKER_OFF_SVG;
+    window.speechSynthesis.cancel();
+  }
+});
 
 /* ---- Init ---- */
 loadAgents();
