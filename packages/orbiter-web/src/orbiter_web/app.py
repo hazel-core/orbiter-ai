@@ -11,6 +11,7 @@ from orbiter_web.config import settings
 from orbiter_web.database import run_migrations
 from orbiter_web.routes.agents import router as agents_router
 from orbiter_web.routes.applications import router as applications_router
+from orbiter_web.routes.conversations import router as conversations_router
 from orbiter_web.routes.auth import router as auth_router
 from orbiter_web.routes.models import router as models_router
 from orbiter_web.routes.playground import router as playground_router
@@ -39,6 +40,7 @@ app = FastAPI(
 
 app.include_router(agents_router)
 app.include_router(applications_router)
+app.include_router(conversations_router)
 app.include_router(auth_router)
 app.include_router(models_router)
 app.include_router(playground_router)

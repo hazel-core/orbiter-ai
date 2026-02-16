@@ -113,6 +113,7 @@ const scrollBottomBtn = document.getElementById("scroll-bottom-btn")!;
 
 let ws: WebSocket | null = null;
 let currentAgentId: string | null = null;
+let currentConversationId: string | null = null;
 let agents: Array<{ id: string; name: string; model_provider?: string; model_name?: string }> = [];
 let isStreaming = false;
 let userScrolledUp = false;
@@ -139,13 +140,14 @@ async function loadAgents() {
 }
 
 /* ---- WebSocket management ---- */
-function connectWebSocket(agentId: string) {
+function connectWebSocket(agentId: string, conversationId?: string) {
   if (ws) {
     ws.close();
     ws = null;
   }
 
   currentAgentId = agentId;
+  currentConversationId = conversationId || null;
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
   const url = proto + "//" + location.host + "/api/playground/" + agentId + "/chat";
 
@@ -158,6 +160,10 @@ function connectWebSocket(agentId: string) {
     messageInput.disabled = false;
     sendBtn.disabled = false;
     messageInput.focus();
+    // Load existing conversation if specified
+    if (conversationId && ws) {
+      ws.send(JSON.stringify({ type: "load_conversation", conversation_id: conversationId }));
+    }
   };
 
   ws.onclose = function(e) {
@@ -195,6 +201,11 @@ function connectWebSocket(agentId: string) {
       isStreaming = false;
       messageInput.disabled = false;
       sendBtn.disabled = false;
+    } else if (data.type === "conversation_created") {
+      currentConversationId = data.conversation_id;
+    } else if (data.type === "conversation_loaded") {
+      currentConversationId = data.conversation_id;
+      restoreMessages(data.messages);
     }
   };
 }
@@ -231,6 +242,43 @@ function createCopyButton(getText: () => string): HTMLButtonElement {
     });
   });
   return btn;
+}
+
+/* ---- Restore saved messages ---- */
+function restoreMessages(messages: Array<{ role: string; content: string }>) {
+  messages.forEach(function(m) {
+    if (m.role === "user") {
+      addUserMessage(m.content);
+    } else if (m.role === "assistant") {
+      addRestoredAgentMessage(m.content);
+    }
+    // Skip system messages — they're not displayed
+  });
+}
+
+function addRestoredAgentMessage(text: string) {
+  hideEmptyState();
+  const row = document.createElement("div");
+  row.className = "flex justify-start";
+
+  const wrapper = document.createElement("div");
+  wrapper.className = "max-w-[75%] sm:max-w-[60%] flex gap-2 relative group";
+
+  const avatar = document.createElement("div");
+  avatar.className = "flex-shrink-0 w-7 h-7 rounded-full bg-coral/10 text-coral flex items-center justify-center mt-1";
+  avatar.innerHTML = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/><line x1="8" y1="16" x2="8" y2="16"/><line x1="16" y1="16" x2="16" y2="16"/></svg>';
+
+  const bubble = document.createElement("div");
+  bubble.className = "px-4 py-2.5 rounded-2xl rounded-bl-sm bg-paper border border-dark/[0.06] text-dark text-sm break-words chat-prose min-w-0";
+  bubble.innerHTML = renderMarkdown(text);
+
+  const copyBtn = createCopyButton(() => text);
+  wrapper.appendChild(avatar);
+  wrapper.appendChild(bubble);
+  wrapper.appendChild(copyBtn);
+  row.appendChild(wrapper);
+  messagesEl.appendChild(row);
+  scrollToBottom();
 }
 
 /* ---- Message rendering ---- */
@@ -394,10 +442,11 @@ function clearMessages() {
   showEmptyState();
   currentStreamBubble = null;
   streamedContent = "";
+  currentConversationId = null;
   userScrolledUp = false;
   scrollBottomBtn.classList.add("hidden");
   scrollBottomBtn.classList.remove("flex");
-  /* Reconnect to reset conversation history on server */
+  /* Reconnect to reset conversation history on server (new conversation) */
   if (currentAgentId) {
     connectWebSocket(currentAgentId);
   }
