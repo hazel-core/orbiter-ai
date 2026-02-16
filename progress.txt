@@ -125,3 +125,17 @@ Started: Mon Feb 16 2026
   - Logger name updated from `orbiter.trace.prompt` to `orbiter.prompt` (via `get_logger("prompt")` auto-prefix)
   - caplog tests must use updated logger name (`orbiter.prompt` not `orbiter.trace.prompt`)
 ---
+
+## 2026-02-16 - US-007
+- Ported W3C Baggage propagation and span consumer system from `packages/orbiter-trace/src/orbiter/trace/propagation.py` to `packages/orbiter-observability/src/orbiter/observability/propagation.py` (~239 lines)
+- `Carrier` protocol + `DictCarrier` implementation for header containers
+- `BaggagePropagator` — W3C Baggage extract/inject with URL-encoding, size limits (RFC 9110)
+- Baggage context functions: `set_baggage()`, `get_baggage()`, `get_baggage_value()`, `clear_baggage()` via `contextvars.ContextVar`
+- `SpanConsumer` ABC with `register_span_consumer()` (direct + decorator), `dispatch_spans()`, `list_span_consumers()`, `clear_span_consumers()`, `get_span_consumer()`
+- 52 tests covering: DictCarrier, baggage context (set/get/clear/copy), extract (single/multiple/URL-encoded/empty/whitespace/oversized/max-pairs/no-equals), inject (single/multiple/URL-encoded/empty/from-context/oversized), roundtrip (basic/special-chars), SpanConsumer ABC, consumer registration (direct/decorator/overwrite/clear), dispatch (single/multiple/empty/none), constants
+- Files changed: packages/orbiter-observability/src/orbiter/observability/propagation.py, packages/orbiter-observability/tests/test_obs_propagation.py
+- **Learnings for future iterations:**
+  - Pure stdlib modules (no OTel) port cleanly with zero changes to logic — only import paths change
+  - This module has no cross-namespace dependencies — it's self-contained with only stdlib imports
+  - The `register_span_consumer` dual-use (direct call + decorator) pattern is worth preserving for future registry APIs
+---

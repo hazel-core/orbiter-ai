@@ -139,7 +139,7 @@
         "Pyright passes"
       ],
       "priority": 7,
-      "passes": false,
+      "passes": true,
       "notes": "Direct port from packages/orbiter-trace/src/orbiter/trace/propagation.py (~239 lines). No OTel dependency — pure stdlib. Port tests from test_trace_propagation.py."
     },
     {
