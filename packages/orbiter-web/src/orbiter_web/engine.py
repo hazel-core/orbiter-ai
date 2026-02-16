@@ -17,9 +17,7 @@ from orbiter_web.database import get_db
 # ---------------------------------------------------------------------------
 
 
-def topological_sort(
-    nodes: list[dict[str, Any]], edges: list[dict[str, Any]]
-) -> list[list[str]]:
+def topological_sort(nodes: list[dict[str, Any]], edges: list[dict[str, Any]]) -> list[list[str]]:
     """Return nodes grouped into execution layers (parallel within each layer).
 
     Uses Kahn's algorithm. Each returned list is a set of node IDs that can
@@ -152,7 +150,8 @@ async def execute_single_node(
             )
             await db.commit()
 
-        await _update_run_status(run_id, "completed", completed_at=completed_at)
+        aggregates = await _compute_run_aggregates(run_id)
+        await _update_run_status(run_id, "completed", completed_at=completed_at, **aggregates)
 
         return {
             "run_id": run_id,
@@ -174,7 +173,10 @@ async def execute_single_node(
             )
             await db.commit()
 
-        await _update_run_status(run_id, "failed", completed_at=completed_at, error=error_msg)
+        aggregates = await _compute_run_aggregates(run_id)
+        await _update_run_status(
+            run_id, "failed", completed_at=completed_at, error=error_msg, **aggregates
+        )
 
         return {
             "run_id": run_id,
@@ -301,12 +303,26 @@ async def execute_workflow(
                 async with get_db() as db:
                     await db.execute(
                         "UPDATE workflow_run_logs SET status = 'completed', output_json = ?, logs_text = ?, token_usage_json = ?, completed_at = ? WHERE run_id = ? AND node_id = ?",
-                        (json.dumps(output), logs_text, token_usage_json, completed_at, run_id, nid),
+                        (
+                            json.dumps(output),
+                            logs_text,
+                            token_usage_json,
+                            completed_at,
+                            run_id,
+                            nid,
+                        ),
                     )
                     await db.commit()
 
                 variables[nid] = output.get("result", "")
-                await emit({"type": "node_completed", "node_id": nid, "output": output, "variables": variables})
+                await emit(
+                    {
+                        "type": "node_completed",
+                        "node_id": nid,
+                        "output": output,
+                        "variables": variables,
+                    }
+                )
 
             except asyncio.CancelledError:
                 async with get_db() as db:
@@ -338,7 +354,10 @@ async def execute_workflow(
     # Finalize.
     completed_at = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
     error_msg = None if final_status == "completed" else (f"Workflow {final_status}")
-    await _update_run_status(run_id, final_status, completed_at=completed_at, error=error_msg)
+    aggregates = await _compute_run_aggregates(run_id)
+    await _update_run_status(
+        run_id, final_status, completed_at=completed_at, error=error_msg, **aggregates
+    )
 
     # Update last_run_at on the workflow itself.
     async with get_db() as db:
@@ -441,17 +460,17 @@ async def execute_workflow_debug(
             continue
 
         # Emit paused event — client should display controls.
-        await emit({
-            "type": "debug_paused",
-            "node_id": nid,
-            "variables": variables,
-            "breakpoints": list(breakpoints),
-        })
+        await emit(
+            {
+                "type": "debug_paused",
+                "node_id": nid,
+                "variables": variables,
+                "breakpoints": list(breakpoints),
+            }
+        )
 
         # Wait for a command from the client.
-        action = await _wait_for_debug_command(
-            command_queue, cancel_event, breakpoints, variables
-        )
+        action = await _wait_for_debug_command(command_queue, cancel_event, breakpoints, variables)
 
         if action == "stop" or cancel_event.is_set():
             final_status = "cancelled"
@@ -501,12 +520,14 @@ async def execute_workflow_debug(
             # Store node output in variables for downstream inspection.
             variables[nid] = output.get("result", "")
 
-            await emit({
-                "type": "node_completed",
-                "node_id": nid,
-                "output": output,
-                "variables": variables,
-            })
+            await emit(
+                {
+                    "type": "node_completed",
+                    "node_id": nid,
+                    "output": output,
+                    "variables": variables,
+                }
+            )
 
         except Exception as exc:
             error_msg = str(exc)
@@ -526,7 +547,10 @@ async def execute_workflow_debug(
     # Finalize.
     completed_at = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
     error_msg = None if final_status == "completed" else f"Workflow {final_status}"
-    await _update_run_status(run_id, final_status, completed_at=completed_at, error=error_msg)
+    aggregates = await _compute_run_aggregates(run_id)
+    await _update_run_status(
+        run_id, final_status, completed_at=completed_at, error=error_msg, **aggregates
+    )
 
     async with get_db() as db:
         await db.execute(
@@ -598,8 +622,11 @@ async def _update_run_status(
     started_at: str | None = None,
     completed_at: str | None = None,
     error: str | None = None,
+    step_count: int | None = None,
+    total_tokens: int | None = None,
+    total_cost: float | None = None,
 ) -> None:
-    """Update the status (and optional timestamps) of a workflow run."""
+    """Update the status (and optional timestamps/aggregates) of a workflow run."""
     fields = ["status = ?"]
     values: list[Any] = [status]
 
@@ -612,6 +639,15 @@ async def _update_run_status(
     if error is not None:
         fields.append("error = ?")
         values.append(error)
+    if step_count is not None:
+        fields.append("step_count = ?")
+        values.append(step_count)
+    if total_tokens is not None:
+        fields.append("total_tokens = ?")
+        values.append(total_tokens)
+    if total_cost is not None:
+        fields.append("total_cost = ?")
+        values.append(total_cost)
 
     values.append(run_id)
 
@@ -621,3 +657,26 @@ async def _update_run_status(
             values,
         )
         await db.commit()
+
+
+async def _compute_run_aggregates(run_id: str) -> dict[str, Any]:
+    """Compute step_count and total_tokens from node execution logs."""
+    async with get_db() as db:
+        cursor = await db.execute(
+            "SELECT COUNT(*) as cnt FROM workflow_run_logs WHERE run_id = ?",
+            (run_id,),
+        )
+        step_count = (await cursor.fetchone())["cnt"]
+
+        cursor = await db.execute(
+            "SELECT token_usage_json FROM workflow_run_logs WHERE run_id = ? AND token_usage_json IS NOT NULL",
+            (run_id,),
+        )
+        rows = await cursor.fetchall()
+
+    total_tokens = 0
+    for row in rows:
+        usage = json.loads(row["token_usage_json"])
+        total_tokens += usage.get("total_tokens", 0)
+
+    return {"step_count": step_count, "total_tokens": total_tokens, "total_cost": 0.0}

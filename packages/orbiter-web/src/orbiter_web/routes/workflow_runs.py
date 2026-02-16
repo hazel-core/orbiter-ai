@@ -9,7 +9,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
 
 from orbiter_web.database import get_db
 from orbiter_web.engine import (
@@ -54,9 +54,7 @@ async def _get_user_from_cookie(websocket: WebSocket) -> dict[str, Any] | None:
     return dict(row) if row else None
 
 
-async def _verify_workflow_ownership(
-    db: Any, workflow_id: str, user_id: str
-) -> dict[str, Any]:
+async def _verify_workflow_ownership(db: Any, workflow_id: str, user_id: str) -> dict[str, Any]:
     """Return workflow row or raise 404."""
     cursor = await db.execute(
         "SELECT * FROM workflows WHERE id = ? AND user_id = ?",
@@ -66,6 +64,114 @@ async def _verify_workflow_ownership(
     if row is None:
         raise HTTPException(status_code=404, detail="Workflow not found")
     return dict(row)
+
+
+# ---------------------------------------------------------------------------
+# GET /api/workflows/:id/runs — paginated run history
+# ---------------------------------------------------------------------------
+
+
+@router.get("/{workflow_id}/runs")
+async def list_workflow_runs(
+    workflow_id: str,
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    status: str | None = None,
+    trigger_type: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+) -> dict[str, Any]:
+    """Return paginated run history for a workflow with optional filters."""
+    async with get_db() as db:
+        await _verify_workflow_ownership(db, workflow_id, user["id"])
+
+        where_clauses = ["workflow_id = ?"]
+        params: list[Any] = [workflow_id]
+
+        if status:
+            where_clauses.append("status = ?")
+            params.append(status)
+        if trigger_type:
+            where_clauses.append("trigger_type = ?")
+            params.append(trigger_type)
+        if start_date:
+            where_clauses.append("created_at >= ?")
+            params.append(start_date)
+        if end_date:
+            where_clauses.append("created_at <= ?")
+            params.append(end_date)
+
+        where_sql = " AND ".join(where_clauses)
+
+        # Total count for pagination.
+        cursor = await db.execute(
+            f"SELECT COUNT(*) as cnt FROM workflow_runs WHERE {where_sql}",
+            params,
+        )
+        total = (await cursor.fetchone())["cnt"]
+
+        # Fetch the page.
+        cursor = await db.execute(
+            f"SELECT id, workflow_id, status, trigger_type, input_json, started_at, completed_at, step_count, total_tokens, total_cost, error, created_at FROM workflow_runs WHERE {where_sql} ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            [*params, limit, offset],
+        )
+        rows = await cursor.fetchall()
+
+    runs = []
+    for row in rows:
+        r = dict(row)
+        if r.get("input_json"):
+            r["input_json"] = json.loads(r["input_json"])
+        runs.append(r)
+
+    return {"runs": runs, "total": total, "limit": limit, "offset": offset}
+
+
+# ---------------------------------------------------------------------------
+# GET /api/workflows/:id/runs/:runId — full run detail with node executions
+# ---------------------------------------------------------------------------
+
+
+@router.get("/{workflow_id}/runs/{run_id}")
+async def get_workflow_run(
+    workflow_id: str,
+    run_id: str,
+    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+) -> dict[str, Any]:
+    """Return full run detail including all node executions."""
+    async with get_db() as db:
+        await _verify_workflow_ownership(db, workflow_id, user["id"])
+
+        cursor = await db.execute(
+            "SELECT id, workflow_id, status, trigger_type, input_json, started_at, completed_at, step_count, total_tokens, total_cost, error, created_at FROM workflow_runs WHERE id = ? AND workflow_id = ?",
+            (run_id, workflow_id),
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Run not found")
+
+        run = dict(row)
+        if run.get("input_json"):
+            run["input_json"] = json.loads(run["input_json"])
+
+        # Fetch all node executions for this run.
+        cursor = await db.execute(
+            "SELECT id, run_id, node_id, status, input_json, output_json, logs_text, token_usage_json, started_at, completed_at, error FROM workflow_run_logs WHERE run_id = ? ORDER BY started_at",
+            (run_id,),
+        )
+        node_rows = await cursor.fetchall()
+
+    node_executions = []
+    for nr in node_rows:
+        n = dict(nr)
+        for field in ("input_json", "output_json", "token_usage_json"):
+            if n.get(field):
+                n[field] = json.loads(n[field])
+        node_executions.append(n)
+
+    run["node_executions"] = node_executions
+    return run
 
 
 # ---------------------------------------------------------------------------
@@ -98,9 +204,7 @@ async def start_workflow_run(
         await db.commit()
 
     # Fire-and-forget: run the engine in the background.
-    task = asyncio.create_task(
-        execute_workflow(run_id, workflow_id, user["id"], nodes, edges)
-    )
+    task = asyncio.create_task(execute_workflow(run_id, workflow_id, user["id"], nodes, edges))
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
 
@@ -266,9 +370,7 @@ async def stream_workflow_run(
 
     # If run is already done, send the final status and close.
     if run_row["status"] in ("completed", "failed", "cancelled"):
-        await websocket.send_json(
-            {"type": "execution_completed", "status": run_row["status"]}
-        )
+        await websocket.send_json({"type": "execution_completed", "status": run_row["status"]})
         await websocket.close()
         return
 
@@ -280,9 +382,7 @@ async def stream_workflow_run(
 
     # If the run hasn't started yet, start it with our callback.
     async with get_db() as db:
-        cursor = await db.execute(
-            "SELECT status FROM workflow_runs WHERE id = ?", (run_id,)
-        )
+        cursor = await db.execute("SELECT status FROM workflow_runs WHERE id = ?", (run_id,))
         current = await cursor.fetchone()
 
     if current and current["status"] == "pending":
@@ -297,9 +397,7 @@ async def stream_workflow_run(
             nodes = json.loads(wf["nodes_json"] or "[]")
             edges = json.loads(wf["edges_json"] or "[]")
             task = asyncio.create_task(
-                execute_workflow(
-                    run_id, workflow_id, user["id"], nodes, edges, event_callback
-                )
+                execute_workflow(run_id, workflow_id, user["id"], nodes, edges, event_callback)
             )
             _background_tasks.add(task)
             task.add_done_callback(_background_tasks.discard)
@@ -403,9 +501,7 @@ async def debug_workflow_run(
     await websocket.accept()
 
     if run_row["status"] in ("completed", "failed", "cancelled"):
-        await websocket.send_json(
-            {"type": "execution_completed", "status": run_row["status"]}
-        )
+        await websocket.send_json({"type": "execution_completed", "status": run_row["status"]})
         await websocket.close()
         return
 
@@ -475,9 +571,7 @@ async def debug_workflow_run(
             await websocket.close()
 
 
-async def _poll_run_status(
-    run_id: str, queue: asyncio.Queue[dict[str, Any]]
-) -> None:
+async def _poll_run_status(run_id: str, queue: asyncio.Queue[dict[str, Any]]) -> None:
     """Fallback poller for runs started before the WS connected."""
     seen_nodes: set[str] = set()
 
@@ -485,12 +579,12 @@ async def _poll_run_status(
         await asyncio.sleep(0.3)
 
         async with get_db() as db:
-            cursor = await db.execute(
-                "SELECT status FROM workflow_runs WHERE id = ?", (run_id,)
-            )
+            cursor = await db.execute("SELECT status FROM workflow_runs WHERE id = ?", (run_id,))
             run_row = await cursor.fetchone()
             if run_row is None:
-                await queue.put({"type": "execution_completed", "status": "failed", "error": "Run not found"})
+                await queue.put(
+                    {"type": "execution_completed", "status": "failed", "error": "Run not found"}
+                )
                 return
 
             # Check for new node completions.
@@ -510,7 +604,9 @@ async def _poll_run_status(
                     await queue.put({"type": "node_completed", "node_id": nid, "output": output})
                     seen_nodes.add(nid)
                 elif log["status"] == "failed":
-                    await queue.put({"type": "node_failed", "node_id": nid, "error": log["error"] or ""})
+                    await queue.put(
+                        {"type": "node_failed", "node_id": nid, "error": log["error"] or ""}
+                    )
                     seen_nodes.add(nid)
 
         if run_row["status"] in ("completed", "failed", "cancelled"):
