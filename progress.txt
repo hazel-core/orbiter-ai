@@ -780,3 +780,21 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Panel closes on: X button click, Escape key, clicking empty canvas (onPaneClick)
   - Manual browser verification needed (no browser testing tool available)
 ---
+
+## 2026-02-16 - US-048
+- What was implemented: LLM Call and Agent node configuration panels in the workflow canvas — LlmCallConfig component with provider/model cascading dropdowns, prompt textarea with {{variable}} preview, temperature slider, max_tokens input, response format selector; AgentNodeConfig component with agent selector from /api/agents, "Create Inline" option with simplified inline agent form (name, provider, model, instructions, tool checkboxes); integrated into NodeConfigPanel via renderTypeConfig dispatcher
+- Files changed:
+  - packages/orbiter-web/src/islands/Canvas/LlmCallConfig.tsx (new — LLM Call node config with provider/model selectors, prompt, temperature, max_tokens, response_format)
+  - packages/orbiter-web/src/islands/Canvas/AgentNodeConfig.tsx (new — Agent node config with existing agent selector or inline agent form)
+  - packages/orbiter-web/src/islands/Canvas/NodeConfigPanel.tsx (updated — added renderTypeConfig dispatcher, scheduleDataUpdate callback, imports for LlmCallConfig and AgentNodeConfig)
+- **Learnings for future iterations:**
+  - Type-specific configs rendered via a `renderTypeConfig()` dispatcher function that pattern-matches on `node.data.nodeType`
+  - Config components receive `data` (extracted from node.data) and `onChange` (merges updates back) — keeps them decoupled from ReactFlow internals
+  - `scheduleDataUpdate` is separate from `scheduleUpdate` (name-only) — both share the same `debounceRef` to avoid racing updates
+  - Agent config uses a mode switch: `inline: false` shows agent dropdown, `inline: true` shows simplified inline form — "Create Inline" is a special option value `__create_inline__`
+  - Provider→Model cascading: fetch models when provider changes via `useEffect` on selectedProvider; disable model dropdown when no provider selected
+  - Prompt {{variable}} preview uses regex replace to inject styled spans, rendered via `dangerouslySetInnerHTML` in a preview div below the textarea
+  - Both `agent_node` and `sub_agent` types share the same AgentNodeConfig component (via `AGENT_TYPES` Set)
+  - Non-configured node types still show the gear icon placeholder with "coming soon" message
+  - Manual browser verification needed (no browser testing tool available)
+---
