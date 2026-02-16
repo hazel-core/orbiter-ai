@@ -121,7 +121,7 @@
         "Pyright passes"
       ],
       "priority": 6,
-      "passes": false,
+      "passes": true,
       "notes": "Direct port from packages/orbiter-trace/src/orbiter/trace/prompt_logger.py (~242 lines). Minimal changes needed — just update imports to use orbiter.observability.logging instead of stdlib logging directly. Port tests from test_trace_prompt_logger.py."
     },
     {

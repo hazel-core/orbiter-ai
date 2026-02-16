@@ -109,3 +109,19 @@ Started: Mon Feb 16 2026
   - `unittest.mock.patch("orbiter.observability.metrics.HAS_OTEL", False)` to test in-memory path even when OTel is installed
   - Timer context manager (`with Timer() as t:`) is more ergonomic than manual start()/stop() for typical use
 ---
+
+## 2026-02-16 - US-006
+- Ported prompt execution logger from `packages/orbiter-trace/src/orbiter/trace/prompt_logger.py` to `packages/orbiter-observability/src/orbiter/observability/prompt_logger.py`
+- Key change: uses `orbiter.observability.logging.get_logger("prompt")` instead of stdlib `logging.getLogger("orbiter.trace.prompt")`
+- `estimate_tokens()` — heuristic char-to-token counting
+- `TokenBreakdown` — frozen dataclass with per-role counts and percentage calculations
+- `compute_token_breakdown()` — handles plain text, multi-modal (text/image_url/tool_use), and tool_calls
+- `ExecutionLogEntry` — structured record with `format_summary()` for human-readable output
+- `PromptLogger` — accepts OpenAI-style messages, computes breakdown, logs structured entry
+- 35 tests covering: estimate_tokens, TokenBreakdown (total/percentages/frozen), compute_token_breakdown (all roles/tool_calls/none), multi-modal content, ExecutionLogEntry formatting, PromptLogger (init/log_execution/emits_log/custom_level/tools/empty), integration (full flow/multimodal/percentage sum)
+- Files changed: packages/orbiter-observability/src/orbiter/observability/prompt_logger.py, packages/orbiter-observability/tests/test_obs_prompt_logger.py
+- **Learnings for future iterations:**
+  - Direct port modules need minimal changes — mainly update import paths and logger namespaces
+  - Logger name updated from `orbiter.trace.prompt` to `orbiter.prompt` (via `get_logger("prompt")` auto-prefix)
+  - caplog tests must use updated logger name (`orbiter.prompt` not `orbiter.trace.prompt`)
+---
