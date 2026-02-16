@@ -67,6 +67,7 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
 - REST API for conversations at `/api/conversations` — list (with optional agent_id filter), get, delete, and `/api/conversations/:id/messages` for message history
 - FastAPI route ordering: define `/search` or other static paths BEFORE `/{id}` param routes to prevent FastAPI matching "search" as an id
 - Ruff B008: only `Depends()` triggers it — `Query(...)` with keyword args does NOT; don't add unnecessary noqa comments
+- Confirmation dialogs: use native `<dialog>` with `.showModal()` and `backdrop:bg-dark/40` — no external modal library needed; close on backdrop click via `e.target === dialog`
 
 ---
 
@@ -1121,5 +1122,20 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Search endpoint (`/search`) must be defined BEFORE `/{thread_id}` route to avoid FastAPI matching "search" as a thread_id parameter
   - `Query(min_length=1)` and `Query(default=50, ge=1, le=200)` don't trigger ruff B008 (function call in default arg) — only `Depends()` does; don't add unnecessary `# noqa: B008` comments
   - Pagination pattern: use `limit` + `offset` query params with sensible defaults (50/0) and validation constraints
+  - Manual browser verification needed (no browser testing tool available)
+---
+
+## 2026-02-17 01:05 - US-068
+- What was implemented: Thread sidebar UI for the playground page — toggleable left sidebar listing conversation threads, thread search, create/delete threads, thread metadata bar, delete confirmation dialog
+- Files changed:
+  - packages/orbiter-web/src/pages/playground.astro (updated — added thread sidebar HTML, thread toggle button, metadata bar, delete dialog, and ~270 lines of thread management JavaScript)
+- **Learnings for future iterations:**
+  - Thread sidebar integrates with existing thread REST API (GET /api/threads, POST /api/threads, DELETE /api/threads/:id, GET /api/threads/:id/messages, GET /api/threads/search)
+  - Thread sidebar is toggled via "Threads" button in top bar — hidden by default, loads threads when opened
+  - Thread list re-renders on agent change (when sidebar is open) and uses debounced search input (300ms)
+  - Delete confirmation uses native `<dialog>` element with `.showModal()` — consistent with HTML5 dialog pattern, no external modal library needed
+  - `formatRelativeTime()` handles UTC dates from server by appending "Z" to the date string
+  - Thread items show hover-visible delete button using Tailwind group-hover pattern (`opacity-0 group-hover:opacity-100`)
+  - When switching to a thread, messages are loaded via REST API and rendered using existing `addUserMessage`/`addRestoredAgentMessage` helpers
   - Manual browser verification needed (no browser testing tool available)
 ---
