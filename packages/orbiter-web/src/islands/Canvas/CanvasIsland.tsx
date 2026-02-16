@@ -3,7 +3,9 @@ import {
   ReactFlow,
   ReactFlowProvider,
   Background,
+  BackgroundVariant,
   Controls,
+  MiniMap,
   useNodesState,
   useEdgesState,
   addEdge,
@@ -17,6 +19,9 @@ import "@xyflow/react/dist/style.css";
 
 const initialNodes: Node[] = [];
 const initialEdges: Edge[] = [];
+
+const GRID_SIZE = 20;
+const SNAP_GRID: [number, number] = [GRID_SIZE, GRID_SIZE];
 
 function useThemeColorMode(): ColorMode {
   const [colorMode, setColorMode] = useState<ColorMode>(() => {
@@ -59,10 +64,18 @@ function CanvasFlow() {
       onEdgesChange={onEdgesChange}
       onConnect={onConnect}
       colorMode={colorMode}
+      snapToGrid
+      snapGrid={SNAP_GRID}
       fitView
     >
-      <Background />
+      <Background variant={BackgroundVariant.Dots} gap={GRID_SIZE} size={1.5} />
       <Controls />
+      <MiniMap
+        position="bottom-right"
+        pannable
+        zoomable
+        style={{ width: 160, height: 120 }}
+      />
     </ReactFlow>
   );
 }
