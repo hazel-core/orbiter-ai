@@ -96,6 +96,7 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
 - Vector store config: singleton per user in `vector_store_config` table; auto-created on first GET; routes at `/api/vector-stores` (GET, PUT, POST /test)
 - Settings tabs: add tab button + panel div + lazy-load check in tab click handler; use `vsLoaded` / `providersLoaded` pattern for one-time fetch
 - Context config fields: stored as proper columns on agents table (not in hooks_json meta); automation_level, max_tokens_per_step, max_total_tokens, memory_type, workspace_enabled
+- Neuron pipelines: separate `neuron_pipelines` table, CRUD at `/api/agents/:id/pipelines`; neurons stored as JSON array in `neurons_json` column; auto-save with debounce
 
 ---
 
@@ -1924,4 +1925,28 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Automation levels: pilot (fully autonomous), copilot (suggests, user approves), navigator (plans only)
   - Boolean columns in SQLite: use int() on write, bool() on read via _row_to_dict
   - Tab addition pattern: add button in nav, add panel div, add JS variables + event handlers, wire into showAgent() and save handler
+---
+
+## 2026-02-17 - US-105
+- Implemented neuron pipeline editor on agent builder Context tab
+- Created `neuron_pipelines` table (migration 033) with agent_id FK, neurons_json storage
+- Built full CRUD + preview API at `/api/agents/:id/pipelines` (routes/neuron_pipelines.py)
+- Added neuron pipeline editor UI: ordered neuron list with 6 neuron types (System Instruction, Context State, Tool Results, Conversation History, Knowledge Retrieval, Custom Template)
+- Drag-and-drop reordering via native HTML5 drag events on neuron cards
+- Per-neuron config: template textarea, max tokens allocation, priority number, enable/disable toggle
+- Token budget bar chart showing estimated tokens consumed per neuron with colored bars
+- Collapsible preview panel showing assembled prompt from enabled neurons
+- Auto-save pipeline with 800ms debounce on changes; lazy-create on first edit
+- Pipelines loaded automatically when agent data is fetched
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/migrations/033_create_neuron_pipelines.sql (new)
+  - packages/orbiter-web/src/orbiter_web/routes/neuron_pipelines.py (new, 265 lines)
+  - packages/orbiter-web/src/orbiter_web/app.py (registered neuron_pipelines_router)
+  - packages/orbiter-web/src/pages/agents/[id]/edit.astro (added neuron pipeline HTML + JS, ~410 lines)
+- **Learnings for future iterations:**
+  - Neuron pipeline is a separate entity (not stored on agents table) — uses its own table with agent_id FK
+  - Auto-save pattern: use setTimeout debounce (800ms) with POST for new / PUT for existing pipeline
+  - Budget bar visualization: estimate ~4 chars per token, cap at max_tokens if set
+  - loadPipelines() call must be placed in showAgent() after context fields are populated
+  - Neuron type metadata (labels, colors, icons) defined as a JS object for consistent rendering across list, budget, and preview
 ---
