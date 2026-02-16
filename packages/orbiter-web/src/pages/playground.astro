@@ -8,6 +8,10 @@ const sendIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="c
 const botIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/><line x1="8" y1="16" x2="8" y2="16"/><line x1="16" y1="16" x2="16" y2="16"/></svg>';
 const clearIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
 const traceIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>';
+const compareIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="8" height="18" rx="1"/><rect x="14" y="3" width="8" height="18" rx="1"/></svg>';
+const thumbUpIcon = '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>';
+const thumbDownIcon = '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/></svg>';
+const downloadIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
 ---
 
 <PageLayout
@@ -32,6 +36,14 @@ const traceIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="
       </div>
       <div class="ml-auto flex items-center gap-1">
         <button
+          id="compare-toggle-btn"
+          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-muted hover:text-dark transition-colors rounded-lg hover:bg-subtle"
+          title="Toggle compare mode"
+        >
+          <span set:html={compareIcon} />
+          <span class="hidden sm:inline">Compare</span>
+        </button>
+        <button
           id="trace-toggle-btn"
           class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-muted hover:text-dark transition-colors rounded-lg hover:bg-subtle"
           title="Toggle trace panel (Cmd+I)"
@@ -50,8 +62,56 @@ const traceIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="
       </div>
     </div>
 
+    <!-- Compare mode: model picker bar (hidden by default) -->
+    <div id="compare-bar" class="hidden border-b border-dark/[0.08] bg-subtle/30 px-4 py-2 flex-shrink-0">
+      <div class="flex items-center gap-2 flex-wrap">
+        <span class="text-xs font-medium text-dark whitespace-nowrap">Models:</span>
+        <div id="compare-model-slots" class="flex items-center gap-2 flex-wrap flex-1">
+          <select id="compare-add-model" class="px-2 py-1 text-xs border border-dark/[0.08] rounded-lg bg-paper text-dark focus:outline-none focus:ring-2 focus:ring-coral/20">
+            <option value="">+ Add model...</option>
+          </select>
+        </div>
+        <button
+          id="compare-export-btn"
+          class="inline-flex items-center gap-1 px-2 py-1 text-xs text-muted hover:text-dark transition-colors rounded-lg hover:bg-subtle"
+          title="Export comparison as JSON"
+        >
+          <span set:html={downloadIcon} />
+          <span class="hidden sm:inline">Export</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Compare mode: side-by-side columns (hidden by default) -->
+    <div id="compare-container" class="hidden flex-1 flex flex-col min-h-0">
+      <div id="compare-columns" class="flex flex-1 min-h-0 divide-x divide-dark/[0.08] overflow-x-auto">
+        <!-- Columns are added dynamically -->
+      </div>
+      <!-- Compare input area -->
+      <div class="flex-shrink-0 border-t border-dark/[0.08] bg-paper px-4 py-3">
+        <div id="compare-connection-status" class="hidden text-xs text-coral mb-2 px-1"></div>
+        <div class="flex items-end gap-3 max-w-4xl mx-auto">
+          <textarea
+            id="compare-message-input"
+            rows="1"
+            placeholder="Type a message to send to all models... (Enter to send)"
+            disabled
+            class="flex-1 px-4 py-2.5 text-sm border border-dark/[0.08] rounded-xl bg-paper text-dark placeholder:text-muted/60 focus:outline-none focus:ring-2 focus:ring-coral/20 focus:border-coral transition-colors resize-none max-h-40 disabled:opacity-50"
+          ></textarea>
+          <button
+            id="compare-send-btn"
+            disabled
+            class="flex-shrink-0 p-2.5 bg-coral text-white rounded-xl hover:bg-coral/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            title="Send to all models"
+          >
+            <span set:html={sendIcon} />
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Main content: chat + trace panel side by side -->
-    <div class="flex flex-1 min-h-0">
+    <div id="normal-chat-container" class="flex flex-1 min-h-0">
       <!-- Chat column -->
       <div class="flex flex-col flex-1 min-w-0">
         <!-- Messages area (relative for scroll-to-bottom button) -->
@@ -1065,6 +1125,502 @@ messageInput.addEventListener("input", autoResize);
 sendBtn.addEventListener("click", sendMessage);
 
 clearBtn.addEventListener("click", clearMessages);
+
+/* ---- Compare mode ---- */
+const compareToggleBtn = document.getElementById("compare-toggle-btn")!;
+const compareBar = document.getElementById("compare-bar")!;
+const compareContainer = document.getElementById("compare-container")!;
+const normalChatContainer = document.getElementById("normal-chat-container")!;
+const compareColumns = document.getElementById("compare-columns")!;
+const compareAddModel = document.getElementById("compare-add-model") as HTMLSelectElement;
+const compareModelSlots = document.getElementById("compare-model-slots")!;
+const compareMessageInput = document.getElementById("compare-message-input") as HTMLTextAreaElement;
+const compareSendBtn = document.getElementById("compare-send-btn") as HTMLButtonElement;
+const compareConnectionStatus = document.getElementById("compare-connection-status")!;
+const compareExportBtn = document.getElementById("compare-export-btn")!;
+
+let compareMode = false;
+let compareWs: WebSocket | null = null;
+let compareStreaming = false;
+
+const compareIconSvg = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="8" height="18" rx="1"/><rect x="14" y="3" width="8" height="18" rx="1"/></svg>';
+const thumbUpSvg = '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>';
+const thumbDownSvg = '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/></svg>';
+
+interface CompareModel {
+  provider_type: string;
+  model_name: string;
+  display_name: string;
+}
+
+interface CompareResult {
+  model: CompareModel;
+  content: string;
+  usage: { prompt_tokens?: number; completion_tokens?: number } | null;
+  latency_ms?: number;
+  finish_reason?: string;
+  cost?: number;
+  rating?: "up" | "down";
+  error?: string;
+}
+
+let selectedModels: CompareModel[] = [];
+let availableModels: Array<{ provider_type: string; model_name: string; provider_name?: string }> = [];
+let compareHistory: Array<{ prompt: string; results: CompareResult[] }> = [];
+
+/* Column streaming state */
+let compareStreamBubbles: (HTMLElement | null)[] = [];
+let compareStreamedContent: string[] = [];
+
+async function loadModelsForCompare() {
+  try {
+    const res = await fetch("/api/models", { credentials: "same-origin" });
+    if (!res.ok) return;
+    const data = await res.json();
+    availableModels = data.map(function(m: any) {
+      return {
+        provider_type: m.provider_type || "",
+        model_name: m.model_name || "",
+        provider_name: m.provider_name || m.provider_type || "",
+      };
+    });
+    rebuildModelDropdown();
+  } catch (_e) { /* non-critical */ }
+}
+
+function rebuildModelDropdown() {
+  compareAddModel.innerHTML = '<option value="">+ Add model...</option>';
+  availableModels.forEach(function(m, i) {
+    /* Skip already-selected models */
+    if (selectedModels.some(function(s) { return s.provider_type === m.provider_type && s.model_name === m.model_name; })) return;
+    const opt = document.createElement("option");
+    opt.value = String(i);
+    opt.textContent = (m.provider_name || m.provider_type) + ": " + m.model_name;
+    compareAddModel.appendChild(opt);
+  });
+  /* Disable adding if already at 4 */
+  if (selectedModels.length >= 4) {
+    compareAddModel.disabled = true;
+    compareAddModel.innerHTML = '<option value="">Max 4 models</option>';
+  } else {
+    compareAddModel.disabled = false;
+  }
+}
+
+function addCompareModel(m: CompareModel) {
+  if (selectedModels.length >= 4) return;
+  if (selectedModels.some(function(s) { return s.provider_type === m.provider_type && s.model_name === m.model_name; })) return;
+  selectedModels.push(m);
+  renderModelChips();
+  rebuildModelDropdown();
+  renderCompareColumns();
+  updateCompareInputState();
+}
+
+function removeCompareModel(idx: number) {
+  selectedModels.splice(idx, 1);
+  renderModelChips();
+  rebuildModelDropdown();
+  renderCompareColumns();
+  updateCompareInputState();
+}
+
+function renderModelChips() {
+  /* Remove existing chips (keep the <select>) */
+  const existing = compareModelSlots.querySelectorAll("[data-model-chip]");
+  existing.forEach(function(el) { el.remove(); });
+
+  selectedModels.forEach(function(m, i) {
+    const chip = document.createElement("span");
+    chip.setAttribute("data-model-chip", "");
+    chip.className = "inline-flex items-center gap-1 px-2 py-0.5 bg-paper border border-dark/[0.08] rounded-full text-xs text-dark";
+
+    const label = document.createElement("span");
+    label.textContent = m.display_name;
+    chip.appendChild(label);
+
+    const removeBtn = document.createElement("button");
+    removeBtn.className = "text-muted hover:text-coral transition-colors ml-0.5";
+    removeBtn.innerHTML = '<svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+    removeBtn.addEventListener("click", function() { removeCompareModel(i); });
+    chip.appendChild(removeBtn);
+
+    /* Insert before the <select> */
+    compareModelSlots.insertBefore(chip, compareAddModel);
+  });
+}
+
+function renderCompareColumns() {
+  compareColumns.innerHTML = "";
+  compareStreamBubbles = [];
+  compareStreamedContent = [];
+
+  if (selectedModels.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "flex-1 flex items-center justify-center text-center p-8";
+    empty.innerHTML = '<div><div class="w-12 h-12 rounded-full bg-subtle flex items-center justify-center mb-3 mx-auto"><span class="text-muted">' + compareIconSvg + '</span></div><p class="text-sm text-muted">Select 2–4 models above to compare side-by-side</p></div>';
+    compareColumns.appendChild(empty);
+    return;
+  }
+
+  selectedModels.forEach(function(m, i) {
+    const col = document.createElement("div");
+    col.className = "flex-1 min-w-[220px] flex flex-col min-h-0";
+    col.setAttribute("data-compare-col", String(i));
+
+    /* Column header */
+    const header = document.createElement("div");
+    header.className = "flex items-center gap-2 px-3 py-2 bg-subtle/30 border-b border-dark/[0.08] flex-shrink-0";
+    const modelLabel = document.createElement("span");
+    modelLabel.className = "text-xs font-medium text-dark truncate flex-1";
+    modelLabel.textContent = m.display_name;
+    header.appendChild(modelLabel);
+
+    /* Metrics area (initially hidden) */
+    const metrics = document.createElement("div");
+    metrics.className = "hidden text-[10px] text-muted tabular-nums";
+    metrics.setAttribute("data-metrics", String(i));
+    header.appendChild(metrics);
+
+    col.appendChild(header);
+
+    /* Response area */
+    const responseArea = document.createElement("div");
+    responseArea.className = "flex-1 overflow-y-auto px-3 py-3";
+    responseArea.setAttribute("data-response-area", String(i));
+
+    const emptyMsg = document.createElement("div");
+    emptyMsg.className = "flex items-center justify-center h-full";
+    emptyMsg.setAttribute("data-col-empty", String(i));
+    emptyMsg.innerHTML = '<p class="text-xs text-muted">Waiting for prompt...</p>';
+    responseArea.appendChild(emptyMsg);
+
+    col.appendChild(responseArea);
+
+    /* Footer: rating + metrics summary */
+    const footer = document.createElement("div");
+    footer.className = "hidden flex-shrink-0 border-t border-dark/[0.08] px-3 py-2";
+    footer.setAttribute("data-col-footer", String(i));
+
+    const footerInner = document.createElement("div");
+    footerInner.className = "flex items-center justify-between gap-2";
+
+    /* Metrics summary */
+    const metricsSummary = document.createElement("div");
+    metricsSummary.className = "text-[10px] text-muted space-y-0.5";
+    metricsSummary.setAttribute("data-footer-metrics", String(i));
+    footerInner.appendChild(metricsSummary);
+
+    /* Rating buttons */
+    const ratingWrap = document.createElement("div");
+    ratingWrap.className = "flex items-center gap-1";
+    ratingWrap.setAttribute("data-rating", String(i));
+
+    const upBtn = document.createElement("button");
+    upBtn.className = "p-1 rounded text-muted hover:text-zen-green hover:bg-zen-green/10 transition-colors";
+    upBtn.title = "Thumbs up";
+    upBtn.innerHTML = thumbUpSvg;
+    upBtn.setAttribute("data-rating-up", String(i));
+
+    const downBtn = document.createElement("button");
+    downBtn.className = "p-1 rounded text-muted hover:text-coral hover:bg-coral/10 transition-colors";
+    downBtn.title = "Thumbs down";
+    downBtn.innerHTML = thumbDownSvg;
+    downBtn.setAttribute("data-rating-down", String(i));
+
+    ratingWrap.appendChild(upBtn);
+    ratingWrap.appendChild(downBtn);
+    footerInner.appendChild(ratingWrap);
+
+    footer.appendChild(footerInner);
+    col.appendChild(footer);
+
+    compareColumns.appendChild(col);
+    compareStreamBubbles.push(null);
+    compareStreamedContent.push("");
+  });
+
+  /* Bind rating buttons */
+  selectedModels.forEach(function(_m, i) {
+    const upBtn = compareColumns.querySelector('[data-rating-up="' + i + '"]');
+    const downBtn = compareColumns.querySelector('[data-rating-down="' + i + '"]');
+    if (upBtn) upBtn.addEventListener("click", function() { rateCompareResponse(i, "up"); });
+    if (downBtn) downBtn.addEventListener("click", function() { rateCompareResponse(i, "down"); });
+  });
+}
+
+function rateCompareResponse(modelIndex: number, rating: "up" | "down") {
+  /* Update the latest compare round */
+  if (compareHistory.length === 0) return;
+  const latest = compareHistory[compareHistory.length - 1];
+  if (modelIndex < latest.results.length) {
+    latest.results[modelIndex].rating = rating;
+  }
+  /* Visual feedback */
+  const upBtn = compareColumns.querySelector('[data-rating-up="' + modelIndex + '"]') as HTMLElement | null;
+  const downBtn = compareColumns.querySelector('[data-rating-down="' + modelIndex + '"]') as HTMLElement | null;
+  if (upBtn && downBtn) {
+    if (rating === "up") {
+      upBtn.className = "p-1 rounded text-zen-green bg-zen-green/10 transition-colors";
+      downBtn.className = "p-1 rounded text-muted hover:text-coral hover:bg-coral/10 transition-colors";
+    } else {
+      downBtn.className = "p-1 rounded text-coral bg-coral/10 transition-colors";
+      upBtn.className = "p-1 rounded text-muted hover:text-zen-green hover:bg-zen-green/10 transition-colors";
+    }
+  }
+}
+
+function updateCompareInputState() {
+  const enabled = selectedModels.length >= 2 && !compareStreaming;
+  compareMessageInput.disabled = !enabled;
+  compareSendBtn.disabled = !enabled;
+}
+
+function toggleCompareMode() {
+  compareMode = !compareMode;
+  if (compareMode) {
+    compareToggleBtn.classList.add("text-coral");
+    compareToggleBtn.classList.remove("text-muted");
+    compareBar.classList.remove("hidden");
+    compareContainer.classList.remove("hidden");
+    compareContainer.classList.add("flex");
+    normalChatContainer.classList.add("hidden");
+    /* Hide trace toggle in compare mode */
+    traceToggleBtn.classList.add("hidden");
+    /* Disconnect normal WS */
+    disconnectWebSocket();
+    loadModelsForCompare();
+    renderCompareColumns();
+    updateCompareInputState();
+  } else {
+    compareToggleBtn.classList.remove("text-coral");
+    compareToggleBtn.classList.add("text-muted");
+    compareBar.classList.add("hidden");
+    compareContainer.classList.add("hidden");
+    compareContainer.classList.remove("flex");
+    normalChatContainer.classList.remove("hidden");
+    traceToggleBtn.classList.remove("hidden");
+    /* Disconnect compare WS */
+    if (compareWs) { compareWs.close(); compareWs = null; }
+    /* Reconnect normal if agent selected */
+    const val = agentSelect.value;
+    if (val) connectWebSocket(val);
+  }
+}
+
+compareToggleBtn.addEventListener("click", toggleCompareMode);
+
+compareAddModel.addEventListener("change", function() {
+  const val = compareAddModel.value;
+  if (!val) return;
+  const idx = parseInt(val, 10);
+  const m = availableModels[idx];
+  if (m) {
+    addCompareModel({
+      provider_type: m.provider_type,
+      model_name: m.model_name,
+      display_name: (m.provider_name || m.provider_type) + ": " + m.model_name,
+    });
+  }
+  compareAddModel.value = "";
+});
+
+function sendCompareMessage() {
+  const text = compareMessageInput.value.trim();
+  if (!text || selectedModels.length < 2 || compareStreaming) return;
+
+  compareStreaming = true;
+  updateCompareInputState();
+
+  /* Prepare results array for this round */
+  const results: CompareResult[] = selectedModels.map(function(m) {
+    return { model: m, content: "", usage: null, rating: undefined };
+  });
+  compareHistory.push({ prompt: text, results: results });
+
+  /* Clear old response areas and show streaming state */
+  selectedModels.forEach(function(_m, i) {
+    const area = compareColumns.querySelector('[data-response-area="' + i + '"]') as HTMLElement;
+    if (!area) return;
+    const emptyEl = area.querySelector('[data-col-empty="' + i + '"]');
+    if (emptyEl) emptyEl.remove();
+
+    /* Add user message */
+    const userRow = document.createElement("div");
+    userRow.className = "flex justify-end mb-3";
+    const userBubble = document.createElement("div");
+    userBubble.className = "px-3 py-2 rounded-xl rounded-br-sm bg-subtle text-dark text-xs whitespace-pre-wrap break-words max-w-[90%]";
+    userBubble.textContent = text;
+    userRow.appendChild(userBubble);
+    area.appendChild(userRow);
+
+    /* Start agent response bubble */
+    const agentRow = document.createElement("div");
+    agentRow.className = "flex justify-start mb-3";
+    const agentBubble = document.createElement("div");
+    agentBubble.className = "px-3 py-2 rounded-xl rounded-bl-sm bg-paper border border-dark/[0.06] text-dark text-xs whitespace-pre-wrap break-words min-w-0 max-w-[90%]";
+    agentBubble.textContent = "";
+    agentRow.appendChild(agentBubble);
+    area.appendChild(agentRow);
+
+    compareStreamBubbles[i] = agentBubble;
+    compareStreamedContent[i] = "";
+
+    /* Scroll area to bottom */
+    area.scrollTop = area.scrollHeight;
+  });
+
+  /* Open compare WebSocket */
+  const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  const url = proto + "//" + location.host + "/api/playground/compare/chat";
+
+  if (compareWs) { compareWs.close(); compareWs = null; }
+  compareWs = new WebSocket(url);
+
+  let doneCount = 0;
+  const expectedDone = selectedModels.length;
+
+  compareWs.onopen = function() {
+    compareWs!.send(JSON.stringify({
+      content: text,
+      models: selectedModels.map(function(m) {
+        return { provider_type: m.provider_type, model_name: m.model_name };
+      }),
+    }));
+  };
+
+  compareWs.onmessage = function(event) {
+    let data;
+    try { data = JSON.parse(event.data); } catch (_e) { return; }
+    const mi = data.model_index;
+    if (mi === undefined || mi < 0 || mi >= selectedModels.length) return;
+
+    if (data.type === "token") {
+      compareStreamedContent[mi] += data.content;
+      if (compareStreamBubbles[mi]) {
+        compareStreamBubbles[mi]!.textContent = compareStreamedContent[mi];
+        const area = compareColumns.querySelector('[data-response-area="' + mi + '"]');
+        if (area) area.scrollTop = area.scrollHeight;
+      }
+    } else if (data.type === "done") {
+      doneCount++;
+      const rawText = compareStreamedContent[mi];
+      results[mi].content = rawText;
+      results[mi].usage = data.usage || null;
+      results[mi].latency_ms = data.latency_ms;
+      results[mi].finish_reason = data.finish_reason;
+
+      /* Calculate cost */
+      const promptTok = data.usage?.prompt_tokens || 0;
+      const completionTok = data.usage?.completion_tokens || 0;
+      results[mi].cost = calcCost(data.model || selectedModels[mi].model_name, promptTok, completionTok);
+
+      /* Render markdown for finished response */
+      if (compareStreamBubbles[mi]) {
+        compareStreamBubbles[mi]!.className = "px-3 py-2 rounded-xl rounded-bl-sm bg-paper border border-dark/[0.06] text-dark text-xs break-words chat-prose min-w-0 max-w-[90%]";
+        compareStreamBubbles[mi]!.innerHTML = renderMarkdown(rawText);
+      }
+
+      /* Show footer with metrics */
+      const footer = compareColumns.querySelector('[data-col-footer="' + mi + '"]') as HTMLElement;
+      if (footer) {
+        footer.classList.remove("hidden");
+        const metricsEl = footer.querySelector('[data-footer-metrics="' + mi + '"]');
+        if (metricsEl) {
+          let html = "";
+          if (data.latency_ms !== undefined) html += '<div><span class="text-muted">Latency:</span> ' + data.latency_ms.toLocaleString() + 'ms</div>';
+          const total = promptTok + completionTok;
+          if (total > 0) html += '<div><span class="text-muted">Tokens:</span> ' + promptTok.toLocaleString() + ' in / ' + completionTok.toLocaleString() + ' out</div>';
+          if (results[mi].cost && results[mi].cost! > 0) html += '<div><span class="text-muted">Cost:</span> ' + formatCost(results[mi].cost!) + '</div>';
+          metricsEl.innerHTML = html;
+        }
+      }
+
+      /* Check if all models are done */
+      if (doneCount >= expectedDone) {
+        compareStreaming = false;
+        updateCompareInputState();
+        compareMessageInput.value = "";
+        compareMessageInput.focus();
+      }
+    } else if (data.type === "error") {
+      results[mi].error = data.message;
+      if (compareStreamBubbles[mi]) {
+        compareStreamBubbles[mi]!.className = "px-3 py-2 rounded-xl rounded-bl-sm bg-coral/5 border border-coral/20 text-coral text-xs break-words min-w-0 max-w-[90%]";
+        compareStreamBubbles[mi]!.textContent = "Error: " + data.message;
+      }
+      doneCount++;
+      if (doneCount >= expectedDone) {
+        compareStreaming = false;
+        updateCompareInputState();
+      }
+    }
+  };
+
+  compareWs.onclose = function() {
+    if (compareStreaming) {
+      compareStreaming = false;
+      updateCompareInputState();
+    }
+  };
+
+  compareWs.onerror = function() {
+    compareConnectionStatus.textContent = "WebSocket connection error.";
+    compareConnectionStatus.classList.remove("hidden");
+    compareStreaming = false;
+    updateCompareInputState();
+  };
+
+  compareMessageInput.value = "";
+}
+
+compareSendBtn.addEventListener("click", sendCompareMessage);
+compareMessageInput.addEventListener("keydown", function(e) {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    sendCompareMessage();
+  }
+});
+compareMessageInput.addEventListener("input", function() {
+  compareMessageInput.style.height = "auto";
+  compareMessageInput.style.height = Math.min(compareMessageInput.scrollHeight, 160) + "px";
+});
+
+/* Export comparison as JSON */
+function exportCompareResults() {
+  if (compareHistory.length === 0) return;
+  const exportData = {
+    timestamp: new Date().toISOString(),
+    rounds: compareHistory.map(function(round) {
+      return {
+        prompt: round.prompt,
+        responses: round.results.map(function(r) {
+          return {
+            model: r.model.display_name,
+            provider_type: r.model.provider_type,
+            model_name: r.model.model_name,
+            content: r.content,
+            usage: r.usage,
+            latency_ms: r.latency_ms,
+            finish_reason: r.finish_reason,
+            cost: r.cost,
+            rating: r.rating || null,
+            error: r.error || null,
+          };
+        }),
+      };
+    }),
+  };
+  const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "comparison-" + new Date().toISOString().slice(0, 19).replace(/:/g, "-") + ".json";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+compareExportBtn.addEventListener("click", exportCompareResults);
 
 /* ---- Init ---- */
 loadAgents();
