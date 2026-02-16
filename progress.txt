@@ -1190,3 +1190,20 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - JSON fields (input_json, output_json, token_usage_json) are parsed in the API response for convenience
   - LLM nodes store prompt+response in logs_text; Code nodes store stdout/stderr; API nodes store request/response
 ---
+
+## 2026-02-17 01:30 - US-072
+- What was implemented: Node inspection UI — clicking a node after workflow execution opens a tabbed inspection panel showing Input, Output, Logs, and Timing data
+- Files changed:
+  - packages/orbiter-web/src/islands/Canvas/NodeInspectionPanel.tsx (new — tabbed panel with Input, Output, Logs, Timing tabs; fetches from GET /api/workflows/:id/runs/:runId/nodes/:nodeId)
+  - packages/orbiter-web/src/islands/Canvas/CanvasIsland.tsx (updated — imports NodeInspectionPanel, adds inspectedNodeId state, shows inspection panel when clicking executed nodes, hasExecutionData flag)
+  - prd.json (updated — US-072 passes: true)
+- **Learnings for future iterations:**
+  - Post-execution node clicks use `exec.nodeStatuses[node.id]` to determine if a node has execution data — only executed nodes open the inspection panel
+  - `hasExecutionData` flag = `exec.runId !== null && !isRunning` — ensures panel only shows after execution completes
+  - Inspection panel is 340px wide (slightly wider than config panel's 300px) to accommodate JSON blocks
+  - JsonBlock component includes copy-to-clipboard button and uses pre+monospace for formatted JSON display
+  - Tabs use the node's category color for the active tab underline indicator
+  - InputTab/OutputTab/LogsTab/TimingTab handle null data gracefully with italic placeholder text
+  - For LLM nodes, LogsTab shows prompt and response separately extracted from input_json/output_json
+  - inspectedNodeId and selectedNodeId are mutually exclusive — clicking an executed node sets inspected and clears selected, and vice versa
+---

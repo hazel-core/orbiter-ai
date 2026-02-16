@@ -22,6 +22,7 @@ import {
 
 import NodeSidebar, { NODE_CATEGORIES } from "./NodeSidebar";
 import NodeConfigPanel from "./NodeConfigPanel";
+import NodeInspectionPanel from "./NodeInspectionPanel";
 import ValidationPanel from "./ValidationPanel";
 import WorkflowNode from "./WorkflowNode";
 import { getHandlesForNodeType, HANDLE_COLORS, areTypesCompatible, type HandleDataType } from "./handleTypes";
@@ -685,6 +686,7 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
   const viewportRef = useRef<Viewport>({ x: 0, y: 0, zoom: 1 });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [inspectedNodeId, setInspectedNodeId] = useState<string | null>(null);
   const [relationshipNodeId, setRelationshipNodeId] = useState<string | null>(null);
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
   const [validationPanelOpen, setValidationPanelOpen] = useState(false);
@@ -910,17 +912,28 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
     });
   }, [edges, relationships, validationResult, exec.nodeStatuses]);
 
-  /* Node selection — open config panel, Shift+click for relationships mode */
+  /* Track whether execution has finished (data available to inspect) */
+  const hasExecutionData = exec.runId !== null && !isRunning;
+
+  /* Node selection — open config or inspection panel, Shift+click for relationships mode */
   const onNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
     if (_event.shiftKey) {
       setRelationshipNodeId((prev) => (prev === node.id ? null : node.id));
       return;
     }
-    setSelectedNodeId(node.id);
-  }, []);
+    /* If execution data available and this node was executed, show inspection panel */
+    if (hasExecutionData && exec.nodeStatuses[node.id]) {
+      setInspectedNodeId(node.id);
+      setSelectedNodeId(null);
+    } else {
+      setSelectedNodeId(node.id);
+      setInspectedNodeId(null);
+    }
+  }, [hasExecutionData, exec.nodeStatuses]);
 
   const onPaneClick = useCallback(() => {
     setSelectedNodeId(null);
+    setInspectedNodeId(null);
     setRelationshipNodeId(null);
   }, []);
 
@@ -937,6 +950,11 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
   /* Derive selected node object from current nodes */
   const selectedNode = selectedNodeId
     ? nodes.find((n) => n.id === selectedNodeId) ?? null
+    : null;
+
+  /* Derive inspected node object for execution inspection panel */
+  const inspectedNode = inspectedNodeId
+    ? nodes.find((n) => n.id === inspectedNodeId) ?? null
     : null;
 
   /* Resolve handle data type for a node+handle pair */
@@ -1050,9 +1068,12 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
     if (selectedNodes.length === 0 && selectedEdges.length === 0) return;
     record();
     const nodeIds = new Set(selectedNodes.map((n) => n.id));
-    /* Close config panel if the selected node is being deleted */
+    /* Close config/inspection panel if the selected node is being deleted */
     if (selectedNodeId && nodeIds.has(selectedNodeId)) {
       setSelectedNodeId(null);
+    }
+    if (inspectedNodeId && nodeIds.has(inspectedNodeId)) {
+      setInspectedNodeId(null);
     }
     setNodes((nds) => nds.filter((n) => !n.selected));
     setEdges((eds) =>
@@ -1061,7 +1082,7 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
           !e.selected && !nodeIds.has(e.source) && !nodeIds.has(e.target),
       ),
     );
-  }, [nodes, edges, record, setNodes, setEdges, selectedNodeId]);
+  }, [nodes, edges, record, setNodes, setEdges, selectedNodeId, inspectedNodeId]);
 
   /* Keyboard shortcuts */
   useEffect(() => {
@@ -1533,6 +1554,16 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
         onClose={() => setSelectedNodeId(null)}
         onNodeUpdate={handleNodeDataUpdate}
       />
+
+      {/* Node inspection panel (post-execution) */}
+      {workflowId && exec.runId && (
+        <NodeInspectionPanel
+          node={inspectedNode}
+          workflowId={workflowId}
+          runId={exec.runId}
+          onClose={() => setInspectedNodeId(null)}
+        />
+      )}
     </ReactFlow>
       </div>
     </div>
