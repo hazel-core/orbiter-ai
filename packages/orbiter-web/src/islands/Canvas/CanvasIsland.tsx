@@ -153,7 +153,7 @@ function TypedBezierEdge(props: EdgeProps) {
 
 const edgeTypes = { typed: TypedBezierEdge };
 
-const SAVE_DEBOUNCE_MS = 500;
+const SAVE_DEBOUNCE_MS = 2000;
 
 const GRID_SIZE = 20;
 const SNAP_GRID: [number, number] = [GRID_SIZE, GRID_SIZE];
@@ -324,6 +324,11 @@ const icons = {
       <polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.13-9.36L23 10" />
     </svg>
   ),
+  save: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" /><polyline points="17 21 17 13 7 13 7 21" /><polyline points="7 3 7 8 15 8" />
+    </svg>
+  ),
 };
 
 /* ------------------------------------------------------------------ */
@@ -338,6 +343,8 @@ const mod = isMac ? "\u2318" : "Ctrl+";
 /* Auto-save hook                                                      */
 /* ------------------------------------------------------------------ */
 
+type SaveStatus = "saved" | "saving" | "unsaved";
+
 function useAutoSave(
   workflowId: string | undefined,
   nodes: Node[],
@@ -347,10 +354,12 @@ function useAutoSave(
 ) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const savingRef = useRef(false);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
 
   const save = useCallback(() => {
     if (!workflowId || savingRef.current || !loaded) return;
     savingRef.current = true;
+    setSaveStatus("saving");
     fetch(`/api/workflows/${workflowId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -359,16 +368,32 @@ function useAutoSave(
         edges_json: JSON.stringify(edges),
         viewport_json: JSON.stringify(viewportRef.current),
       }),
-    }).finally(() => {
-      savingRef.current = false;
-    });
+    })
+      .then((res) => {
+        setSaveStatus(res.ok ? "saved" : "unsaved");
+      })
+      .catch(() => {
+        setSaveStatus("unsaved");
+      })
+      .finally(() => {
+        savingRef.current = false;
+      });
   }, [workflowId, nodes, edges, viewportRef, loaded]);
 
   const scheduleSave = useCallback(() => {
     if (!workflowId || !loaded) return;
+    setSaveStatus("unsaved");
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(save, SAVE_DEBOUNCE_MS);
   }, [workflowId, save, loaded]);
+
+  /** Flush pending debounce and save immediately. */
+  const saveNow = useCallback(() => {
+    if (!workflowId || !loaded) return;
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = null;
+    save();
+  }, [workflowId, loaded, save]);
 
   /* Cleanup on unmount */
   useEffect(() => {
@@ -377,7 +402,7 @@ function useAutoSave(
     };
   }, []);
 
-  return { scheduleSave };
+  return { scheduleSave, saveNow, saveStatus };
 }
 
 /* ------------------------------------------------------------------ */
@@ -399,8 +424,30 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
   const { past, future, record, canUndo, canRedo, skipRecord } =
     useUndoRedo(nodes, edges);
 
+  /* Workflow metadata (name, description) */
+  const [workflowName, setWorkflowName] = useState("");
+  const [workflowDescription, setWorkflowDescription] = useState("");
+  const [metaEditing, setMetaEditing] = useState(false);
+  const metaTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /** Save name/description to backend (debounced). */
+  const saveMetadata = useCallback(
+    (name: string, description: string) => {
+      if (!workflowId) return;
+      if (metaTimerRef.current) clearTimeout(metaTimerRef.current);
+      metaTimerRef.current = setTimeout(() => {
+        fetch(`/api/workflows/${workflowId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, description }),
+        });
+      }, 800);
+    },
+    [workflowId],
+  );
+
   /* Auto-save */
-  const { scheduleSave } = useAutoSave(workflowId, nodes, edges, viewportRef, loaded);
+  const { scheduleSave, saveNow, saveStatus } = useAutoSave(workflowId, nodes, edges, viewportRef, loaded);
 
   /* Load canvas state from backend */
   useEffect(() => {
@@ -411,6 +458,10 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
         return res.json();
       })
       .then((data) => {
+        /* Store workflow metadata */
+        setWorkflowName(data.name ?? "");
+        setWorkflowDescription(data.description ?? "");
+
         const rawNodes: Node[] = JSON.parse(data.nodes_json || "[]");
         const rawEdges: Edge[] = JSON.parse(data.edges_json || "[]");
         const vp: Viewport = JSON.parse(
@@ -645,12 +696,19 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
         if (tag === "INPUT" || tag === "TEXTAREA") return;
         e.preventDefault();
         selectAll();
+        return;
+      }
+
+      /* Cmd+S — manual save */
+      if (meta && e.key === "s") {
+        e.preventDefault();
+        saveNow();
       }
     };
 
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [deleteSelected, undo, redo, selectAll]);
+  }, [deleteSelected, undo, redo, selectAll, saveNow]);
 
   /* Force re-render for canUndo/canRedo badge state.
      The refs don't trigger re-renders, so we use a counter. */
@@ -703,6 +761,117 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
   );
 
   return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      {/* Workflow metadata header */}
+      {workflowId && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            padding: "8px 16px",
+            borderBottom: "1px solid var(--zen-subtle, #e0ddd0)",
+            background: "var(--zen-paper, #f2f0e3)",
+            flexShrink: 0,
+          }}
+        >
+          {metaEditing ? (
+            <>
+              <input
+                type="text"
+                value={workflowName}
+                onChange={(e) => {
+                  setWorkflowName(e.target.value);
+                  saveMetadata(e.target.value, workflowDescription);
+                }}
+                onBlur={() => {
+                  if (!workflowName.trim()) return;
+                  setMetaEditing(false);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") setMetaEditing(false);
+                  if (e.key === "Escape") setMetaEditing(false);
+                }}
+                placeholder="Workflow name"
+                autoFocus
+                style={{
+                  fontSize: 15,
+                  fontWeight: 600,
+                  fontFamily: "'Bricolage Grotesque', sans-serif",
+                  border: "1px solid var(--zen-subtle, #e0ddd0)",
+                  borderRadius: 6,
+                  padding: "2px 8px",
+                  background: "var(--zen-paper, #f2f0e3)",
+                  color: "var(--zen-dark, #2e2e2e)",
+                  outline: "none",
+                  minWidth: 120,
+                }}
+              />
+              <input
+                type="text"
+                value={workflowDescription}
+                onChange={(e) => {
+                  setWorkflowDescription(e.target.value);
+                  saveMetadata(workflowName, e.target.value);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") setMetaEditing(false);
+                  if (e.key === "Escape") setMetaEditing(false);
+                }}
+                placeholder="Add a description\u2026"
+                style={{
+                  fontSize: 13,
+                  fontFamily: "'Bricolage Grotesque', sans-serif",
+                  border: "1px solid var(--zen-subtle, #e0ddd0)",
+                  borderRadius: 6,
+                  padding: "2px 8px",
+                  background: "var(--zen-paper, #f2f0e3)",
+                  color: "var(--zen-muted, #999)",
+                  outline: "none",
+                  flex: 1,
+                  minWidth: 100,
+                }}
+              />
+            </>
+          ) : (
+            <div
+              onClick={() => setMetaEditing(true)}
+              style={{ cursor: "pointer", display: "flex", alignItems: "baseline", gap: 8, minWidth: 0 }}
+              title="Click to edit name and description"
+            >
+              <span
+                style={{
+                  fontSize: 15,
+                  fontWeight: 600,
+                  fontFamily: "'Bricolage Grotesque', sans-serif",
+                  color: "var(--zen-dark, #2e2e2e)",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {workflowName || "Untitled Workflow"}
+              </span>
+              {workflowDescription && (
+                <span
+                  style={{
+                    fontSize: 12,
+                    color: "var(--zen-muted, #999)",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  {workflowDescription}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Canvas */}
+      <div style={{ flex: 1, minHeight: 0 }}>
     <ReactFlow
       nodes={nodes}
       edges={edges}
@@ -780,6 +949,37 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
           <ToolbarButton onClick={redo} title={`Redo (${mod}Shift+Z)`} disabled={!canRedo}>
             {icons.redo}
           </ToolbarButton>
+
+          {workflowId && (
+            <>
+              <Separator />
+              <ToolbarButton onClick={saveNow} title={`Save (${mod}S)`}>
+                {icons.save}
+              </ToolbarButton>
+              <span
+                className="nodrag nopan"
+                style={{
+                  fontSize: 11,
+                  fontWeight: 500,
+                  fontFamily: "'Bricolage Grotesque', sans-serif",
+                  color:
+                    saveStatus === "saved"
+                      ? "var(--zen-green, #63f78b)"
+                      : saveStatus === "saving"
+                        ? "var(--zen-muted, #999)"
+                        : "var(--zen-coral, #F76F53)",
+                  padding: "0 4px",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {saveStatus === "saved"
+                  ? "Saved"
+                  : saveStatus === "saving"
+                    ? "Saving\u2026"
+                    : "Unsaved changes"}
+              </span>
+            </>
+          )}
         </div>
       </Panel>
 
@@ -797,6 +997,8 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
         onNodeUpdate={handleNodeDataUpdate}
       />
     </ReactFlow>
+      </div>
+    </div>
   );
 }
 
