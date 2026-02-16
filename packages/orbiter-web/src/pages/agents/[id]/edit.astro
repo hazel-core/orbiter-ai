@@ -740,6 +740,69 @@ const saveIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
               <span class="toggle-dot absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform"></span>
             </button>
           </div>
+
+          <hr class="border-dark/[0.06]" />
+
+          <!-- Neuron Pipeline Editor -->
+          <div class="flex flex-col gap-4">
+            <div class="flex items-center justify-between">
+              <div>
+                <h3 class="text-sm font-medium text-dark">Neuron Pipeline</h3>
+                <p class="text-xs text-muted mt-0.5">Configure the ordered sequence of neurons that build the agent's prompt.</p>
+              </div>
+              <div class="flex items-center gap-2">
+                <select id="neuron-add-type" class="text-xs bg-paper border border-dark/[0.08] rounded-lg px-2 py-1.5 text-dark outline-none focus:border-coral">
+                  <option value="system_instruction">System Instruction</option>
+                  <option value="context_state">Context State</option>
+                  <option value="tool_results">Tool Results</option>
+                  <option value="conversation_history">Conversation History</option>
+                  <option value="knowledge_retrieval">Knowledge Retrieval</option>
+                  <option value="custom_template">Custom Template</option>
+                </select>
+                <button type="button" id="neuron-add-btn" class="flex items-center gap-1 rounded-lg bg-coral px-3 py-1.5 text-xs font-medium text-white hover:bg-coral/90 transition-colors">
+                  <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  Add
+                </button>
+              </div>
+            </div>
+
+            <!-- Neuron list -->
+            <div id="neuron-list" class="flex flex-col gap-2">
+              <!-- Empty state -->
+              <div id="neuron-empty" class="flex flex-col items-center justify-center rounded-lg border border-dashed border-dark/[0.12] bg-subtle/30 py-8">
+                <svg class="h-8 w-8 text-muted/40 mb-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/></svg>
+                <p class="text-xs text-muted">No neurons configured. Add neurons to build the prompt pipeline.</p>
+              </div>
+            </div>
+
+            <!-- Token Budget Visualization -->
+            <div id="neuron-token-budget" class="hidden flex flex-col gap-2 rounded-lg border border-dark/[0.08] bg-paper p-3">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-medium text-dark">Token Budget</span>
+                <span id="neuron-total-tokens" class="text-xs text-muted tabular-nums font-mono">0 tokens</span>
+              </div>
+              <div id="neuron-budget-bars" class="flex flex-col gap-1.5">
+                <!-- Budget bars dynamically rendered -->
+              </div>
+            </div>
+
+            <!-- Preview Panel -->
+            <div class="flex flex-col gap-2">
+              <button type="button" id="neuron-preview-toggle" class="flex items-center gap-1.5 text-xs font-medium text-muted hover:text-dark transition-colors">
+                <svg id="neuron-preview-chevron" class="h-3.5 w-3.5 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                Preview Assembled Prompt
+              </button>
+              <div id="neuron-preview-panel" class="hidden flex flex-col gap-2 rounded-lg border border-dark/[0.08] bg-subtle/30 p-3 max-h-64 overflow-y-auto">
+                <p id="neuron-preview-empty" class="text-xs text-muted italic">Add neurons to see the assembled prompt preview.</p>
+                <div id="neuron-preview-content" class="hidden flex flex-col gap-2">
+                  <!-- Preview sections rendered here -->
+                </div>
+              </div>
+            </div>
+
+            <!-- Save/Load Pipeline -->
+            <input type="hidden" id="neuron-pipeline-id" value="" />
+          </div>
         </div>
       </div>
 
@@ -1082,6 +1145,23 @@ const saveIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
     var ctxToggleWorkspace = document.getElementById("ctx-toggle-workspace");
     var ctxMemoryEnabled = true;
     var ctxWorkspaceEnabled = false;
+
+    /* Neuron pipeline */
+    var neuronList = document.getElementById("neuron-list");
+    var neuronEmpty = document.getElementById("neuron-empty");
+    var neuronAddBtn = document.getElementById("neuron-add-btn");
+    var neuronAddType = document.getElementById("neuron-add-type");
+    var neuronPipelineId = document.getElementById("neuron-pipeline-id");
+    var neuronTokenBudget = document.getElementById("neuron-token-budget");
+    var neuronTotalTokens = document.getElementById("neuron-total-tokens");
+    var neuronBudgetBars = document.getElementById("neuron-budget-bars");
+    var neuronPreviewToggle = document.getElementById("neuron-preview-toggle");
+    var neuronPreviewPanel = document.getElementById("neuron-preview-panel");
+    var neuronPreviewChevron = document.getElementById("neuron-preview-chevron");
+    var neuronPreviewEmpty = document.getElementById("neuron-preview-empty");
+    var neuronPreviewContent = document.getElementById("neuron-preview-content");
+    var neurons = [];
+    var neuronDragIndex = null;
 
     var currentAgent = null;
     var allProviders = [];
@@ -1485,6 +1565,334 @@ const saveIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
         ctxWorkspaceEnabled = !ctxWorkspaceEnabled;
         setToggle(ctxToggleWorkspace, ctxWorkspaceEnabled);
       });
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Neuron pipeline editor                                              */
+    /* ------------------------------------------------------------------ */
+
+    var NEURON_TYPE_META = {
+      system_instruction: { label: "System Instruction", color: "bg-zen-blue/10 text-zen-blue", icon: '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>' },
+      context_state: { label: "Context State", color: "bg-zen-green/10 text-zen-green", icon: '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>' },
+      tool_results: { label: "Tool Results", color: "bg-amber-100 text-amber-600", icon: '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>' },
+      conversation_history: { label: "Conversation History", color: "bg-purple-100 text-purple-600", icon: '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>' },
+      knowledge_retrieval: { label: "Knowledge Retrieval", color: "bg-teal-100 text-teal-600", icon: '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>' },
+      custom_template: { label: "Custom Template", color: "bg-coral/10 text-coral", icon: '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>' },
+    };
+
+    var BUDGET_COLORS = ["bg-zen-blue", "bg-zen-green", "bg-amber-400", "bg-purple-400", "bg-teal-400", "bg-coral"];
+
+    function renderNeuronList() {
+      /* Clear existing neuron cards (keep empty state) */
+      var cards = neuronList.querySelectorAll(".neuron-card");
+      cards.forEach(function (c) { c.remove(); });
+
+      if (neurons.length === 0) {
+        neuronEmpty.classList.remove("hidden");
+        neuronTokenBudget.classList.add("hidden");
+        neuronPreviewEmpty.classList.remove("hidden");
+        neuronPreviewContent.classList.add("hidden");
+        return;
+      }
+
+      neuronEmpty.classList.add("hidden");
+
+      neurons.forEach(function (neuron, idx) {
+        var meta = NEURON_TYPE_META[neuron.type] || { label: neuron.type, color: "bg-dark/5 text-dark", icon: "" };
+        var card = document.createElement("div");
+        card.className = "neuron-card flex flex-col gap-2 rounded-lg border border-dark/[0.08] bg-paper p-3 transition-all" + (neuron.enabled === false ? " opacity-50" : "");
+        card.setAttribute("draggable", "true");
+        card.setAttribute("data-neuron-idx", idx);
+
+        var headerHtml = '<div class="flex items-center justify-between">'
+          + '<div class="flex items-center gap-2">'
+          + '<span class="cursor-grab text-muted/40 hover:text-muted" title="Drag to reorder">'
+          + '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>'
+          + '</span>'
+          + '<span class="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-medium ' + meta.color + '">'
+          + meta.icon + ' ' + meta.label
+          + '</span>'
+          + '<span class="text-xs text-dark font-medium">' + (neuron.label || "") + '</span>'
+          + '</div>'
+          + '<div class="flex items-center gap-1">'
+          + '<button type="button" class="neuron-toggle-btn p-1 rounded text-muted hover:text-dark transition-colors" data-idx="' + idx + '" title="' + (neuron.enabled === false ? "Enable" : "Disable") + '">'
+          + (neuron.enabled === false
+            ? '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>'
+            : '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>')
+          + '</button>'
+          + '<button type="button" class="neuron-remove-btn p-1 rounded text-muted hover:text-coral transition-colors" data-idx="' + idx + '" title="Remove">'
+          + '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>'
+          + '</button>'
+          + '</div>'
+          + '</div>';
+
+        var fieldsHtml = '<div class="grid grid-cols-3 gap-2">'
+          + '<div class="col-span-2 flex flex-col gap-1">'
+          + '<label class="text-[10px] font-medium text-muted">Template / Content</label>'
+          + '<textarea class="neuron-template-input w-full bg-subtle/50 border border-dark/[0.06] rounded-md px-2 py-1 text-xs text-dark placeholder:text-muted/50 outline-none focus:border-coral resize-none font-mono" data-idx="' + idx + '" rows="2" placeholder="' + _neuronPlaceholder(neuron.type) + '">' + (neuron.template || "") + '</textarea>'
+          + '</div>'
+          + '<div class="flex flex-col gap-2">'
+          + '<div class="flex flex-col gap-1">'
+          + '<label class="text-[10px] font-medium text-muted">Max Tokens</label>'
+          + '<input type="number" class="neuron-max-tokens-input w-full bg-subtle/50 border border-dark/[0.06] rounded-md px-2 py-1 text-xs text-dark placeholder:text-muted/50 outline-none focus:border-coral tabular-nums font-mono" data-idx="' + idx + '" min="0" step="100" placeholder="No limit" value="' + (neuron.max_tokens || "") + '" />'
+          + '</div>'
+          + '<div class="flex flex-col gap-1">'
+          + '<label class="text-[10px] font-medium text-muted">Priority</label>'
+          + '<input type="number" class="neuron-priority-input w-full bg-subtle/50 border border-dark/[0.06] rounded-md px-2 py-1 text-xs text-dark placeholder:text-muted/50 outline-none focus:border-coral tabular-nums font-mono" data-idx="' + idx + '" min="0" max="100" value="' + (neuron.priority || 0) + '" />'
+          + '</div>'
+          + '</div>'
+          + '</div>';
+
+        card.innerHTML = headerHtml + fieldsHtml;
+        neuronList.appendChild(card);
+      });
+
+      /* Attach event listeners */
+      neuronList.querySelectorAll(".neuron-remove-btn").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var i = parseInt(btn.getAttribute("data-idx"), 10);
+          neurons.splice(i, 1);
+          renderNeuronList();
+          updateTokenBudget();
+          updatePreview();
+          autoSavePipeline();
+        });
+      });
+
+      neuronList.querySelectorAll(".neuron-toggle-btn").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var i = parseInt(btn.getAttribute("data-idx"), 10);
+          neurons[i].enabled = neurons[i].enabled === false ? true : false;
+          renderNeuronList();
+          updateTokenBudget();
+          updatePreview();
+          autoSavePipeline();
+        });
+      });
+
+      neuronList.querySelectorAll(".neuron-template-input").forEach(function (input) {
+        input.addEventListener("input", function () {
+          var i = parseInt(input.getAttribute("data-idx"), 10);
+          neurons[i].template = input.value;
+          updateTokenBudget();
+          updatePreview();
+        });
+        input.addEventListener("change", function () { autoSavePipeline(); });
+      });
+
+      neuronList.querySelectorAll(".neuron-max-tokens-input").forEach(function (input) {
+        input.addEventListener("change", function () {
+          var i = parseInt(input.getAttribute("data-idx"), 10);
+          neurons[i].max_tokens = input.value ? parseInt(input.value, 10) : null;
+          updateTokenBudget();
+          updatePreview();
+          autoSavePipeline();
+        });
+      });
+
+      neuronList.querySelectorAll(".neuron-priority-input").forEach(function (input) {
+        input.addEventListener("change", function () {
+          var i = parseInt(input.getAttribute("data-idx"), 10);
+          neurons[i].priority = parseInt(input.value, 10) || 0;
+          autoSavePipeline();
+        });
+      });
+
+      /* Drag and drop */
+      neuronList.querySelectorAll(".neuron-card").forEach(function (card) {
+        card.addEventListener("dragstart", function (e) {
+          neuronDragIndex = parseInt(card.getAttribute("data-neuron-idx"), 10);
+          card.classList.add("opacity-50");
+          e.dataTransfer.effectAllowed = "move";
+        });
+        card.addEventListener("dragend", function () {
+          card.classList.remove("opacity-50");
+          neuronDragIndex = null;
+        });
+        card.addEventListener("dragover", function (e) {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "move";
+          card.classList.add("border-coral");
+        });
+        card.addEventListener("dragleave", function () {
+          card.classList.remove("border-coral");
+        });
+        card.addEventListener("drop", function (e) {
+          e.preventDefault();
+          card.classList.remove("border-coral");
+          var targetIdx = parseInt(card.getAttribute("data-neuron-idx"), 10);
+          if (neuronDragIndex !== null && neuronDragIndex !== targetIdx) {
+            var moved = neurons.splice(neuronDragIndex, 1)[0];
+            neurons.splice(targetIdx, 0, moved);
+            renderNeuronList();
+            updateTokenBudget();
+            updatePreview();
+            autoSavePipeline();
+          }
+        });
+      });
+
+      updateTokenBudget();
+    }
+
+    function _neuronPlaceholder(type) {
+      var placeholders = {
+        system_instruction: "You are a helpful assistant...",
+        context_state: "Key-value context state",
+        tool_results: "Tool execution results",
+        conversation_history: "Message history",
+        knowledge_retrieval: "Retrieved knowledge chunks",
+        custom_template: "Enter custom template text...",
+      };
+      return placeholders[type] || "Template content...";
+    }
+
+    function updateTokenBudget() {
+      if (neurons.length === 0) {
+        neuronTokenBudget.classList.add("hidden");
+        return;
+      }
+
+      neuronTokenBudget.classList.remove("hidden");
+
+      var total = 0;
+      var items = [];
+      neurons.forEach(function (n, idx) {
+        if (n.enabled === false) return;
+        var meta = NEURON_TYPE_META[n.type] || { label: n.type };
+        var text = n.template || "";
+        var estimated = Math.max(Math.ceil(text.length / 4), 50);
+        if (n.max_tokens && estimated > n.max_tokens) estimated = n.max_tokens;
+        total += estimated;
+        items.push({ label: n.label || meta.label, tokens: estimated, maxTokens: n.max_tokens, colorIdx: idx });
+      });
+
+      neuronTotalTokens.textContent = total.toLocaleString() + " tokens (est.)";
+
+      neuronBudgetBars.innerHTML = "";
+      items.forEach(function (item) {
+        var pct = total > 0 ? Math.max((item.tokens / total) * 100, 2) : 0;
+        var colorClass = BUDGET_COLORS[item.colorIdx % BUDGET_COLORS.length];
+        var bar = document.createElement("div");
+        bar.className = "flex items-center gap-2";
+        bar.innerHTML = '<span class="text-[10px] text-muted w-28 truncate">' + item.label + '</span>'
+          + '<div class="flex-1 h-2 rounded-full bg-dark/[0.06] overflow-hidden">'
+          + '<div class="h-full rounded-full ' + colorClass + ' transition-all" style="width: ' + pct + '%"></div>'
+          + '</div>'
+          + '<span class="text-[10px] text-muted tabular-nums font-mono w-16 text-right">' + item.tokens.toLocaleString() + (item.maxTokens ? " / " + item.maxTokens.toLocaleString() : "") + '</span>';
+        neuronBudgetBars.appendChild(bar);
+      });
+    }
+
+    function updatePreview() {
+      if (neurons.length === 0) {
+        neuronPreviewEmpty.classList.remove("hidden");
+        neuronPreviewContent.classList.add("hidden");
+        return;
+      }
+
+      neuronPreviewEmpty.classList.add("hidden");
+      neuronPreviewContent.classList.remove("hidden");
+      neuronPreviewContent.innerHTML = "";
+
+      neurons.forEach(function (n) {
+        if (n.enabled === false) return;
+        var meta = NEURON_TYPE_META[n.type] || { label: n.type, color: "bg-dark/5 text-dark" };
+        var text = n.template || _neuronPlaceholder(n.type);
+
+        var section = document.createElement("div");
+        section.className = "flex flex-col gap-1";
+        section.innerHTML = '<span class="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium ' + meta.color + ' w-fit">'
+          + meta.icon + ' ' + (n.label || meta.label)
+          + '</span>'
+          + '<pre class="text-[11px] text-dark/80 font-mono whitespace-pre-wrap bg-subtle/50 rounded px-2 py-1.5 border border-dark/[0.04] leading-relaxed">' + _escapeHtml(text) + '</pre>';
+        neuronPreviewContent.appendChild(section);
+      });
+    }
+
+    function _escapeHtml(str) {
+      var div = document.createElement("div");
+      div.appendChild(document.createTextNode(str));
+      return div.innerHTML;
+    }
+
+    if (neuronPreviewToggle) {
+      neuronPreviewToggle.addEventListener("click", function () {
+        var hidden = neuronPreviewPanel.classList.toggle("hidden");
+        if (hidden) {
+          neuronPreviewChevron.style.transform = "";
+        } else {
+          neuronPreviewChevron.style.transform = "rotate(90deg)";
+          updatePreview();
+        }
+      });
+    }
+
+    if (neuronAddBtn) {
+      neuronAddBtn.addEventListener("click", function () {
+        var type = neuronAddType.value;
+        var meta = NEURON_TYPE_META[type] || { label: type };
+        neurons.push({
+          type: type,
+          label: meta.label,
+          template: "",
+          max_tokens: null,
+          priority: 0,
+          enabled: true,
+        });
+        renderNeuronList();
+        updateTokenBudget();
+        updatePreview();
+        autoSavePipeline();
+      });
+    }
+
+    var _pipelineSaveTimer = null;
+    function autoSavePipeline() {
+      if (_pipelineSaveTimer) clearTimeout(_pipelineSaveTimer);
+      _pipelineSaveTimer = setTimeout(function () { savePipeline(); }, 800);
+    }
+
+    function savePipeline() {
+      if (!agentId) return;
+      var pipelineId = neuronPipelineId.value;
+      var payload = { name: "Default Pipeline", neurons: neurons };
+
+      if (pipelineId) {
+        fetch("/api/agents/" + agentId + "/pipelines/" + pipelineId, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }).catch(function () {});
+      } else {
+        fetch("/api/agents/" + agentId + "/pipelines", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        })
+          .then(function (res) { return res.ok ? res.json() : null; })
+          .then(function (data) {
+            if (data && data.id) neuronPipelineId.value = data.id;
+          })
+          .catch(function () {});
+      }
+    }
+
+    function loadPipelines() {
+      if (!agentId) return;
+      fetch("/api/agents/" + agentId + "/pipelines")
+        .then(function (res) { return res.ok ? res.json() : []; })
+        .then(function (pipelines) {
+          if (pipelines.length > 0) {
+            var p = pipelines[0];
+            neuronPipelineId.value = p.id;
+            neurons = p.neurons || [];
+            renderNeuronList();
+            updateTokenBudget();
+            updatePreview();
+          }
+        })
+        .catch(function () {});
     }
 
     /* ------------------------------------------------------------------ */
@@ -2653,6 +3061,9 @@ const saveIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
         ctxWorkspaceEnabled = true;
         setToggle(ctxToggleWorkspace, true);
       }
+
+      /* Load neuron pipeline */
+      loadPipelines();
 
       /* Populate providers, then models. */
       fetch("/api/providers")

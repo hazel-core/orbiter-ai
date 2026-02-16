@@ -20,6 +20,7 @@ from orbiter_web.routes.costs import router as costs_router
 from orbiter_web.routes.crews import router as crews_router
 from orbiter_web.routes.knowledge_bases import router as knowledge_bases_router
 from orbiter_web.routes.models import router as models_router
+from orbiter_web.routes.neuron_pipelines import router as neuron_pipelines_router
 from orbiter_web.routes.plans import router as plans_router
 from orbiter_web.routes.playground import router as playground_router
 from orbiter_web.routes.plugins import router as plugins_router
@@ -63,6 +64,7 @@ if settings.cors_origins:
     )
 
 app.include_router(agents_router)
+app.include_router(neuron_pipelines_router)
 app.include_router(plans_router)
 app.include_router(applications_router)
 app.include_router(conversations_router)
