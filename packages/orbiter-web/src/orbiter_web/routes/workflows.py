@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from orbiter_web.database import get_db
@@ -37,6 +39,15 @@ class WorkflowUpdate(BaseModel):
     status: str | None = None
 
 
+class WorkflowImport(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+    project_id: str = Field(..., min_length=1)
+    description: str = ""
+    nodes_json: str = "[]"
+    edges_json: str = "[]"
+    viewport_json: str = '{"x":0,"y":0,"zoom":1}'
+
+
 class WorkflowResponse(BaseModel):
     id: str
     name: str
@@ -45,6 +56,7 @@ class WorkflowResponse(BaseModel):
     nodes_json: str
     edges_json: str
     viewport_json: str
+    version: int
     status: str
     last_run_at: str | None
     user_id: str
@@ -62,9 +74,7 @@ def _row_to_dict(row: Any) -> dict[str, Any]:
     return dict(row)
 
 
-async def _verify_ownership(
-    db: Any, workflow_id: str, user_id: str
-) -> dict[str, Any]:
+async def _verify_ownership(db: Any, workflow_id: str, user_id: str) -> dict[str, Any]:
     """Verify workflow exists and belongs to user. Returns row dict or raises 404."""
     cursor = await db.execute(
         "SELECT * FROM workflows WHERE id = ? AND user_id = ?",
@@ -140,9 +150,61 @@ async def create_workflow(
         )
         await db.commit()
 
+        cursor = await db.execute("SELECT * FROM workflows WHERE id = ?", (workflow_id,))
+        row = await cursor.fetchone()
+        return _row_to_dict(row)
+
+
+@router.post("/import", response_model=WorkflowResponse, status_code=201)
+async def import_workflow(
+    body: WorkflowImport,
+    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+) -> dict[str, Any]:
+    """Import and create a workflow from JSON data."""
+    # Validate that JSON fields are valid JSON.
+    for field_name in ("nodes_json", "edges_json", "viewport_json"):
+        value = getattr(body, field_name)
+        try:
+            json.loads(value)
+        except (json.JSONDecodeError, TypeError):
+            raise HTTPException(  # noqa: B904
+                status_code=422,
+                detail=f"Invalid JSON in {field_name}",
+            )
+
+    async with get_db() as db:
+        # Verify project exists and belongs to user.
         cursor = await db.execute(
-            "SELECT * FROM workflows WHERE id = ?", (workflow_id,)
+            "SELECT id FROM projects WHERE id = ? AND user_id = ?",
+            (body.project_id, user["id"]),
         )
+        if await cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        workflow_id = str(uuid.uuid4())
+        now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
+
+        await db.execute(
+            """
+            INSERT INTO workflows (id, name, description, project_id, nodes_json, edges_json, viewport_json, user_id, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                workflow_id,
+                body.name,
+                body.description,
+                body.project_id,
+                body.nodes_json,
+                body.edges_json,
+                body.viewport_json,
+                user["id"],
+                now,
+                now,
+            ),
+        )
+        await db.commit()
+
+        cursor = await db.execute("SELECT * FROM workflows WHERE id = ?", (workflow_id,))
         row = await cursor.fetchone()
         return _row_to_dict(row)
 
@@ -181,9 +243,7 @@ async def update_workflow(
         )
         await db.commit()
 
-        cursor = await db.execute(
-            "SELECT * FROM workflows WHERE id = ?", (workflow_id,)
-        )
+        cursor = await db.execute("SELECT * FROM workflows WHERE id = ?", (workflow_id,))
         row = await cursor.fetchone()
         return _row_to_dict(row)
 
@@ -198,3 +258,30 @@ async def delete_workflow(
         await _verify_ownership(db, workflow_id, user["id"])
         await db.execute("DELETE FROM workflows WHERE id = ?", (workflow_id,))
         await db.commit()
+
+
+@router.post("/{workflow_id}/export")
+async def export_workflow(
+    workflow_id: str,
+    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+) -> JSONResponse:
+    """Export a workflow as downloadable JSON."""
+    async with get_db() as db:
+        data = await _verify_ownership(db, workflow_id, user["id"])
+
+    export_data = {
+        "name": data["name"],
+        "description": data["description"],
+        "version": data["version"],
+        "nodes_json": data["nodes_json"],
+        "edges_json": data["edges_json"],
+        "viewport_json": data["viewport_json"],
+    }
+
+    safe_name = data["name"].replace(" ", "_").lower()
+    return JSONResponse(
+        content=export_data,
+        headers={
+            "Content-Disposition": f'attachment; filename="{safe_name}.json"',
+        },
+    )
