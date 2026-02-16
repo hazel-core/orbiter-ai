@@ -1,6 +1,8 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import type { Node } from "@xyflow/react";
 import { NODE_CATEGORIES } from "./NodeSidebar";
+import LlmCallConfig from "./LlmCallConfig";
+import AgentNodeConfig from "./AgentNodeConfig";
 
 /* ------------------------------------------------------------------ */
 /* Types                                                                */
@@ -23,6 +25,82 @@ function getNodeTypeInfo(nodeType: string) {
     if (found) return { label: found.label, category: cat.label, color: cat.color, icon: found.icon };
   }
   return { label: nodeType, category: "Unknown", color: "#999", icon: null };
+}
+
+/** Node types that have type-specific config panels */
+const AGENT_TYPES = new Set(["agent_node", "sub_agent"]);
+
+/** Render the type-specific configuration for a node */
+function renderTypeConfig(
+  node: Node,
+  onDataChange: (updates: Record<string, unknown>) => void,
+) {
+  const nodeType = node.data.nodeType as string;
+
+  if (nodeType === "llm_call") {
+    return (
+      <LlmCallConfig
+        data={{
+          model_provider: node.data.model_provider as string | undefined,
+          model_name: node.data.model_name as string | undefined,
+          prompt: node.data.prompt as string | undefined,
+          temperature: node.data.temperature as number | undefined,
+          max_tokens: node.data.max_tokens as number | undefined,
+          response_format: node.data.response_format as "text" | "json" | undefined,
+        }}
+        onChange={onDataChange}
+      />
+    );
+  }
+
+  if (AGENT_TYPES.has(nodeType)) {
+    return (
+      <AgentNodeConfig
+        data={{
+          agent_id: node.data.agent_id as string | undefined,
+          inline: node.data.inline as boolean | undefined,
+          inline_name: node.data.inline_name as string | undefined,
+          inline_model_provider: node.data.inline_model_provider as string | undefined,
+          inline_model_name: node.data.inline_model_name as string | undefined,
+          inline_instructions: node.data.inline_instructions as string | undefined,
+          inline_tools: node.data.inline_tools as string[] | undefined,
+        }}
+        onChange={onDataChange}
+      />
+    );
+  }
+
+  /* Default placeholder for other node types */
+  return (
+    <div
+      style={{
+        padding: "20px 12px",
+        textAlign: "center",
+        fontSize: 12,
+        color: "var(--zen-muted, #999)",
+        border: "1px dashed var(--zen-subtle, #e0ddd0)",
+        borderRadius: 8,
+      }}
+    >
+      <div style={{ marginBottom: 4, fontSize: 16 }}>
+        <svg
+          width="24"
+          height="24"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{ display: "inline-block", opacity: 0.5 }}
+        >
+          <circle cx="12" cy="12" r="3" />
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+        </svg>
+      </div>
+      Configuration for this node type coming soon
+    </div>
+  );
 }
 
 /* ------------------------------------------------------------------ */
@@ -48,6 +126,18 @@ export default function NodeConfigPanel({ node, onClose, onNodeUpdate }: NodeCon
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(() => {
         onNodeUpdate(node.id, { ...node.data, label: newName });
+      }, 500);
+    },
+    [node, onNodeUpdate],
+  );
+
+  /* Debounced data update for type-specific config fields */
+  const scheduleDataUpdate = useCallback(
+    (updates: Record<string, unknown>) => {
+      if (!node) return;
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => {
+        onNodeUpdate(node.id, { ...node.data, ...updates });
       }, 500);
     },
     [node, onNodeUpdate],
@@ -311,35 +401,8 @@ export default function NodeConfigPanel({ node, onClose, onNodeUpdate }: NodeCon
           }}
         />
 
-        {/* Placeholder for node-type-specific fields */}
-        <div
-          style={{
-            padding: "20px 12px",
-            textAlign: "center",
-            fontSize: 12,
-            color: "var(--zen-muted, #999)",
-            border: "1px dashed var(--zen-subtle, #e0ddd0)",
-            borderRadius: 8,
-          }}
-        >
-          <div style={{ marginBottom: 4, fontSize: 16 }}>
-            <svg
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              style={{ display: "inline-block", opacity: 0.5 }}
-            >
-              <circle cx="12" cy="12" r="3" />
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-            </svg>
-          </div>
-          Node-type-specific configuration will appear here
-        </div>
+        {/* Node-type-specific configuration */}
+        {renderTypeConfig(node, scheduleDataUpdate)}
       </div>
 
       {/* Inline keyframes for slide-in animation */}
