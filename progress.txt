@@ -798,3 +798,22 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Non-configured node types still show the gear icon placeholder with "coming soon" message
   - Manual browser verification needed (no browser testing tool available)
 ---
+
+## 2026-02-16 - US-049
+- What was implemented: Conditional, Code, and HTTP Request node configuration panels for the workflow canvas
+- Files changed:
+  - packages/orbiter-web/src/islands/Canvas/ConditionalConfig.tsx (new — condition expression editor with monospace textarea, true/false labeled output handle editors with colored T/F badges, handle guide info box)
+  - packages/orbiter-web/src/islands/Canvas/CodeNodeConfig.tsx (new — Python/JavaScript language toggle, syntax-highlighted code editor with line numbers using highlight overlay pattern, Tab key indentation, entry function input, timeout setting)
+  - packages/orbiter-web/src/islands/Canvas/HttpRequestConfig.tsx (new — method dropdown with colored method names, URL input, collapsible key-value headers editor with add/remove, body textarea for POST/PUT, auth selector with bearer/basic/api_key modes, timeout)
+  - packages/orbiter-web/src/islands/Canvas/NodeConfigPanel.tsx (updated — added imports and renderTypeConfig dispatcher cases for conditional, code_python, code_javascript, http_request node types)
+- **Learnings for future iterations:**
+  - Node config components follow a consistent pattern: `data` prop (typed interface), `onChange` callback that merges updates; same shared style constants (labelStyle, inputStyle, selectStyle, focusHandlers)
+  - `CODE_TYPES` Set pattern (like `AGENT_TYPES`) groups `code_python` and `code_javascript` into a single config component with `initialLanguage` prop
+  - Syntax highlighting in code editor uses the same highlight-overlay pattern from the agent prompt editor (transparent textarea on top, styled HTML below)
+  - Python/JS keyword highlighting via regex replacement chain: comments → strings → numbers → keywords; order matters to avoid double-highlighting
+  - Tab key handling in textarea: `e.preventDefault()` + string splice + `requestAnimationFrame` to restore cursor position after React re-render
+  - HTTP method colors (GET=green, POST=blue, PUT=amber, DELETE=red) follow REST API convention colors
+  - Headers key-value editor uses indexed array manipulation — updateHeader/removeHeader take the array index
+  - Auth type selector clears all auth fields on type change to avoid stale data leaking between auth modes
+  - Manual browser verification needed (no browser testing tool available)
+---
