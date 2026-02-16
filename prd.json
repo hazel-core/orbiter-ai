@@ -2697,6 +2697,820 @@
       "priority": 18,
       "passes": true,
       "notes": "Gap fill: auth system has login (US-018) but no way to create the first user"
+    },
+    {
+      "id": "US-155",
+      "title": "Orbiter-core agent runtime bridge",
+      "description": "As a developer, I need an AgentService that converts database agent config records into live Orbiter Agent objects so that the playground, workflows, and deployments can actually execute agents.",
+      "acceptanceCriteria": [
+        "src/orbiter_web/services/agent_runtime.py created",
+        "AgentService class with build_agent(agent_id: str) -> orbiter Agent instance",
+        "Reads agent config from DB (model, tools, system prompt, temperature, max_tokens)",
+        "Resolves model provider from provider_keys table and instantiates correct ModelProvider",
+        "Resolves assigned tools from tools table and wraps as Orbiter Tool objects",
+        "Resolves agent memory config and creates appropriate memory strategy",
+        "run_agent(agent_id, messages) async method that executes a single turn and returns ModelResponse",
+        "stream_agent(agent_id, messages) async generator that yields StreamChunk events",
+        "Error handling: raises clear AgentRuntimeError if agent not found, provider not configured, or model call fails",
+        "Unit tests with mocked DB and mocked model provider",
+        "Typecheck passes"
+      ],
+      "priority": 16,
+      "passes": false,
+      "notes": "Gap fill: ~20 stories say 'run agent' but none defines how DB configs become live Agent objects. Blocks US-058, US-069, US-096"
+    },
+    {
+      "id": "US-156",
+      "title": "WebSocket infrastructure — server-side manager",
+      "description": "As a developer, I need a multiplexed WebSocket manager so that all real-time features share a single connection per client with channel-based routing.",
+      "acceptanceCriteria": [
+        "src/orbiter_web/websocket.py created with WebSocketManager class",
+        "Single endpoint: ws://api/ws accepting WebSocket connections",
+        "Authentication on connect: first message must include session cookie/token, reject if invalid",
+        "Channel-based multiplexing: messages contain {channel, type, payload} envelope",
+        "Channels: chat, execution, logs, sandbox, notifications, system",
+        "subscribe(channel) and unsubscribe(channel) message types",
+        "Server-side heartbeat: ping every 30s, disconnect if no pong within 10s",
+        "ConnectionRegistry tracking active connections by user_id",
+        "broadcast_to_user(user_id, channel, message) method for server-initiated pushes",
+        "WebSocket route registered in app.py",
+        "Typecheck passes"
+      ],
+      "priority": 16,
+      "passes": false,
+      "notes": "Gap fill: PRD architecture decision #3 requires single multiplexed WS. Currently 4+ ad-hoc endpoints defined across stories"
+    },
+    {
+      "id": "US-157",
+      "title": "WebSocket infrastructure — client-side library",
+      "description": "As a developer, I need a client-side WebSocket singleton so that all frontend features share one connection with automatic reconnection.",
+      "acceptanceCriteria": [
+        "src/utils/websocket.ts created with OrbiterSocket class",
+        "Singleton pattern: one connection per page lifecycle",
+        "Auto-connects on first subscribe() call",
+        "subscribe(channel, callback) and unsubscribe(channel) methods",
+        "Reconnection with exponential backoff: 1s, 2s, 4s, 8s, 16s, max 30s",
+        "Connection state observable: connecting, connected, disconnected, reconnecting",
+        "Heartbeat: responds to server pings with pong",
+        "Queue messages sent while disconnected, flush on reconnect",
+        "onConnectionChange(callback) for UI status indicators",
+        "Typecheck passes"
+      ],
+      "priority": 16,
+      "passes": false,
+      "notes": "Gap fill: client-side counterpart to US-156. Also covers gap #22 (reconnection with backoff)"
+    },
+    {
+      "id": "US-158",
+      "title": "Fix projects route auth bypass",
+      "description": "As a developer, I need to replace the hardcoded _DEFAULT_USER_ID in the projects route with proper authentication so that projects are scoped to the logged-in user.",
+      "acceptanceCriteria": [
+        "Remove _DEFAULT_USER_ID constant from routes/projects.py",
+        "All project endpoints use Depends(get_current_user) to get user from session",
+        "Projects scoped to user: GET /api/projects returns only projects owned by authenticated user",
+        "POST /api/projects sets owner_id from authenticated user",
+        "Unauthenticated requests return 401",
+        "Existing project data remains accessible (migration adds owner_id to projects if needed)",
+        "Typecheck passes"
+      ],
+      "priority": 17,
+      "passes": false,
+      "notes": "Gap fill: projects.py bypasses auth entirely with hardcoded user ID. Security vulnerability"
+    },
+    {
+      "id": "US-159",
+      "title": "CORS middleware configuration",
+      "description": "As a developer, I need CORS middleware configured so that the embeddable widget and cross-origin requests work correctly.",
+      "acceptanceCriteria": [
+        "FastAPI CORSMiddleware added to app.py",
+        "Default allowed origins from ORBITER_CORS_ORIGINS env var (comma-separated, defaults to empty/same-origin)",
+        "Allowed methods: GET, POST, PUT, DELETE, OPTIONS",
+        "Allowed headers: Content-Type, Authorization, X-CSRF-Token",
+        "Credentials: true (needed for cookie-based auth)",
+        "Per-deployment CORS origins configurable (for widget embeds)",
+        "Typecheck passes"
+      ],
+      "priority": 19,
+      "passes": false,
+      "notes": "Gap fill: no CORS middleware configured. Required for US-137 (embeddable widget) and security"
+    },
+    {
+      "id": "US-160",
+      "title": "CSRF protection middleware",
+      "description": "As a developer, I need CSRF protection on all state-changing endpoints since the app uses cookie-based authentication.",
+      "acceptanceCriteria": [
+        "CSRF middleware added: generates CSRF token per session",
+        "GET /api/auth/csrf returns {token: string} for frontend to use",
+        "All POST/PUT/DELETE endpoints require X-CSRF-Token header matching session token",
+        "Auth endpoints (login) exempt from CSRF check",
+        "Health endpoint exempt from CSRF check",
+        "Frontend utility: getCsrfToken() fetches and caches token, auto-includes in fetch headers",
+        "Clear CSRF token on logout",
+        "Typecheck passes"
+      ],
+      "priority": 19,
+      "passes": false,
+      "notes": "Gap fill: cookie-based auth with no CSRF protection is a classic vulnerability"
+    },
+    {
+      "id": "US-161",
+      "title": "Rate limiting middleware",
+      "description": "As a developer, I need rate limiting to protect auth endpoints from brute force and LLM endpoints from abuse.",
+      "acceptanceCriteria": [
+        "slowapi or custom rate limiting middleware added to app.py",
+        "Auth endpoints (POST /api/auth/login): 5 attempts per minute per IP",
+        "General API endpoints: 60 requests per minute per user",
+        "Agent execution endpoints: 10 requests per minute per user (configurable via ORBITER_RATE_LIMIT_AGENT env var)",
+        "Rate limit headers returned: X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset",
+        "429 Too Many Requests response with retry-after header when limit exceeded",
+        "Typecheck passes"
+      ],
+      "priority": 19,
+      "passes": false,
+      "notes": "Gap fill: no rate limiting anywhere. Login brute-forceable, LLM calls (which cost money) unthrottled"
+    },
+    {
+      "id": "US-162",
+      "title": "Startup environment validation and secret key warning",
+      "description": "As a developer, I need the application to validate its configuration on startup and refuse to start or loudly warn when using insecure defaults.",
+      "acceptanceCriteria": [
+        "On startup, check if ORBITER_SECRET_KEY equals 'change-me-in-production'",
+        "If default key: log WARNING with clear message 'Using default secret key — all encrypted data is insecure. Set ORBITER_SECRET_KEY env var'",
+        "If ORBITER_SECRET_KEY not set at all: same warning",
+        "Validate database path is writable on startup",
+        "Log startup config summary: database path, debug mode, session expiry, CORS origins (no secrets)",
+        "Typecheck passes"
+      ],
+      "priority": 19,
+      "passes": false,
+      "notes": "Gap fill: default secret key 'change-me-in-production' means all Fernet-encrypted API keys share the same key across installs"
+    },
+    {
+      "id": "US-163",
+      "title": "CSP headers and input sanitization",
+      "description": "As a developer, I need Content Security Policy headers and server-side input sanitization to prevent XSS attacks.",
+      "acceptanceCriteria": [
+        "Security headers middleware added to app.py",
+        "Content-Security-Policy header: default-src 'self', script-src 'self', style-src 'self' 'unsafe-inline', img-src 'self' data:",
+        "X-Content-Type-Options: nosniff",
+        "X-Frame-Options: DENY (except for widget embed routes)",
+        "Input sanitization utility: sanitize_html(text) strips dangerous tags/attributes",
+        "All user-provided text fields (agent name, description, system prompt) sanitized before storage",
+        "Typecheck passes"
+      ],
+      "priority": 20,
+      "passes": false,
+      "notes": "Gap fill: PRD Security section requires CSP headers and input sanitization. Neither implemented"
+    },
+    {
+      "id": "US-164",
+      "title": "Standardized error response format",
+      "description": "As a developer, I need all API errors to return the structured format defined in the API contract so frontend can parse errors consistently.",
+      "acceptanceCriteria": [
+        "Custom exception handler registered in app.py for HTTPException",
+        "Error response format: {error: {code: string, message: string, details: object}}",
+        "Standard error codes: VALIDATION_ERROR (422), UNAUTHORIZED (401), FORBIDDEN (403), RESOURCE_NOT_FOUND (404), CONFLICT (409), RATE_LIMITED (429), INTERNAL_ERROR (500)",
+        "Pydantic validation errors return VALIDATION_ERROR with field-level details",
+        "All existing HTTPException(detail=...) calls now produce structured format",
+        "Typecheck passes"
+      ],
+      "priority": 20,
+      "passes": false,
+      "notes": "Gap fill: PRD API contract defines error envelope but implementation uses FastAPI default {detail: '...'}"
+    },
+    {
+      "id": "US-165",
+      "title": "Cursor-based pagination utility",
+      "description": "As a developer, I need a pagination utility so all list endpoints return paginated results with cursor-based navigation.",
+      "acceptanceCriteria": [
+        "src/orbiter_web/pagination.py created with paginate() utility function",
+        "Parameters: cursor (optional string), limit (default 20, max 100)",
+        "Response envelope: {data: [...], pagination: {next_cursor: string|null, has_more: boolean, total: number}}",
+        "Cursor is base64-encoded (id, created_at) tuple for stable ordering",
+        "Apply to at least 3 existing list endpoints as examples: GET /api/agents, GET /api/projects, GET /api/workflows",
+        "Backwards compatible: requests without cursor param return first page",
+        "Typecheck passes"
+      ],
+      "priority": 21,
+      "passes": false,
+      "notes": "Gap fill: PRD defines cursor-based pagination for all list endpoints. Currently all return unbounded flat lists"
+    },
+    {
+      "id": "US-166",
+      "title": "File upload infrastructure",
+      "description": "As a developer, I need shared file upload handling so that document ingestion, artifact management, and CSV imports all use consistent upload logic.",
+      "acceptanceCriteria": [
+        "src/orbiter_web/upload.py created with upload utilities",
+        "handle_upload(file: UploadFile, allowed_types, max_size_mb) validates and saves file",
+        "Configurable max file size via ORBITER_MAX_UPLOAD_MB env var (default 50MB)",
+        "Allowed file type validation by extension and MIME type",
+        "Files saved to configurable directory: ORBITER_UPLOAD_DIR (default: data/uploads/)",
+        "Unique filename generation to prevent collisions (UUID prefix)",
+        "Temp file cleanup: delete upload if processing fails",
+        "Upload directory auto-created on first use",
+        "Typecheck passes"
+      ],
+      "priority": 22,
+      "passes": false,
+      "notes": "Gap fill: US-099, US-128, US-123 all need file uploads but no shared infrastructure exists"
+    },
+    {
+      "id": "US-167",
+      "title": "Full-text search infrastructure (FTS5)",
+      "description": "As a developer, I need SQLite FTS5 configured so that search features across entities have good performance and relevance.",
+      "acceptanceCriteria": [
+        "Migration creates FTS5 virtual tables for: agents (name, description, system_prompt), workflows (name, description), tools (name, description), threads (messages content)",
+        "Triggers to keep FTS5 indexes in sync on INSERT/UPDATE/DELETE",
+        "search_entities(query, entity_types, limit) utility function in src/orbiter_web/search.py",
+        "Returns results ranked by relevance with snippet highlighting",
+        "Supports prefix matching (e.g., 'chat*' matches 'chatbot')",
+        "Typecheck passes"
+      ],
+      "priority": 23,
+      "passes": false,
+      "notes": "Gap fill: many stories mention 'search' but no FTS infrastructure. Naive LIKE queries don't scale"
+    },
+    {
+      "id": "US-168",
+      "title": "Global search backend (Cmd+K)",
+      "description": "As a developer, I need a cross-entity search endpoint so the Cmd+K search can find agents, workflows, tools, and knowledge bases in one query.",
+      "acceptanceCriteria": [
+        "GET /api/search?q=<query>&types=agents,workflows,tools,knowledge_bases endpoint",
+        "Uses FTS5 infrastructure from US-167",
+        "Returns results grouped by entity type: {agents: [...], workflows: [...], tools: [...]}",
+        "Each result: id, name, type, description snippet, url path to navigate to",
+        "Maximum 5 results per entity type (20 total)",
+        "Empty query returns recent items instead of search results",
+        "Typecheck passes"
+      ],
+      "priority": 23,
+      "passes": false,
+      "notes": "Gap fill: US-014 has Cmd+K placeholder in top bar, API contract defines GET /api/v1/search"
+    },
+    {
+      "id": "US-169",
+      "title": "Global search UI (Cmd+K modal)",
+      "description": "As a user, I want a Cmd+K search modal to quickly find agents, workflows, tools, and pages.",
+      "acceptanceCriteria": [
+        "Cmd+K (or Ctrl+K) keyboard shortcut opens search modal overlay",
+        "Search input with autofocus and placeholder 'Search agents, workflows, tools...'",
+        "Results grouped by type with type header labels",
+        "Each result shows: icon (by type), name, description snippet",
+        "Arrow keys navigate results, Enter opens selected result",
+        "Escape or click outside closes modal",
+        "Debounced search (300ms) calls GET /api/search",
+        "Recent searches shown when input is empty",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 23,
+      "passes": false,
+      "notes": "Gap fill: US-014 top bar has search trigger placeholder but no modal or functionality"
+    },
+    {
+      "id": "US-170",
+      "title": "Notification system — migration and backend",
+      "description": "As a developer, I need a notification system so approval gates, budget alerts, and alert rules can notify users.",
+      "acceptanceCriteria": [
+        "Migration: notifications table (id TEXT PK, user_id TEXT FK, type TEXT, title TEXT, message TEXT, entity_type TEXT, entity_id TEXT, read INTEGER DEFAULT 0, created_at TEXT)",
+        "GET /api/notifications returns notifications for current user, newest first, with pagination",
+        "GET /api/notifications/unread-count returns {count: number}",
+        "PUT /api/notifications/:id/read marks notification as read",
+        "POST /api/notifications/read-all marks all as read",
+        "create_notification(user_id, type, title, message, entity_type, entity_id) service function",
+        "Notification pushed via WebSocket notifications channel (US-156) when created",
+        "Typecheck passes"
+      ],
+      "priority": 24,
+      "passes": false,
+      "notes": "Gap fill: US-119 (approval gates), US-117 (alerts), US-113 (budget) all create notifications but no system exists"
+    },
+    {
+      "id": "US-171",
+      "title": "Notification UI — bell icon and dropdown",
+      "description": "As a user, I want a notification bell in the top bar showing unread count and a dropdown with recent notifications.",
+      "acceptanceCriteria": [
+        "Bell icon added to top bar (PageLayout.astro) next to theme toggle",
+        "Unread count badge (red circle with number) shown on bell when count > 0",
+        "Click bell opens dropdown panel with notification list",
+        "Each notification: type icon, title, time ago, read/unread styling",
+        "Click notification navigates to relevant entity and marks as read",
+        "Mark all as read button at top of dropdown",
+        "Real-time updates via WebSocket notifications channel",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 24,
+      "passes": false,
+      "notes": "Gap fill: UI counterpart to US-170. US-120 requires 'in-app notification badge'"
+    },
+    {
+      "id": "US-172",
+      "title": "Schedule/cron trigger backend",
+      "description": "As a developer, I need a scheduler that triggers workflow execution on a cron schedule so that Schedule trigger nodes actually work.",
+      "acceptanceCriteria": [
+        "Migration: schedules table (id, workflow_id, cron_expression, timezone, enabled, last_run_at, next_run_at, created_at)",
+        "Background scheduler using APScheduler or asyncio-based cron loop",
+        "Scheduler starts on app lifespan startup, stops on shutdown",
+        "POST /api/schedules creates schedule for a workflow",
+        "GET /api/schedules lists schedules with next_run_at",
+        "PUT /api/schedules/:id updates cron expression or enabled status",
+        "DELETE /api/schedules/:id removes schedule",
+        "When schedule fires, creates a workflow run via POST /api/workflows/:id/run internally",
+        "Typecheck passes"
+      ],
+      "priority": 30,
+      "passes": false,
+      "notes": "Gap fill: US-045 node sidebar lists Schedule trigger but no backend implements it"
+    },
+    {
+      "id": "US-173",
+      "title": "Per-node retry and error handling in workflows",
+      "description": "As a developer, I need configurable retry and error handling per workflow node so a single transient failure doesn't kill the entire workflow.",
+      "acceptanceCriteria": [
+        "Node config schema extended with: retry_count (0-5, default 0), retry_delay_ms (default 1000), on_error ('fail' | 'skip' | 'fallback')",
+        "Workflow execution engine retries failed nodes up to retry_count times with exponential backoff",
+        "on_error='fail': stops workflow (current behavior)",
+        "on_error='skip': marks node as skipped, continues to next nodes with null output",
+        "on_error='fallback': uses fallback_value from node config as output",
+        "Per-node timeout_ms config (default 30000), kills node execution if exceeded",
+        "Retry attempts logged in workflow run execution trace",
+        "Typecheck passes"
+      ],
+      "priority": 30,
+      "passes": false,
+      "notes": "Gap fill: US-069 workflow execution has no retry logic. Single transient failure kills entire workflow"
+    },
+    {
+      "id": "US-174",
+      "title": "Agent memory persistence backend",
+      "description": "As a developer, I need memory strategies that persist conversation state between agent turns so the memory toggle in the agent builder actually works.",
+      "acceptanceCriteria": [
+        "src/orbiter_web/services/memory.py created with MemoryService",
+        "Three strategies: ConversationMemory (full history), SummaryMemory (LLM-summarized), SlidingWindowMemory (last N messages)",
+        "get_memory(agent_id, thread_id) returns messages to inject into context",
+        "save_turn(agent_id, thread_id, user_message, assistant_message) persists new turn",
+        "ConversationMemory: loads all messages from thread",
+        "SlidingWindowMemory: loads last N messages (configurable window_size, default 20)",
+        "SummaryMemory: maintains running summary, updates after each turn",
+        "Memory strategy selected from agent config memory_type field",
+        "clear_memory(agent_id, thread_id) resets memory for a thread",
+        "Typecheck passes"
+      ],
+      "priority": 31,
+      "passes": false,
+      "notes": "Gap fill: US-034 and US-104 have memory toggle in UI but no backend implements the strategies"
+    },
+    {
+      "id": "US-175",
+      "title": "Password change endpoint",
+      "description": "As a user, I need to change my password from the settings page.",
+      "acceptanceCriteria": [
+        "PUT /api/auth/password accepts {current_password, new_password}",
+        "Validates current_password against stored bcrypt hash",
+        "Returns 401 if current_password is wrong",
+        "new_password minimum 8 characters",
+        "Hashes new_password with bcrypt and updates users table",
+        "Invalidates all other sessions for the user (keeps current session)",
+        "Returns 200 with {message: 'Password updated'}",
+        "Typecheck passes"
+      ],
+      "priority": 50,
+      "passes": false,
+      "notes": "Gap fill: US-005 Settings > Profile implies password management but no endpoint exists"
+    },
+    {
+      "id": "US-176",
+      "title": "Password reset flow",
+      "description": "As a user, I need to reset my password if I forget it, using a time-limited reset token.",
+      "acceptanceCriteria": [
+        "Migration: password_resets table (id, user_id, token_hash, expires_at, used INTEGER DEFAULT 0)",
+        "POST /api/auth/forgot-password accepts {email}, generates reset token",
+        "Token is UUID, stored as bcrypt hash, expires in 1 hour",
+        "For now: token printed to server logs (email integration is future work)",
+        "POST /api/auth/reset-password accepts {token, new_password}",
+        "Validates token exists, not expired, not used",
+        "Updates password, marks token as used, invalidates all sessions",
+        "Reset page at /reset-password with token from URL query param",
+        "Typecheck passes"
+      ],
+      "priority": 50,
+      "passes": false,
+      "notes": "Gap fill: no password recovery path. Users permanently locked out if they forget password"
+    },
+    {
+      "id": "US-177",
+      "title": "Session expiry frontend handling",
+      "description": "As a user, I need the frontend to gracefully handle expired sessions instead of silently failing.",
+      "acceptanceCriteria": [
+        "Global fetch wrapper or interceptor in src/utils/api.ts",
+        "On 401 response: redirect to /login with ?expired=true query param",
+        "Login page shows 'Session expired, please log in again' toast when expired=true",
+        "WebSocket: on auth failure or disconnect, show connection status banner",
+        "Pending requests cancelled on session expiry (no cascading error toasts)",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 51,
+      "passes": false,
+      "notes": "Gap fill: 401s after 72h session expiry currently produce silent failures with no user feedback"
+    },
+    {
+      "id": "US-178",
+      "title": "Expired session and data cleanup job",
+      "description": "As a developer, I need a periodic cleanup task that removes expired sessions and stale temporary data.",
+      "acceptanceCriteria": [
+        "Background cleanup task runs on app startup and every 6 hours",
+        "Deletes expired sessions from sessions table (expires_at < now)",
+        "Deletes used/expired password reset tokens",
+        "Deletes orphaned upload temp files older than 24 hours",
+        "Logs count of cleaned items at INFO level",
+        "Configurable via ORBITER_CLEANUP_INTERVAL_HOURS env var (default 6)",
+        "Typecheck passes"
+      ],
+      "priority": 51,
+      "passes": false,
+      "notes": "Gap fill: expired sessions accumulate forever. No cleanup for any temporary data"
+    },
+    {
+      "id": "US-179",
+      "title": "RBAC — role column and migration",
+      "description": "As a developer, I need a role column on the users table so that role-based access control can be enforced.",
+      "acceptanceCriteria": [
+        "Migration adds role column to users table: TEXT NOT NULL DEFAULT 'developer'",
+        "Valid roles: 'admin', 'developer', 'viewer'",
+        "CLI create-user command updated: --role flag (default 'developer')",
+        "GET /api/auth/me response includes role field",
+        "UserResponse model updated to include role",
+        "Typecheck passes"
+      ],
+      "priority": 52,
+      "passes": false,
+      "notes": "Gap fill: API contract defines admin/developer/viewer roles but no role column exists"
+    },
+    {
+      "id": "US-180",
+      "title": "RBAC — role-based route guards",
+      "description": "As a developer, I need middleware that restricts certain endpoints based on user role.",
+      "acceptanceCriteria": [
+        "require_role(min_role) FastAPI dependency factory",
+        "Role hierarchy: admin > developer > viewer",
+        "viewer: can read all resources, cannot create/update/delete",
+        "developer: can CRUD agents, workflows, tools, runs. Cannot manage users or system settings",
+        "admin: full access including user management and system settings",
+        "Applied to: provider_keys (admin only), user management (admin only), system settings (admin only)",
+        "Returns 403 Forbidden with FORBIDDEN error code if role insufficient",
+        "Typecheck passes"
+      ],
+      "priority": 52,
+      "passes": false,
+      "notes": "Gap fill: all authenticated users currently have identical permissions"
+    },
+    {
+      "id": "US-181",
+      "title": "Workflow concurrency limits and run queue",
+      "description": "As a developer, I need concurrency enforcement so the 'concurrent run limit' setting in workspace settings actually works.",
+      "acceptanceCriteria": [
+        "Migration: run_queue table (id, workflow_id, status, queued_at, started_at)",
+        "RunQueue service: check active run count before starting new run",
+        "If active runs >= concurrent_run_limit: queue the run instead of executing immediately",
+        "Queued runs start automatically when a slot opens (active run completes or fails)",
+        "Per-workflow concurrency: optional max_concurrent on workflow config (default: no per-workflow limit)",
+        "GET /api/runs/queue returns queued runs with position",
+        "DELETE /api/runs/queue/:id cancels a queued run",
+        "Typecheck passes"
+      ],
+      "priority": 53,
+      "passes": false,
+      "notes": "Gap fill: US-019 Settings UI has concurrent run limit input that does nothing"
+    },
+    {
+      "id": "US-182",
+      "title": "Storage cleanup and retention policies",
+      "description": "As a developer, I need configurable retention policies so artifacts, sandbox files, and run data don't grow unboundedly.",
+      "acceptanceCriteria": [
+        "Settings: retention_days config per entity type (artifacts, runs, logs) with defaults (artifacts=90, runs=30, logs=14)",
+        "GET/PUT /api/settings/retention for viewing/updating retention config",
+        "Cleanup job (extends US-178): deletes artifacts, runs, and logs older than retention period",
+        "Cascade deletes: deleting a run also deletes its artifacts and logs",
+        "Storage usage endpoint: GET /api/settings/storage returns {total_db_size, artifact_dir_size, upload_dir_size}",
+        "Typecheck passes"
+      ],
+      "priority": 54,
+      "passes": false,
+      "notes": "Gap fill: artifacts, sandbox files, run data, and logs accumulate without limit"
+    },
+    {
+      "id": "US-183",
+      "title": "Audit log — migration and backend",
+      "description": "As a developer, I need audit logging so security-sensitive actions are recorded.",
+      "acceptanceCriteria": [
+        "Migration: audit_log table (id, user_id, action, entity_type, entity_id, details_json, ip_address, created_at)",
+        "audit_log(user_id, action, entity_type, entity_id, details) service function",
+        "Actions logged: login, logout, create_user, update_role, create/delete agent, create/delete workflow, add/delete provider_key, create/delete deployment",
+        "GET /api/audit-log with filters: user_id, action, entity_type, date range (admin only)",
+        "Audit log entries never deleted (exempt from retention policies)",
+        "Typecheck passes"
+      ],
+      "priority": 55,
+      "passes": false,
+      "notes": "Gap fill: API contract defines GET /api/v1/settings/audit-log. No audit trail exists"
+    },
+    {
+      "id": "US-184",
+      "title": "Audit log UI",
+      "description": "As an admin, I want to view the audit log to track who did what on the platform.",
+      "acceptanceCriteria": [
+        "Audit log page at /settings/audit-log (admin only)",
+        "Table: timestamp, user email, action, entity type, entity ID, IP address",
+        "Filter bar: user dropdown, action dropdown, entity type dropdown, date range picker",
+        "Expandable row showing full details JSON",
+        "Pagination with cursor-based navigation",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 55,
+      "passes": false,
+      "notes": "Gap fill: UI counterpart to US-183"
+    },
+    {
+      "id": "US-185",
+      "title": "Team management — backend",
+      "description": "As a developer, I need team management endpoints so admins can invite users and manage roles.",
+      "acceptanceCriteria": [
+        "GET /api/settings/team returns list of all users with id, email, role, created_at (admin only)",
+        "POST /api/settings/team/invite accepts {email, password, role} to create a new user (admin only)",
+        "PUT /api/settings/team/:userId accepts {role} to update user role (admin only)",
+        "DELETE /api/settings/team/:userId deactivates user and revokes all sessions (admin only)",
+        "Cannot delete yourself or demote the last admin",
+        "Typecheck passes"
+      ],
+      "priority": 56,
+      "passes": false,
+      "notes": "Gap fill: API contract defines team management endpoints. Currently no way to manage users after creation"
+    },
+    {
+      "id": "US-186",
+      "title": "Team management — UI",
+      "description": "As an admin, I want to manage team members from the settings page.",
+      "acceptanceCriteria": [
+        "Settings > Team section showing user table: email, role badge, joined date, actions",
+        "Invite User button opens modal with email, temporary password, and role selector fields",
+        "Role dropdown on each user row for changing roles (admin only)",
+        "Remove User button with confirmation dialog",
+        "Cannot remove yourself or change your own role",
+        "Success/error toasts for all actions",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 56,
+      "passes": false,
+      "notes": "Gap fill: UI counterpart to US-185"
+    },
+    {
+      "id": "US-187",
+      "title": "API versioning prefix",
+      "description": "As a developer, I need all API routes prefixed with /api/v1 to match the API contract and support future versioning.",
+      "acceptanceCriteria": [
+        "All routers updated to use prefix /api/v1/... instead of /api/...",
+        "Legacy /api/... routes redirect to /api/v1/... with 301 for backwards compatibility",
+        "WebSocket endpoint moves to /api/v1/ws",
+        "Health check remains at /api/health (no versioning for infra endpoints)",
+        "Frontend API calls updated to use /api/v1/ prefix",
+        "Typecheck passes"
+      ],
+      "priority": 80,
+      "passes": false,
+      "notes": "Gap fill: PRD API contract uses /api/v1/ but implementation uses /api/"
+    },
+    {
+      "id": "US-188",
+      "title": "User profile endpoints",
+      "description": "As a developer, I need profile editing endpoints so users can update their email and view their account info.",
+      "acceptanceCriteria": [
+        "GET /api/auth/profile returns full user profile: id, email, role, created_at",
+        "PUT /api/auth/profile accepts {email} to update email",
+        "Email uniqueness validated (409 Conflict if taken)",
+        "Changing email does not invalidate session",
+        "Audit log entry created on profile update",
+        "Typecheck passes"
+      ],
+      "priority": 81,
+      "passes": false,
+      "notes": "Gap fill: Settings Profile section has no backing endpoints"
+    },
+    {
+      "id": "US-189",
+      "title": "User profile settings UI",
+      "description": "As a user, I want to edit my profile information from the settings page.",
+      "acceptanceCriteria": [
+        "Settings > Profile section shows: email (editable), role (read-only badge), member since date",
+        "Edit email: inline edit with save/cancel buttons",
+        "Change password: current password, new password, confirm new password fields",
+        "Success toast on save, error toast on failure",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 81,
+      "passes": false,
+      "notes": "Gap fill: UI counterpart to US-188 and US-175"
+    },
+    {
+      "id": "US-190",
+      "title": "Workspace data export",
+      "description": "As a user, I want to export my entire workspace data for backup or migration.",
+      "acceptanceCriteria": [
+        "POST /api/settings/export triggers workspace export",
+        "Export includes: agents (configs), workflows (JSON), tools (custom tools), prompt templates, knowledge base configs (not embeddings), provider configs (not keys)",
+        "Export format: ZIP file containing JSON files per entity type",
+        "GET /api/settings/export/:id/download returns the ZIP file",
+        "POST /api/settings/import accepts ZIP file and imports all entities",
+        "Import does not overwrite existing entities (creates new with suffix)",
+        "Typecheck passes"
+      ],
+      "priority": 82,
+      "passes": false,
+      "notes": "Gap fill: no workspace-level backup or migration mechanism"
+    },
+    {
+      "id": "US-191",
+      "title": "Database migration CLI",
+      "description": "As a developer, I need a standalone CLI command to run and inspect database migrations without starting the full server.",
+      "acceptanceCriteria": [
+        "python -m orbiter_web.cli migrate runs all pending migrations",
+        "python -m orbiter_web.cli migrate --status shows applied/pending migrations",
+        "Uses same migration system as app startup (database.py run_migrations)",
+        "Prints each applied migration name as it runs",
+        "Returns exit code 0 on success, 1 on failure",
+        "Works with ORBITER_DATABASE_URL env var",
+        "Typecheck passes"
+      ],
+      "priority": 83,
+      "passes": false,
+      "notes": "Gap fill: migrations only run on app startup. No way to run them independently"
+    },
+    {
+      "id": "US-192",
+      "title": "User deletion and account removal",
+      "description": "As an admin, I need to permanently delete user accounts and their associated data.",
+      "acceptanceCriteria": [
+        "DELETE /api/settings/team/:userId/permanent permanently deletes user (admin only)",
+        "Cascades: deletes all sessions, notifications, audit log entries for the user",
+        "Reassigns user's projects/agents/workflows to requesting admin (not deleted)",
+        "Requires confirmation: request body must include {confirm: true}",
+        "Cannot delete yourself",
+        "Audit log entry created before deletion (records who deleted whom)",
+        "Typecheck passes"
+      ],
+      "priority": 84,
+      "passes": false,
+      "notes": "Gap fill: no user deletion endpoint. Needed for account lifecycle and GDPR compliance"
+    },
+    {
+      "id": "US-193",
+      "title": "CI/CD integration endpoints",
+      "description": "As a developer, I need CI/CD endpoints so agent and workflow deployments can be automated from pipelines.",
+      "acceptanceCriteria": [
+        "POST /api/ci/deploy accepts {entity_type, entity_id, version_tag} to deploy a specific version",
+        "POST /api/ci/evaluate accepts {evaluation_id} to trigger evaluation run and return results",
+        "GET /api/ci/status/:deploymentId returns deployment health and last run status",
+        "All CI endpoints authenticated via API key header (X-API-Key) instead of session cookie",
+        "Migration: api_keys table (id, user_id, key_hash, label, permissions_json, last_used_at, created_at)",
+        "POST /api/settings/api-keys generates platform API key for CI usage",
+        "Typecheck passes"
+      ],
+      "priority": 85,
+      "passes": false,
+      "notes": "Gap fill: API contract defines CI/CD endpoints. No programmatic deployment outside the web UI"
+    },
+    {
+      "id": "US-194",
+      "title": "API reference documentation — auto-generated",
+      "description": "As a developer, I need auto-generated API documentation so all REST endpoints are discoverable and documented.",
+      "acceptanceCriteria": [
+        "FastAPI's built-in /docs (Swagger UI) enabled and accessible",
+        "FastAPI's /redoc (ReDoc) enabled as alternative docs view",
+        "All endpoints have docstrings that appear in the generated docs",
+        "All request/response models have Field descriptions",
+        "Authentication documented: cookie-based sessions, API key for CI endpoints",
+        "Error response format documented with examples for each error code",
+        "Docs page linked from the platform's help menu",
+        "Typecheck passes"
+      ],
+      "priority": 155,
+      "passes": false,
+      "notes": "Documentation: auto-generated API reference from FastAPI"
+    },
+    {
+      "id": "US-195",
+      "title": "Getting started guide",
+      "description": "As a new user, I need a getting started guide that walks through initial setup, first agent creation, and first test run.",
+      "acceptanceCriteria": [
+        "docs/getting-started/quickstart.md created",
+        "Covers: installation (uv sync), first run (python -m orbiter_web), creating first user (CLI command)",
+        "Covers: configuring first model provider (add API key), creating first agent, testing in playground",
+        "Screenshots or descriptions of each step",
+        "Troubleshooting section: common startup errors, database issues, port conflicts",
+        "Environment variables reference: all ORBITER_* env vars with descriptions and defaults",
+        "Linked from /docs page and onboarding tour"
+      ],
+      "priority": 156,
+      "passes": false,
+      "notes": "Documentation: critical for onboarding. Currently no setup docs exist"
+    },
+    {
+      "id": "US-196",
+      "title": "Architecture and design documentation",
+      "description": "As a developer, I need architecture documentation explaining the system design, package structure, and key patterns.",
+      "acceptanceCriteria": [
+        "docs/architecture/overview.md created with system architecture diagram (text-based)",
+        "Covers: Astro frontend + FastAPI backend single-unit architecture",
+        "Covers: database schema overview with ER diagram (mermaid)",
+        "Covers: WebSocket multiplexing architecture and channel protocol",
+        "Covers: agent runtime bridge (AgentService) and how DB configs become live agents",
+        "Covers: authentication flow (session cookies, CSRF, rate limiting)",
+        "Covers: file storage layout (uploads, artifacts, data directories)",
+        "docs/architecture/decisions.md with ADRs for key choices (SQLite, FTS5, single WS, etc.)"
+      ],
+      "priority": 157,
+      "passes": false,
+      "notes": "Documentation: architecture docs for maintainers and contributors"
+    },
+    {
+      "id": "US-197",
+      "title": "Security documentation",
+      "description": "As a developer deploying Orbiter Web, I need security documentation covering configuration, hardening, and threat model.",
+      "acceptanceCriteria": [
+        "docs/guides/security.md created",
+        "Covers: ORBITER_SECRET_KEY — what it's used for, how to generate a secure one (openssl rand -hex 32)",
+        "Covers: CORS configuration for production deployments",
+        "Covers: rate limiting configuration and tuning",
+        "Covers: RBAC roles and permission matrix (what each role can/cannot do)",
+        "Covers: session management — expiry, cleanup, force logout",
+        "Covers: API key management for CI/CD — generation, rotation, permissions",
+        "Covers: CSP headers and how to customize for embedding scenarios",
+        "Covers: input sanitization — what's sanitized and where"
+      ],
+      "priority": 158,
+      "passes": false,
+      "notes": "Documentation: security guide for production deployments"
+    },
+    {
+      "id": "US-198",
+      "title": "WebSocket protocol documentation",
+      "description": "As a developer building integrations, I need documentation of the WebSocket protocol for real-time features.",
+      "acceptanceCriteria": [
+        "docs/reference/websocket-protocol.md created",
+        "Covers: connection URL and authentication handshake",
+        "Covers: message envelope format {channel, type, payload}",
+        "Covers: all channels (chat, execution, logs, sandbox, notifications, system) with message types for each",
+        "Covers: subscribe/unsubscribe flow",
+        "Covers: heartbeat protocol (ping/pong timing)",
+        "Covers: reconnection strategy (exponential backoff with jitter)",
+        "Covers: error messages and disconnect reasons",
+        "Code examples: JavaScript client connecting and subscribing to chat channel"
+      ],
+      "priority": 159,
+      "passes": false,
+      "notes": "Documentation: WebSocket protocol reference for frontend and integration developers"
+    },
+    {
+      "id": "US-199",
+      "title": "Plugin development guide",
+      "description": "As a plugin developer, I need documentation on how to create, test, and publish Orbiter Web plugins.",
+      "acceptanceCriteria": [
+        "docs/guides/plugin-development.md created",
+        "Covers: plugin.json manifest format with all fields explained",
+        "Covers: plugin types (Models, Tools, Agent Strategies, Extensions, Bundles)",
+        "Covers: plugin lifecycle (install, enable, disable, uninstall)",
+        "Covers: plugin isolation model (subprocess, permissions)",
+        "Covers: developing locally with 'Load from directory' feature",
+        "Covers: creating a tool plugin (step-by-step tutorial with code)",
+        "Covers: creating a model provider plugin (step-by-step tutorial)",
+        "Covers: testing plugins before publishing"
+      ],
+      "priority": 160,
+      "passes": false,
+      "notes": "Documentation: plugin development guide for community contributors"
+    },
+    {
+      "id": "US-200",
+      "title": "REST API patterns and conventions guide",
+      "description": "As a developer working on Orbiter Web, I need documentation of internal API patterns so all endpoints are consistent.",
+      "acceptanceCriteria": [
+        "docs/contributing/api-conventions.md created",
+        "Covers: error response envelope format and standard error codes",
+        "Covers: pagination pattern (cursor-based) with code examples",
+        "Covers: authentication patterns (session cookie, API key, get_current_user dependency)",
+        "Covers: RBAC patterns (require_role dependency)",
+        "Covers: naming conventions (kebab-case URLs, snake_case fields, PascalCase models)",
+        "Covers: audit logging — when and how to log actions",
+        "Covers: testing patterns — how to write route tests with test client",
+        "Covers: migration conventions (sequential numbering, naming)"
+      ],
+      "priority": 161,
+      "passes": false,
+      "notes": "Documentation: internal API conventions for consistent development"
     }
   ]
 }
