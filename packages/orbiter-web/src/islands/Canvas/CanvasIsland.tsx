@@ -23,6 +23,7 @@ import {
 import NodeSidebar, { NODE_CATEGORIES } from "./NodeSidebar";
 import NodeConfigPanel from "./NodeConfigPanel";
 import NodeInspectionPanel from "./NodeInspectionPanel";
+import RunHistoryPanel from "./RunHistoryPanel";
 import ValidationPanel from "./ValidationPanel";
 import VariableInspectPanel from "./VariableInspectPanel";
 import WorkflowNode from "./WorkflowNode";
@@ -400,6 +401,11 @@ const icons = {
   variables: (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <rect x="3" y="3" width="18" height="18" rx="2" /><line x1="3" y1="9" x2="21" y2="9" /><line x1="3" y1="15" x2="21" y2="15" /><line x1="9" y1="3" x2="9" y2="21" />
+    </svg>
+  ),
+  history: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
     </svg>
   ),
 };
@@ -923,6 +929,9 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
   const [validationPanelOpen, setValidationPanelOpen] = useState(false);
   const [variablePanelOpen, setVariablePanelOpen] = useState(false);
+  const [historyPanelOpen, setHistoryPanelOpen] = useState(false);
+  const [historyRunId, setHistoryRunId] = useState<string | null>(null);
+  const [historyNodeStatuses, setHistoryNodeStatuses] = useState<Record<string, NodeExecStatus>>({});
   const validationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /* History tracking */
@@ -938,6 +947,27 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
     dbg, debugElapsed, isDebugging, startDebug, continueExec, skipNode,
     stopDebug, toggleBreakpoint, setVariable, resetDebug,
   } = useDebugExecution(workflowId, nodes.length);
+
+  /* History panel: load a past run's node statuses onto the canvas */
+  const handleLoadRunState = useCallback(
+    (nodeStatuses: Record<string, NodeExecStatus>, runId: string) => {
+      setHistoryNodeStatuses(nodeStatuses);
+      setHistoryRunId(runId);
+    },
+    [],
+  );
+
+  /* History panel: replay a run */
+  const handleHistoryReplay = useCallback(
+    async (_inputJson?: Record<string, unknown>) => {
+      // Clear history overlay and start a fresh run
+      setHistoryNodeStatuses({});
+      setHistoryRunId(null);
+      setHistoryPanelOpen(false);
+      await startRun();
+    },
+    [startRun],
+  );
 
   /* Context menu state (right-click on node) */
   const [contextMenu, setContextMenu] = useState<{
@@ -1120,10 +1150,12 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
       const disconnectedHandles = validationResult?.disconnectedInputs.get(n.id);
       const disconnectedArr = disconnectedHandles ? [...disconnectedHandles] : [];
 
-      // Execution status (use debug statuses when debugging)
+      // Execution status (use debug statuses when debugging, history when viewing past run)
       const execStatus = isDebugging
         ? (dbg.nodeStatuses[n.id] ?? null)
-        : (exec.nodeStatuses[n.id] ?? null);
+        : isRunning || exec.status !== "idle"
+          ? (exec.nodeStatuses[n.id] ?? null)
+          : (historyNodeStatuses[n.id] ?? null);
       const isDebugPaused = isDebugging && dbg.pausedNodeId === n.id;
       const hasBreakpoint = isDebugging && dbg.breakpoints.has(n.id);
       const execClass = isDebugPaused
@@ -1148,7 +1180,7 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
         },
       };
     });
-  }, [nodes, relationships, relationshipNodeId, validationResult, exec.nodeStatuses, isDebugging, dbg.nodeStatuses, dbg.pausedNodeId, dbg.breakpoints]);
+  }, [nodes, relationships, relationshipNodeId, validationResult, exec.nodeStatuses, exec.status, isRunning, isDebugging, dbg.nodeStatuses, dbg.pausedNodeId, dbg.breakpoints, historyNodeStatuses]);
 
   const displayEdges = useMemo(() => {
     return edges.map((e) => {
@@ -1176,8 +1208,8 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
     });
   }, [edges, relationships, validationResult, exec.nodeStatuses, isDebugging, dbg.nodeStatuses]);
 
-  /* Track whether execution has finished (data available to inspect) */
-  const hasExecutionData = exec.runId !== null && !isRunning;
+  /* Track whether execution has finished (data available to inspect) — includes history overlay */
+  const hasExecutionData = (exec.runId !== null && !isRunning) || historyRunId !== null;
 
   /* Node selection — open config or inspection panel, Shift+click for relationships mode */
   const onNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
@@ -1191,14 +1223,14 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
       return;
     }
     /* If execution data available and this node was executed, show inspection panel */
-    if (hasExecutionData && exec.nodeStatuses[node.id]) {
+    if (hasExecutionData && (exec.nodeStatuses[node.id] || historyNodeStatuses[node.id])) {
       setInspectedNodeId(node.id);
       setSelectedNodeId(null);
     } else {
       setSelectedNodeId(node.id);
       setInspectedNodeId(null);
     }
-  }, [hasExecutionData, exec.nodeStatuses, isDebugging, toggleBreakpoint]);
+  }, [hasExecutionData, exec.nodeStatuses, historyNodeStatuses, isDebugging, toggleBreakpoint]);
 
   const onPaneClick = useCallback(() => {
     setSelectedNodeId(null);
@@ -1453,6 +1485,12 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
       if (meta && e.key === "j") {
         e.preventDefault();
         setVariablePanelOpen((v) => !v);
+      }
+
+      /* Cmd+H — toggle run history panel */
+      if (meta && e.key === "h") {
+        e.preventDefault();
+        setHistoryPanelOpen((v) => !v);
       }
     };
 
@@ -1769,6 +1807,16 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
           </ToolbarButton>
 
           {workflowId && (
+            <ToolbarButton
+              onClick={() => setHistoryPanelOpen((v) => !v)}
+              title={`Run History (${mod}H)`}
+              active={historyPanelOpen}
+            >
+              {icons.history}
+            </ToolbarButton>
+          )}
+
+          {workflowId && (
             <>
               <Separator />
               {isRunning ? (
@@ -1816,6 +1864,57 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
         onToggle={() => setValidationPanelOpen((v) => !v)}
         onNavigateToNode={navigateToNode}
       />
+
+      {/* History overlay indicator */}
+      {historyRunId && exec.status === "idle" && !isDebugging && (
+        <Panel position="bottom-center">
+          <div
+            className="nodrag nopan"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              padding: "8px 16px",
+              borderRadius: 10,
+              background: "var(--zen-paper, #f2f0e3)",
+              border: "1px solid var(--zen-blue, #6287f5)",
+              boxShadow: "0 -1px 8px rgba(98, 135, 245, 0.15)",
+              fontFamily: "'Bricolage Grotesque', sans-serif",
+              fontSize: 12,
+              fontWeight: 500,
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--zen-blue, #6287f5)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+            </svg>
+            <span style={{ color: "var(--zen-dark, #2e2e2e)" }}>
+              Viewing past run
+            </span>
+            <span style={{ color: "var(--zen-muted, #999)", fontSize: 10 }}>
+              {historyRunId.slice(0, 8)}
+            </span>
+            <button
+              onClick={() => {
+                setHistoryNodeStatuses({});
+                setHistoryRunId(null);
+              }}
+              style={{
+                marginLeft: 4,
+                padding: "2px 8px",
+                fontSize: 11,
+                borderRadius: 6,
+                border: "1px solid var(--zen-subtle, #e0ddd0)",
+                background: "transparent",
+                color: "var(--zen-dark, #2e2e2e)",
+                cursor: "pointer",
+                fontFamily: "'Bricolage Grotesque', sans-serif",
+              }}
+            >
+              Dismiss
+            </button>
+          </div>
+        </Panel>
+      )}
 
       {/* Execution status bar */}
       {exec.status !== "idle" && (
@@ -2060,15 +2159,26 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
         onNodeUpdate={handleNodeDataUpdate}
       />
 
-      {/* Node inspection panel (post-execution, debug, or single-node run) */}
-      {workflowId && (exec.runId || dbg.runId || singleRunResult) && (
+      {/* Run history panel */}
+      {workflowId && (
+        <RunHistoryPanel
+          workflowId={workflowId}
+          open={historyPanelOpen}
+          onToggle={() => setHistoryPanelOpen((v) => !v)}
+          onLoadRunState={handleLoadRunState}
+          onReplay={handleHistoryReplay}
+        />
+      )}
+
+      {/* Node inspection panel (post-execution, debug, single-node run, or history) */}
+      {workflowId && (exec.runId || dbg.runId || singleRunResult || historyRunId) && (
         <NodeInspectionPanel
           node={inspectedNode}
           workflowId={workflowId}
           runId={
             singleRunResult && inspectedNodeId === singleRunResult.nodeId
               ? singleRunResult.runId
-              : (exec.runId || dbg.runId)!
+              : (exec.runId || dbg.runId || historyRunId)!
           }
           onClose={() => {
             setInspectedNodeId(null);
