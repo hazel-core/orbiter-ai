@@ -701,3 +701,19 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Background `size` prop controls dot radius (1.5 is a subtle, non-intrusive dot size)
   - Manual browser verification needed (no browser testing tool available)
 ---
+
+## 2026-02-17 15:00 - US-043
+- What was implemented: Canvas toolbar and keyboard shortcuts — replaced built-in `<Controls />` with custom `<Panel>` toolbar at top-center with zoom in/out, fit view, lock/unlock toggle, undo/redo buttons; implemented undo/redo history stack with ref-based past/future arrays (max 50 entries); keyboard shortcuts for Delete (remove selected), Cmd+Z (undo), Cmd+Shift+Z (redo), Cmd+A (select all); tooltips on all buttons showing keyboard shortcut hints with Mac/Windows detection
+- Files changed:
+  - packages/orbiter-web/src/islands/Canvas/CanvasIsland.tsx (major rewrite — added Panel-based toolbar, useUndoRedo hook, ToolbarButton component, SVG icons, keyboard shortcut handler, lock/unlock state, platform-aware shortcut labels)
+- **Learnings for future iterations:**
+  - ReactFlow `<Panel position="top-center">` positions custom UI inside the flow viewport — use `className="nodrag nopan"` on interactive elements to prevent canvas drag/pan
+  - Undo/redo uses ref-based history stacks (useRef) instead of state to avoid re-render loops; a `skipRecord` flag prevents recording when restoring state
+  - `structuredClone()` for deep-copying nodes/edges in history snapshots — handles nested objects correctly
+  - Record history before structural changes only (add/remove), not on position changes (drag) — check `change.type` in onNodesChange/onEdgesChange
+  - Lock toggle disables `nodesDraggable`, `nodesConnectable`, `elementsSelectable`, `panOnDrag`, `zoomOnScroll`, `zoomOnPinch`, `zoomOnDoubleClick` all at once
+  - `useReactFlow()` provides `zoomIn()`, `zoomOut()`, `fitView()` with optional `duration` param for smooth animation
+  - Platform detection for shortcut labels: `navigator.userAgent` test for Mac → use ⌘ symbol, otherwise "Ctrl+"
+  - Keyboard shortcuts must check `e.target.tagName` to avoid intercepting when user is typing in input/textarea
+  - Manual browser verification needed (no browser testing tool available)
+---

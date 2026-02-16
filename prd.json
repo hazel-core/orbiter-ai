@@ -745,7 +745,7 @@
         "Verify in browser using dev-browser skill"
       ],
       "priority": 43,
-      "passes": false,
+      "passes": true,
       "notes": "From PRD US-014 (part 3/3)"
     },
     {
