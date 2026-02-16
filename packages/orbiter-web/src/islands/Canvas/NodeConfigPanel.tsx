@@ -3,6 +3,9 @@ import type { Node } from "@xyflow/react";
 import { NODE_CATEGORIES } from "./NodeSidebar";
 import LlmCallConfig from "./LlmCallConfig";
 import AgentNodeConfig from "./AgentNodeConfig";
+import ConditionalConfig from "./ConditionalConfig";
+import CodeNodeConfig from "./CodeNodeConfig";
+import HttpRequestConfig from "./HttpRequestConfig";
 
 /* ------------------------------------------------------------------ */
 /* Types                                                                */
@@ -29,6 +32,7 @@ function getNodeTypeInfo(nodeType: string) {
 
 /** Node types that have type-specific config panels */
 const AGENT_TYPES = new Set(["agent_node", "sub_agent"]);
+const CODE_TYPES = new Set(["code_python", "code_javascript"]);
 
 /** Render the type-specific configuration for a node */
 function renderTypeConfig(
@@ -64,6 +68,56 @@ function renderTypeConfig(
           inline_model_name: node.data.inline_model_name as string | undefined,
           inline_instructions: node.data.inline_instructions as string | undefined,
           inline_tools: node.data.inline_tools as string[] | undefined,
+        }}
+        onChange={onDataChange}
+      />
+    );
+  }
+
+  if (nodeType === "conditional") {
+    return (
+      <ConditionalConfig
+        data={{
+          condition_expression: node.data.condition_expression as string | undefined,
+          true_label: node.data.true_label as string | undefined,
+          false_label: node.data.false_label as string | undefined,
+        }}
+        onChange={onDataChange}
+      />
+    );
+  }
+
+  if (CODE_TYPES.has(nodeType)) {
+    const initialLang = nodeType === "code_javascript" ? "javascript" as const : "python" as const;
+    return (
+      <CodeNodeConfig
+        data={{
+          language: (node.data.language as "python" | "javascript" | undefined) || initialLang,
+          code: node.data.code as string | undefined,
+          entry_function: node.data.entry_function as string | undefined,
+          timeout_seconds: node.data.timeout_seconds as number | undefined,
+        }}
+        onChange={onDataChange}
+        initialLanguage={initialLang}
+      />
+    );
+  }
+
+  if (nodeType === "http_request") {
+    return (
+      <HttpRequestConfig
+        data={{
+          method: node.data.method as "GET" | "POST" | "PUT" | "DELETE" | undefined,
+          url: node.data.url as string | undefined,
+          headers: node.data.headers as Array<{ key: string; value: string }> | undefined,
+          body: node.data.body as string | undefined,
+          auth_type: node.data.auth_type as "none" | "bearer" | "basic" | "api_key" | undefined,
+          auth_token: node.data.auth_token as string | undefined,
+          auth_username: node.data.auth_username as string | undefined,
+          auth_password: node.data.auth_password as string | undefined,
+          auth_header_name: node.data.auth_header_name as string | undefined,
+          auth_header_value: node.data.auth_header_value as string | undefined,
+          timeout_seconds: node.data.timeout_seconds as number | undefined,
         }}
         onChange={onDataChange}
       />
