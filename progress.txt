@@ -93,6 +93,8 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
 - KB retrieval settings: search_type, top_k, similarity_threshold, reranker_enabled stored per KB; keyword search uses LIKE + term frequency scoring
 - Knowledge retrieval node in engine.py: `_execute_retrieval_node()` handles `knowledge_retrieval` nodeType; reads KB settings from DB
 - Agent KB assignment: `knowledge_base_ids` column (JSON TEXT array) on agents table — stores list of KB IDs the agent can query
+- Vector store config: singleton per user in `vector_store_config` table; auto-created on first GET; routes at `/api/vector-stores` (GET, PUT, POST /test)
+- Settings tabs: add tab button + panel div + lazy-load check in tab click handler; use `vsLoaded` / `providersLoaded` pattern for one-time fetch
 
 ---
 
@@ -1878,4 +1880,27 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Use `setSearchType()` pattern with button group styling for toggle selections (add/remove Tailwind classes)
   - Range slider for threshold uses 0-100 int range, divide by 100 for float display/API calls
   - CSRF is auto-handled by PageLayout monkey-patch — no need to add X-CSRF-Token headers manually
+---
+
+## 2026-02-17 - US-103
+- What was implemented: Vector store configuration UI in Settings > Knowledge tab with full backend CRUD
+- Implementation details:
+  - New migration `031_create_vector_store_config.sql` — table with backend, host, port, api_key_encrypted, collection_name, is_active per user
+  - New routes file `routes/vector_stores.py` — GET (auto-creates default SQLite-VSS), PUT (update config), POST /test (connectivity check)
+  - Backend selector: SQLite-VSS (default), Milvus/Zilliz, Qdrant, ChromaDB, Pinecone
+  - Per-backend connection fields: host, port, API key (encrypted), collection name — Pinecone hides host/port, shows only API key
+  - Test Connection: SQLite-VSS always succeeds (built-in); TCP connect for Milvus/Qdrant/ChromaDB; HTTPS API check for Pinecone
+  - Status indicator shows connected backend name with color-coded dot (green=built-in, blue=configured, grey=not configured)
+  - Added "Knowledge" tab between Models and Workspace in settings tab bar
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/migrations/031_create_vector_store_config.sql (new)
+  - packages/orbiter-web/src/orbiter_web/routes/vector_stores.py (new — ~265 lines)
+  - packages/orbiter-web/src/orbiter_web/app.py (added vector_stores_router import + include)
+  - packages/orbiter-web/src/pages/settings.astro (added Knowledge tab + panel-knowledge section + ~170 lines JS)
+- **Learnings for future iterations:**
+  - Vector store config is a singleton per user (one active config, auto-created on first GET)
+  - API key encryption uses same `encrypt_api_key()` / `decrypt_api_key()` from crypto.py — return `api_key_set: bool` in responses
+  - Settings tab pattern: add button in tab nav bar, add panel div, add lazy-load check in tab click handler (`if (target === "knowledge" && !vsLoaded)`)
+  - Backend field visibility: use JS to show/hide connection fields based on backend selection; Pinecone needs API key but not host/port
+  - Test connection for TCP backends: use `asyncio.open_connection` with `asyncio.wait_for(timeout=5.0)`
 ---
