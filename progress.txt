@@ -688,3 +688,16 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - `useThemeColorMode()` custom hook: watches `data-theme` attribute mutations to keep ReactFlow colorMode in sync with the app's theme toggle
   - Manual browser verification needed (no browser testing tool available)
 ---
+
+## 2026-02-17 14:30 - US-042
+- What was implemented: Canvas pan, zoom, grid, and minimap — added MiniMap component (pannable + zoomable), dot-pattern Background, snap-to-grid with configurable 20px grid size
+- Files changed:
+  - packages/orbiter-web/src/islands/Canvas/CanvasIsland.tsx (updated — added MiniMap, BackgroundVariant.Dots, snapToGrid/snapGrid props, GRID_SIZE constant)
+- **Learnings for future iterations:**
+  - ReactFlow pan (click-drag) and zoom (mouse wheel) work out of the box — no additional props needed
+  - `BackgroundVariant.Dots` with matching `gap={GRID_SIZE}` aligns dot pattern with snap grid
+  - MiniMap accepts `pannable` and `zoomable` props for interactive navigation; `position="bottom-right"` places it via ReactFlow's built-in positioning
+  - `snapGrid` type is `[number, number]` tuple — explicit type annotation needed for TypeScript
+  - Background `size` prop controls dot radius (1.5 is a subtle, non-intrusive dot size)
+  - Manual browser verification needed (no browser testing tool available)
+---
