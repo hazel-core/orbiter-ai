@@ -1638,7 +1638,7 @@
         "Typecheck passes"
       ],
       "priority": 94,
-      "passes": false,
+      "passes": true,
       "notes": "From PRD US-039"
     },
     {
@@ -2721,7 +2721,7 @@
     },
     {
       "id": "US-156",
-      "title": "WebSocket infrastructure — server-side manager",
+      "title": "WebSocket infrastructure \u2014 server-side manager",
       "description": "As a developer, I need a multiplexed WebSocket manager so that all real-time features share a single connection per client with channel-based routing.",
       "acceptanceCriteria": [
         "src/orbiter_web/websocket.py created with WebSocketManager class",
@@ -2742,7 +2742,7 @@
     },
     {
       "id": "US-157",
-      "title": "WebSocket infrastructure — client-side library",
+      "title": "WebSocket infrastructure \u2014 client-side library",
       "description": "As a developer, I need a client-side WebSocket singleton so that all frontend features share one connection with automatic reconnection.",
       "acceptanceCriteria": [
         "src/utils/websocket.ts created with OrbiterSocket class",
@@ -2835,7 +2835,7 @@
       "description": "As a developer, I need the application to validate its configuration on startup and refuse to start or loudly warn when using insecure defaults.",
       "acceptanceCriteria": [
         "On startup, check if ORBITER_SECRET_KEY equals 'change-me-in-production'",
-        "If default key: log WARNING with clear message 'Using default secret key — all encrypted data is insecure. Set ORBITER_SECRET_KEY env var'",
+        "If default key: log WARNING with clear message 'Using default secret key \u2014 all encrypted data is insecure. Set ORBITER_SECRET_KEY env var'",
         "If ORBITER_SECRET_KEY not set at all: same warning",
         "Validate database path is writable on startup",
         "Log startup config summary: database path, debug mode, session expiry, CORS origins (no secrets)",
@@ -2969,7 +2969,7 @@
     },
     {
       "id": "US-170",
-      "title": "Notification system — migration and backend",
+      "title": "Notification system \u2014 migration and backend",
       "description": "As a developer, I need a notification system so approval gates, budget alerts, and alert rules can notify users.",
       "acceptanceCriteria": [
         "Migration: notifications table (id TEXT PK, user_id TEXT FK, type TEXT, title TEXT, message TEXT, entity_type TEXT, entity_id TEXT, read INTEGER DEFAULT 0, created_at TEXT)",
@@ -2987,7 +2987,7 @@
     },
     {
       "id": "US-171",
-      "title": "Notification UI — bell icon and dropdown",
+      "title": "Notification UI \u2014 bell icon and dropdown",
       "description": "As a user, I want a notification bell in the top bar showing unread count and a dropdown with recent notifications.",
       "acceptanceCriteria": [
         "Bell icon added to top bar (PageLayout.astro) next to theme toggle",
@@ -3134,7 +3134,7 @@
     },
     {
       "id": "US-179",
-      "title": "RBAC — role column and migration",
+      "title": "RBAC \u2014 role column and migration",
       "description": "As a developer, I need a role column on the users table so that role-based access control can be enforced.",
       "acceptanceCriteria": [
         "Migration adds role column to users table: TEXT NOT NULL DEFAULT 'developer'",
@@ -3150,7 +3150,7 @@
     },
     {
       "id": "US-180",
-      "title": "RBAC — role-based route guards",
+      "title": "RBAC \u2014 role-based route guards",
       "description": "As a developer, I need middleware that restricts certain endpoints based on user role.",
       "acceptanceCriteria": [
         "require_role(min_role) FastAPI dependency factory",
@@ -3202,7 +3202,7 @@
     },
     {
       "id": "US-183",
-      "title": "Audit log — migration and backend",
+      "title": "Audit log \u2014 migration and backend",
       "description": "As a developer, I need audit logging so security-sensitive actions are recorded.",
       "acceptanceCriteria": [
         "Migration: audit_log table (id, user_id, action, entity_type, entity_id, details_json, ip_address, created_at)",
@@ -3235,7 +3235,7 @@
     },
     {
       "id": "US-185",
-      "title": "Team management — backend",
+      "title": "Team management \u2014 backend",
       "description": "As a developer, I need team management endpoints so admins can invite users and manage roles.",
       "acceptanceCriteria": [
         "GET /api/settings/team returns list of all users with id, email, role, created_at (admin only)",
@@ -3251,7 +3251,7 @@
     },
     {
       "id": "US-186",
-      "title": "Team management — UI",
+      "title": "Team management \u2014 UI",
       "description": "As an admin, I want to manage team members from the settings page.",
       "acceptanceCriteria": [
         "Settings > Team section showing user table: email, role badge, joined date, actions",
@@ -3385,7 +3385,7 @@
     },
     {
       "id": "US-194",
-      "title": "API reference documentation — auto-generated",
+      "title": "API reference documentation \u2014 auto-generated",
       "description": "As a developer, I need auto-generated API documentation so all REST endpoints are discoverable and documented.",
       "acceptanceCriteria": [
         "FastAPI's built-in /docs (Swagger UI) enabled and accessible",
@@ -3442,14 +3442,14 @@
       "description": "As a developer deploying Orbiter Web, I need security documentation covering configuration, hardening, and threat model.",
       "acceptanceCriteria": [
         "docs/guides/security.md created",
-        "Covers: ORBITER_SECRET_KEY — what it's used for, how to generate a secure one (openssl rand -hex 32)",
+        "Covers: ORBITER_SECRET_KEY \u2014 what it's used for, how to generate a secure one (openssl rand -hex 32)",
         "Covers: CORS configuration for production deployments",
         "Covers: rate limiting configuration and tuning",
         "Covers: RBAC roles and permission matrix (what each role can/cannot do)",
-        "Covers: session management — expiry, cleanup, force logout",
-        "Covers: API key management for CI/CD — generation, rotation, permissions",
+        "Covers: session management \u2014 expiry, cleanup, force logout",
+        "Covers: API key management for CI/CD \u2014 generation, rotation, permissions",
         "Covers: CSP headers and how to customize for embedding scenarios",
-        "Covers: input sanitization — what's sanitized and where"
+        "Covers: input sanitization \u2014 what's sanitized and where"
       ],
       "priority": 158,
       "passes": false,
@@ -3504,8 +3504,8 @@
         "Covers: authentication patterns (session cookie, API key, get_current_user dependency)",
         "Covers: RBAC patterns (require_role dependency)",
         "Covers: naming conventions (kebab-case URLs, snake_case fields, PascalCase models)",
-        "Covers: audit logging — when and how to log actions",
-        "Covers: testing patterns — how to write route tests with test client",
+        "Covers: audit logging \u2014 when and how to log actions",
+        "Covers: testing patterns \u2014 how to write route tests with test client",
         "Covers: migration conventions (sequential numbering, naming)"
       ],
       "priority": 161,

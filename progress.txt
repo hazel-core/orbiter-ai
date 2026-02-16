@@ -1631,3 +1631,19 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - `run_task_id` separate from `task_id` — run tasks have their own UUIDs for per-run tracking
   - Manual browser verification needed (no dev-browser skill configured)
 ---
+
+## 2026-02-17 - US-094
+- What was implemented: Planner/Executor/Verifier backend — autonomous task decomposition with plan/execute/verify cycle
+- Files changed:
+  - `packages/orbiter-web/src/orbiter_web/migrations/026_create_agent_plans.sql` — new migration adding `autonomous_mode` to agents, `agent_plans` and `agent_plan_steps` tables
+  - `packages/orbiter-web/src/orbiter_web/services/planner.py` — PEV orchestration service: plan CRUD, step tracking, prompt builders (planner/executor/verifier)
+  - `packages/orbiter-web/src/orbiter_web/routes/plans.py` — REST API for plans lifecycle: create, generate with steps, list versions, active plan, next-step, execute, verify, prompt endpoints
+  - `packages/orbiter-web/src/orbiter_web/routes/agents.py` — added `autonomous_mode` bool to AgentCreate, AgentUpdate, AgentResponse; int/bool conversion for SQLite
+  - `packages/orbiter-web/src/orbiter_web/app.py` — registered plans_router
+- **Learnings for future iterations:**
+  - SQLite stores booleans as integers — convert with `int()` on write and `bool()` on read in `_row_to_dict`
+  - Plan versioning pattern: when creating a new active plan, mark previous active plan as `superseded` and increment version number
+  - Step dependency resolution: get all steps, build completed set, find first pending step where all deps are in completed set
+  - Routes sharing prefix (`/api/agents`) must be in separate routers registered independently — no conflict since FastAPI merges them
+  - `from __future__ import annotations` enables forward references in type hints but Pydantic models used as FastAPI params still need to be defined before use (or use `model_rebuild()`)
+---
