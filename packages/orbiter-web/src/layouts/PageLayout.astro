@@ -279,6 +279,19 @@ const closeIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="
     </aside>
   </div>
 
+  <!-- Auth check: redirect unauthenticated users to /login -->
+  <script is:inline>
+    (function () {
+      fetch("/api/auth/me", { credentials: "same-origin" })
+        .then(function (res) {
+          if (!res.ok) window.location.replace("/login");
+        })
+        .catch(function () {
+          window.location.replace("/login");
+        });
+    })();
+  </script>
+
   <!-- Sidebar collapse/expand script -->
   <script is:inline>
     (function () {

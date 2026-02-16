@@ -1,0 +1,110 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import Button from "../components/Button.astro";
+import Input from "../components/Input.astro";
+---
+
+<BaseLayout title="Login - Orbiter">
+  <div class="min-h-screen flex items-center justify-center px-4">
+    <div class="w-full max-w-sm">
+      <!-- Logo + heading -->
+      <div class="text-center mb-8">
+        <div class="flex items-center justify-center gap-3 mb-4">
+          <svg class="h-10 w-10 text-coral" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10" />
+            <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" />
+            <path d="M2 12h20" />
+          </svg>
+          <span class="text-2xl font-semibold text-dark font-junicode">Orbiter</span>
+        </div>
+        <p class="text-sm text-muted">Sign in to your workspace</p>
+      </div>
+
+      <!-- Login form -->
+      <form id="login-form" class="rounded-xl bg-subtle/80 border border-dark/[0.08] p-6 flex flex-col gap-4">
+        <Input
+          label="Email"
+          name="email"
+          type="email"
+          placeholder="you@example.com"
+          required
+          autocomplete="email"
+        />
+        <Input
+          label="Password"
+          name="password"
+          type="password"
+          placeholder="Enter your password"
+          required
+          autocomplete="current-password"
+        />
+
+        <div id="login-error" class="text-sm text-coral hidden"></div>
+
+        <Button variant="primary" type="submit" id="login-submit" class="w-full mt-2">
+          Sign in
+        </Button>
+      </form>
+    </div>
+  </div>
+</BaseLayout>
+
+<script is:inline>
+  (function () {
+    // If already logged in, redirect to projects
+    fetch("/api/auth/me", { credentials: "same-origin" })
+      .then(function (res) {
+        if (res.ok) window.location.replace("/projects");
+      })
+      .catch(function () {});
+
+    var form = document.getElementById("login-form");
+    var errorEl = document.getElementById("login-error");
+    var submitBtn = document.getElementById("login-submit");
+    if (!form || !errorEl || !submitBtn) return;
+
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      errorEl.classList.add("hidden");
+
+      var formData = new FormData(form);
+      var email = (formData.get("email") || "").toString().trim();
+      var password = (formData.get("password") || "").toString();
+
+      if (!email || !password) {
+        errorEl.textContent = "Email and password are required";
+        errorEl.classList.remove("hidden");
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Signing in...";
+
+      fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ email: email, password: password }),
+      })
+        .then(function (res) {
+          if (!res.ok) {
+            return res.json().then(function (d) {
+              throw new Error(d.detail || "Login failed");
+            });
+          }
+          return res.json();
+        })
+        .then(function () {
+          window.location.replace("/projects");
+        })
+        .catch(function (err) {
+          errorEl.textContent = err.message;
+          errorEl.classList.remove("hidden");
+        })
+        .finally(function () {
+          submitBtn.disabled = false;
+          submitBtn.textContent = "Sign in";
+        });
+    });
+  })();
+</script>

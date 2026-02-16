@@ -1,0 +1,332 @@
+---
+import PageLayout from "../layouts/PageLayout.astro";
+import Button from "../components/Button.astro";
+import Input from "../components/Input.astro";
+import Select from "../components/Select.astro";
+
+const breadcrumbs = [{ label: "Settings" }];
+
+const themeOptions = [
+  { value: "light", label: "Light" },
+  { value: "dark", label: "Dark" },
+  { value: "system", label: "System" },
+];
+
+const providerOptions = [
+  { value: "", label: "None" },
+  { value: "openai", label: "OpenAI" },
+  { value: "anthropic", label: "Anthropic" },
+  { value: "gemini", label: "Google Gemini" },
+  { value: "vertex", label: "Google Vertex AI" },
+  { value: "ollama", label: "Ollama (local)" },
+];
+---
+
+<PageLayout
+  title="Settings"
+  description="Configure your workspace"
+  activeSection="settings"
+  breadcrumbs={breadcrumbs}
+>
+  <div class="p-6 max-w-3xl mx-auto">
+    <h1 class="text-2xl font-semibold text-dark mb-6">Settings</h1>
+
+    <!-- Tab navigation -->
+    <div class="flex border-b border-dark/[0.08] mb-8 gap-1 overflow-x-auto" role="tablist">
+      <button
+        role="tab"
+        aria-selected="true"
+        data-settings-tab="profile"
+        class="settings-tab px-4 py-2.5 text-sm font-medium text-coral border-b-2 border-coral transition-colors duration-150 cursor-pointer whitespace-nowrap"
+      >
+        Profile
+      </button>
+      <button
+        role="tab"
+        aria-selected="false"
+        data-settings-tab="appearance"
+        class="settings-tab px-4 py-2.5 text-sm font-medium text-muted border-b-2 border-transparent hover:text-dark transition-colors duration-150 cursor-pointer whitespace-nowrap"
+      >
+        Appearance
+      </button>
+      <button
+        role="tab"
+        aria-selected="false"
+        data-settings-tab="api-keys"
+        class="settings-tab px-4 py-2.5 text-sm font-medium text-muted border-b-2 border-transparent hover:text-dark transition-colors duration-150 cursor-pointer whitespace-nowrap"
+      >
+        API Keys
+      </button>
+      <button
+        role="tab"
+        aria-selected="false"
+        data-settings-tab="workspace"
+        class="settings-tab px-4 py-2.5 text-sm font-medium text-muted border-b-2 border-transparent hover:text-dark transition-colors duration-150 cursor-pointer whitespace-nowrap"
+      >
+        Workspace
+      </button>
+    </div>
+
+    <!-- Profile section -->
+    <div id="panel-profile" class="settings-panel" role="tabpanel">
+      <div class="rounded-xl bg-subtle/80 border border-dark/[0.08] p-6">
+        <h2 class="text-lg font-semibold text-dark mb-1">Profile</h2>
+        <p class="text-sm text-muted mb-6">Manage your account details</p>
+
+        <div id="profile-loading" class="text-sm text-muted py-4">Loading profile...</div>
+
+        <form id="profile-form" class="hidden flex flex-col gap-4">
+          <Input
+            label="Email"
+            name="email"
+            type="email"
+            disabled
+          />
+          <Input
+            label="Member since"
+            name="created_at"
+            disabled
+          />
+          <div class="flex justify-end mt-2">
+            <Button variant="bordered" type="button" id="logout-btn">
+              Sign out
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Appearance section -->
+    <div id="panel-appearance" class="settings-panel hidden" role="tabpanel">
+      <div class="rounded-xl bg-subtle/80 border border-dark/[0.08] p-6">
+        <h2 class="text-lg font-semibold text-dark mb-1">Appearance</h2>
+        <p class="text-sm text-muted mb-6">Customize how Orbiter looks</p>
+
+        <form id="appearance-form" class="flex flex-col gap-4">
+          <Select
+            label="Theme"
+            name="theme"
+            options={themeOptions}
+          />
+          <p class="text-xs text-muted">
+            System mode follows your operating system preference.
+          </p>
+          <div class="flex justify-end mt-2">
+            <Button variant="primary" type="submit" id="appearance-save">
+              Save
+            </Button>
+          </div>
+        </form>
+        <div id="appearance-saved" class="hidden text-sm text-zen-green mt-3">Theme preference saved.</div>
+      </div>
+    </div>
+
+    <!-- API Keys section -->
+    <div id="panel-api-keys" class="settings-panel hidden" role="tabpanel">
+      <div class="rounded-xl bg-subtle/80 border border-dark/[0.08] p-6">
+        <h2 class="text-lg font-semibold text-dark mb-1">API Keys</h2>
+        <p class="text-sm text-muted mb-6">Manage provider API keys for model access</p>
+
+        <div class="flex flex-col items-center py-8 text-center">
+          <svg class="h-10 w-10 text-muted/40 mb-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" />
+          </svg>
+          <p class="text-sm text-muted max-w-xs">
+            Provider API key management will be available once the Model Providers feature is configured.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Workspace section -->
+    <div id="panel-workspace" class="settings-panel hidden" role="tabpanel">
+      <div class="rounded-xl bg-subtle/80 border border-dark/[0.08] p-6">
+        <h2 class="text-lg font-semibold text-dark mb-1">Workspace</h2>
+        <p class="text-sm text-muted mb-6">Configure default workspace behavior</p>
+
+        <form id="workspace-form" class="flex flex-col gap-4">
+          <Select
+            label="Default Model Provider"
+            name="default_provider"
+            options={providerOptions}
+          />
+          <Input
+            label="Concurrent Run Limit"
+            name="concurrent_limit"
+            type="number"
+            min="1"
+            max="20"
+            value="5"
+            placeholder="5"
+          />
+          <p class="text-xs text-muted">
+            Maximum number of agent runs that can execute simultaneously.
+          </p>
+          <div class="flex justify-end mt-2">
+            <Button variant="primary" type="submit" id="workspace-save">
+              Save
+            </Button>
+          </div>
+        </form>
+        <div id="workspace-saved" class="hidden text-sm text-zen-green mt-3">Workspace settings saved.</div>
+      </div>
+    </div>
+  </div>
+</PageLayout>
+
+<script is:inline>
+  (function () {
+    // ------- Tab switching -------
+    var tabs = document.querySelectorAll(".settings-tab");
+    var panels = document.querySelectorAll(".settings-panel");
+
+    tabs.forEach(function (tab) {
+      tab.addEventListener("click", function () {
+        var target = tab.getAttribute("data-settings-tab");
+
+        // Update tab styles
+        tabs.forEach(function (t) {
+          t.classList.remove("text-coral", "border-coral");
+          t.classList.add("text-muted", "border-transparent");
+          t.setAttribute("aria-selected", "false");
+        });
+        tab.classList.remove("text-muted", "border-transparent");
+        tab.classList.add("text-coral", "border-coral");
+        tab.setAttribute("aria-selected", "true");
+
+        // Show target panel, hide others
+        panels.forEach(function (p) {
+          p.classList.add("hidden");
+        });
+        var panel = document.getElementById("panel-" + target);
+        if (panel) panel.classList.remove("hidden");
+      });
+    });
+
+    // ------- Profile -------
+    var profileLoading = document.getElementById("profile-loading");
+    var profileForm = document.getElementById("profile-form");
+    var logoutBtn = document.getElementById("logout-btn");
+
+    fetch("/api/auth/me", { credentials: "same-origin" })
+      .then(function (res) {
+        if (!res.ok) throw new Error("Not authenticated");
+        return res.json();
+      })
+      .then(function (user) {
+        if (profileLoading) profileLoading.classList.add("hidden");
+        if (!profileForm) return;
+        profileForm.classList.remove("hidden");
+
+        var emailInput = profileForm.querySelector('[name="email"]');
+        if (emailInput) emailInput.value = user.email;
+
+        var createdInput = profileForm.querySelector('[name="created_at"]');
+        if (createdInput) {
+          try {
+            var d = new Date(user.created_at + "Z");
+            createdInput.value = d.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
+          } catch (_e) {
+            createdInput.value = user.created_at;
+          }
+        }
+      })
+      .catch(function () {
+        if (profileLoading) profileLoading.textContent = "Could not load profile.";
+      });
+
+    if (logoutBtn) {
+      logoutBtn.addEventListener("click", function () {
+        fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" })
+          .then(function () {
+            window.location.replace("/login");
+          })
+          .catch(function () {
+            window.location.replace("/login");
+          });
+      });
+    }
+
+    // ------- Appearance -------
+    var appearanceForm = document.getElementById("appearance-form");
+    var appearanceSaved = document.getElementById("appearance-saved");
+
+    // Initialise theme select from current preference
+    var themeSelect = appearanceForm ? appearanceForm.querySelector('[name="theme"]') : null;
+    if (themeSelect) {
+      var stored = localStorage.getItem("theme");
+      if (stored === "dark" || stored === "light") {
+        themeSelect.value = stored;
+      } else {
+        themeSelect.value = "system";
+      }
+    }
+
+    if (appearanceForm) {
+      appearanceForm.addEventListener("submit", function (e) {
+        e.preventDefault();
+        var selected = themeSelect ? themeSelect.value : "system";
+
+        if (selected === "system") {
+          localStorage.removeItem("theme");
+          var preferred = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+          document.documentElement.setAttribute("data-theme", preferred);
+        } else {
+          localStorage.setItem("theme", selected);
+          document.documentElement.setAttribute("data-theme", selected);
+        }
+
+        // Update theme icons in PageLayout top bar
+        var lightIcon = document.getElementById("theme-icon-light");
+        var darkIcon = document.getElementById("theme-icon-dark");
+        if (lightIcon && darkIcon) {
+          var current = document.documentElement.getAttribute("data-theme");
+          if (current === "dark") {
+            lightIcon.classList.add("hidden");
+            darkIcon.classList.remove("hidden");
+          } else {
+            lightIcon.classList.remove("hidden");
+            darkIcon.classList.add("hidden");
+          }
+        }
+
+        if (appearanceSaved) {
+          appearanceSaved.classList.remove("hidden");
+          setTimeout(function () {
+            appearanceSaved.classList.add("hidden");
+          }, 2000);
+        }
+      });
+    }
+
+    // ------- Workspace -------
+    var workspaceForm = document.getElementById("workspace-form");
+    var workspaceSaved = document.getElementById("workspace-saved");
+
+    // Load workspace settings from localStorage
+    if (workspaceForm) {
+      var providerSelect = workspaceForm.querySelector('[name="default_provider"]');
+      var limitInput = workspaceForm.querySelector('[name="concurrent_limit"]');
+      var savedProvider = localStorage.getItem("orbiter_default_provider") || "";
+      var savedLimit = localStorage.getItem("orbiter_concurrent_limit") || "5";
+      if (providerSelect) providerSelect.value = savedProvider;
+      if (limitInput) limitInput.value = savedLimit;
+
+      workspaceForm.addEventListener("submit", function (e) {
+        e.preventDefault();
+        var provider = providerSelect ? providerSelect.value : "";
+        var limit = limitInput ? limitInput.value : "5";
+
+        localStorage.setItem("orbiter_default_provider", provider);
+        localStorage.setItem("orbiter_concurrent_limit", limit);
+
+        if (workspaceSaved) {
+          workspaceSaved.classList.remove("hidden");
+          setTimeout(function () {
+            workspaceSaved.classList.add("hidden");
+          }, 2000);
+        }
+      });
+    }
+  })();
+</script>
