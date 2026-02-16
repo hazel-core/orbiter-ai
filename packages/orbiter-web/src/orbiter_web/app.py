@@ -13,6 +13,7 @@ from orbiter_web.routes.agents import router as agents_router
 from orbiter_web.routes.applications import router as applications_router
 from orbiter_web.routes.auth import router as auth_router
 from orbiter_web.routes.models import router as models_router
+from orbiter_web.routes.playground import router as playground_router
 from orbiter_web.routes.projects import router as projects_router
 from orbiter_web.routes.prompt_templates import router as prompt_templates_router
 from orbiter_web.routes.provider_keys import router as provider_keys_router
@@ -40,6 +41,7 @@ app.include_router(agents_router)
 app.include_router(applications_router)
 app.include_router(auth_router)
 app.include_router(models_router)
+app.include_router(playground_router)
 app.include_router(projects_router)
 app.include_router(prompt_templates_router)
 app.include_router(provider_keys_router)

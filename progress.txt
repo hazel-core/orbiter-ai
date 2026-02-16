@@ -57,6 +57,10 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
 - CanvasIsland accepts optional `workflowId` prop — loads from GET /api/workflows/:id on mount, auto-saves with 500ms debounce via PUT
 - Handle types defined in `handleTypes.ts` — `getHandlesForNodeType(nodeType)` returns HandleSpec[]; all nodes use `type: "workflow"` for custom rendering via WorkflowNode.tsx
 - Custom nodeTypes/edgeTypes must be defined OUTSIDE the component (stable reference) — passed to `<ReactFlow nodeTypes={...} edgeTypes={...}>`
+- Validation data on nodes: use `_` prefixed data props (_missingConfig, _unreachable, _disconnectedInputs) — injected via displayNodes useMemo
+- `fitView({ nodes: [{ id }], padding: 0.5, duration: 400 })` centers viewport on a specific node — useful for navigate-to-node from panels
+- WebSocket auth: extract session cookie manually via `websocket.cookies.get("orbiter_session")`, validate before `websocket.accept()`; no `Depends()` for WS
+- Provider streaming: OpenAI/Anthropic use SSE (`data: ` prefix), Ollama uses NDJSON; use httpx `client.stream()` + `resp.aiter_lines()`
 
 ---
 
@@ -923,4 +927,40 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Shift+click detection via `_event.shiftKey` in onNodeClick — toggling same node exits relationships mode
   - CSS `opacity` transitions on `.react-flow__node` and `.react-flow__edge` give smooth fade effect when entering/exiting relationships mode
   - Manual browser verification needed (no browser testing tool available)
+---
+
+## 2026-02-17 00:00 - US-057
+- What was implemented: Canvas real-time validation — validation engine (missing config, disconnected inputs, cycle detection, unreachable nodes), visual decorations on WorkflowNode (yellow warning badge, red dots on disconnected handles, dashed border for unreachable), validation summary panel with click-to-navigate, toolbar toggle button with issue count badge
+- Files changed:
+  - packages/orbiter-web/src/islands/Canvas/validation.ts (new — validateWorkflow(), cycle detection via DFS, reachability from triggers via BFS, disconnected input detection, missing config checks)
+  - packages/orbiter-web/src/islands/Canvas/ValidationPanel.tsx (new — collapsible bottom-left panel with issue list, severity icons, click-to-navigate via fitView)
+  - packages/orbiter-web/src/islands/Canvas/WorkflowNode.tsx (updated — added _missingConfig, _unreachable, _disconnectedInputs data props; yellow "!" badge top-right, red dot + glow on disconnected handles, dashed border for unreachable)
+  - packages/orbiter-web/src/islands/Canvas/CanvasIsland.tsx (updated — imported validation + panel, 1s debounced validation via useEffect, injected validation decorations into displayNodes/displayEdges, cycle-edge CSS class, validation toolbar button with count badge, navigateToNode callback)
+- **Learnings for future iterations:**
+  - Validation data injected into node.data via `_` prefixed props (_missingConfig, _unreachable, _disconnectedInputs) — same pattern as _relTint for relationships mode
+  - Cycle detection uses DFS with white/gray/black coloring — gray → gray back edge means cycle; trace path edges for full cycle marking
+  - Unreachable nodes determined by BFS forward from trigger types (chat_input, webhook, schedule, manual) — nodes not reached get dashed border
+  - `fitView({ nodes: [{ id }], padding: 0.5, duration: 400 })` centers viewport on a specific node — used for click-to-navigate from validation panel
+  - Validation result stored as React state and injected into displayNodes/displayEdges useMemo — no extra renders needed
+  - CSS class `.cycle-edge` with `stroke: #ef4444 !important` overrides edge color for cycle edges
+  - Validation panel uses absolute positioning inside ReactFlow (like NodeSidebar) with `className="nodrag nopan nowheel"`
+  - Manual browser verification needed (no browser testing tool available)
+---
+
+## 2026-02-17 01:00 - US-058
+- What was implemented: Chat WebSocket endpoint at ws://api/playground/{agent_id}/chat with streaming token delivery for OpenAI, Anthropic, Gemini, and Ollama providers
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/routes/playground.py (new — WebSocket endpoint with auth via session cookie, agent loading, provider/key resolution, per-provider streaming functions)
+  - packages/orbiter-web/src/orbiter_web/app.py (updated — registered playground_router)
+- **Learnings for future iterations:**
+  - WebSocket auth: FastAPI WebSocket doesn't use `Depends()` — manually extract session cookie via `websocket.cookies.get("orbiter_session")` and validate before `websocket.accept()`
+  - Close with custom codes (4001 for auth, 4004 for not found) before accept to cleanly reject unauthorized connections
+  - httpx streaming: use `client.stream("POST", url, json=body)` + `resp.aiter_lines()` for SSE parsing from provider APIs
+  - Ruff SIM117: combine nested `async with` statements into single `async with A as a, B as b:` form
+  - OpenAI SSE: lines prefixed with `data: `, terminal `data: [DONE]`; chunks have `choices[0].delta.content`
+  - Anthropic SSE: `content_block_delta` events with `delta.text`, `message_start` for input tokens, `message_delta` for output tokens
+  - Gemini SSE: use `?alt=sse` query param for SSE mode; chunks have `candidates[0].content.parts[].text` and `usageMetadata`
+  - Ollama streaming: NDJSON (not SSE) — parse each line as JSON, content in `message.content`, final chunk has `done: true` with eval counts
+  - Conversation history maintained in-memory per WebSocket connection; future stories (US-061) will persist to DB
+  - Provider lookup: agent stores `model_provider` as type string (e.g., "openai"), need `_find_provider_by_type()` to resolve to provider_id
 ---
