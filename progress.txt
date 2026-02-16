@@ -1547,3 +1547,28 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - CLI calls `run_migrations()` before inserting to ensure schema is up to date
   - `python -m orbiter_web.cli` works because of `if __name__ == "__main__": main()` guard
 ---
+
+## 2026-02-17 - US-092
+- What was implemented: Crew builder UI at /crews/new — full page for creating crews with agent task assignment
+- Features:
+  - Crew name, description, and project selector
+  - Process type selector: sequential (tasks chain outputs) vs parallel (tasks run simultaneously)
+  - Agent selector dropdown populated from /api/agents
+  - Per-task expandable cards with task description, expected output format, and dependency selection
+  - Drag-and-drop reorder for sequential mode (drag handles hidden in parallel mode)
+  - Delegation toggle: allow agents to create sub-tasks for other crew members (stored in config_json)
+  - Order badges, task count, empty state
+  - Save flow: creates crew via POST /api/crews, then adds tasks via POST /api/crews/:id/tasks
+  - Toast notifications for validation and success/error feedback
+- Files changed:
+  - packages/orbiter-web/src/pages/crews/new.astro (new — 630 lines)
+- **Learnings for future iterations:**
+  - Crew pages live under `src/pages/crews/` directory — new.astro for creation
+  - Crew builder uses same patterns as supervisor wizard: PageLayout wrapper, inline SVG icons, IIFE script, toast notifications
+  - Drag-and-drop with native HTML5 API: `draggable="true"`, dragstart/dragover/drop/dragend events; reorder by splice+insert
+  - Dependencies UI: chip-toggle buttons for earlier tasks, stored as JSON array of task indices
+  - Delegation stored as `{delegation_enabled: true/false}` in crew's config_json field
+  - Process type radio buttons use `peer` + `peer-checked:` Tailwind pattern for styled card selectors
+  - Sequential mode shows drag handles and dependency selectors; parallel mode hides both
+  - Manual browser verification needed (no dev-browser skill configured)
+---
