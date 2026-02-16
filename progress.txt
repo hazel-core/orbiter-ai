@@ -1243,3 +1243,18 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Copy-to-clipboard button on each variable value for quick debugging
   - Manual browser verification needed (no browser testing tool available)
 ---
+
+## 2026-02-17 - US-075
+- What was implemented: Single-node execution — right-click context menu on canvas nodes with "Run This Node" option, mock input panel (editable JSON), backend endpoint for isolated node execution, inspection panel integration for results
+- Files changed:
+  - `packages/orbiter-web/src/orbiter_web/engine.py` — added `execute_single_node()` function
+  - `packages/orbiter-web/src/orbiter_web/routes/workflow_runs.py` — added POST `/api/workflows/:id/nodes/:nodeId/run` endpoint
+  - `packages/orbiter-web/src/islands/Canvas/CanvasIsland.tsx` — added context menu state/handler, `onNodeContextMenu`, `executeSingleNode` callback, `NodeContextMenu` component, `MockInputPanel` component, updated inspection panel to show single-node run results
+- **Learnings for future iterations:**
+  - ReactFlow supports `onNodeContextMenu` prop for right-click handling on nodes — same signature as `onNodeClick`
+  - Context menu must be `position: fixed` (not absolute) since it uses clientX/clientY coordinates from the mouse event
+  - Single-node runs create a full `workflow_runs` + `workflow_run_logs` record pair, so the existing inspection panel can fetch data via the same GET endpoint
+  - The `singleRunResult` state tracks the run_id separately from the full-workflow exec state — the inspection panel picks whichever run_id matches the inspected node
+  - Mock input panel pre-populates with the node's current data (minus `_` prefixed internal props) for convenience
+  - Manual browser verification needed (no browser testing tool available)
+---

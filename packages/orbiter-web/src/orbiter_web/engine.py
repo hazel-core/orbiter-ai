@@ -103,6 +103,88 @@ async def _execute_node(node: dict[str, Any]) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Single-node execution
+# ---------------------------------------------------------------------------
+
+
+async def execute_single_node(
+    run_id: str,
+    workflow_id: str,
+    user_id: str,
+    node: dict[str, Any],
+    mock_input: dict[str, Any],
+) -> dict[str, Any]:
+    """Execute a single node in isolation with mock input data.
+
+    Creates a workflow_run record and a single workflow_run_logs entry,
+    then returns the execution result.
+    """
+    now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
+
+    # Mark run as running.
+    await _update_run_status(run_id, "running", started_at=now)
+
+    # Merge mock_input into node data so the node executor sees it.
+    node_with_input = {**node, "data": {**node.get("data", {}), **mock_input}}
+
+    log_id = str(uuid.uuid4())
+    input_snapshot = json.dumps(node_with_input.get("data", {}))
+
+    async with get_db() as db:
+        await db.execute(
+            "INSERT INTO workflow_run_logs (id, run_id, node_id, status, started_at, input_json) VALUES (?, ?, ?, 'running', ?, ?)",
+            (log_id, run_id, node["id"], now, input_snapshot),
+        )
+        await db.commit()
+
+    try:
+        output = await _execute_node(node_with_input)
+        completed_at = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
+
+        logs_text = output.pop("logs", None)
+        token_usage = output.pop("token_usage", None)
+        token_usage_json = json.dumps(token_usage) if token_usage else None
+
+        async with get_db() as db:
+            await db.execute(
+                "UPDATE workflow_run_logs SET status = 'completed', output_json = ?, logs_text = ?, token_usage_json = ?, completed_at = ? WHERE run_id = ? AND node_id = ?",
+                (json.dumps(output), logs_text, token_usage_json, completed_at, run_id, node["id"]),
+            )
+            await db.commit()
+
+        await _update_run_status(run_id, "completed", completed_at=completed_at)
+
+        return {
+            "run_id": run_id,
+            "node_id": node["id"],
+            "status": "completed",
+            "output": output,
+            "logs": logs_text,
+            "token_usage": token_usage,
+        }
+
+    except Exception as exc:
+        error_msg = str(exc)
+        completed_at = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
+
+        async with get_db() as db:
+            await db.execute(
+                "UPDATE workflow_run_logs SET status = 'failed', error = ?, completed_at = ? WHERE run_id = ? AND node_id = ?",
+                (error_msg, completed_at, run_id, node["id"]),
+            )
+            await db.commit()
+
+        await _update_run_status(run_id, "failed", completed_at=completed_at, error=error_msg)
+
+        return {
+            "run_id": run_id,
+            "node_id": node["id"],
+            "status": "failed",
+            "error": error_msg,
+        }
+
+
+# ---------------------------------------------------------------------------
 # Run manager — tracks active runs for cancellation
 # ---------------------------------------------------------------------------
 

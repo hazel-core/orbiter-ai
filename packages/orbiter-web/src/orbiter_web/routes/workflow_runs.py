@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisco
 from orbiter_web.database import get_db
 from orbiter_web.engine import (
     cancel_run,
+    execute_single_node,
     execute_workflow,
     execute_workflow_debug,
     register_debug_session,
@@ -104,6 +105,41 @@ async def start_workflow_run(
     task.add_done_callback(_background_tasks.discard)
 
     return {"run_id": run_id, "status": "pending"}
+
+
+# ---------------------------------------------------------------------------
+# POST /api/workflows/:id/nodes/:nodeId/run — single-node execution
+# ---------------------------------------------------------------------------
+
+
+@router.post("/{workflow_id}/nodes/{node_id}/run")
+async def run_single_node(
+    workflow_id: str,
+    node_id: str,
+    body: dict[str, Any] | None = None,
+    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+) -> dict[str, Any]:
+    """Execute a single node in isolation with optional mock input."""
+    async with get_db() as db:
+        wf = await _verify_workflow_ownership(db, workflow_id, user["id"])
+
+        nodes = json.loads(wf["nodes_json"] or "[]")
+        node = next((n for n in nodes if n["id"] == node_id), None)
+        if node is None:
+            raise HTTPException(status_code=404, detail="Node not found in workflow")
+
+        run_id = str(uuid.uuid4())
+        now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
+
+        await db.execute(
+            "INSERT INTO workflow_runs (id, workflow_id, status, user_id, created_at) VALUES (?, ?, 'pending', ?, ?)",
+            (run_id, workflow_id, user["id"], now),
+        )
+        await db.commit()
+
+    mock_input = (body or {}).get("mock_input", {})
+    result = await execute_single_node(run_id, workflow_id, user["id"], node, mock_input)
+    return result
 
 
 # ---------------------------------------------------------------------------

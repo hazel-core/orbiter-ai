@@ -1117,6 +1117,20 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
     stopDebug, toggleBreakpoint, setVariable, resetDebug,
   } = useDebugExecution(workflowId, nodes.length);
 
+  /* Context menu state (right-click on node) */
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    nodeId: string;
+  } | null>(null);
+
+  /* Single-node execution state */
+  const [singleRunNodeId, setSingleRunNodeId] = useState<string | null>(null);
+  const [singleRunResult, setSingleRunResult] = useState<{
+    runId: string;
+    nodeId: string;
+  } | null>(null);
+
   /* Workflow metadata (name, description) */
   const [workflowName, setWorkflowName] = useState("");
   const [workflowDescription, setWorkflowDescription] = useState("");
@@ -1368,7 +1382,61 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
     setSelectedNodeId(null);
     setInspectedNodeId(null);
     setRelationshipNodeId(null);
+    setContextMenu(null);
   }, []);
+
+  /* Right-click context menu on nodes */
+  const onNodeContextMenu = useCallback(
+    (event: React.MouseEvent, node: Node) => {
+      event.preventDefault();
+      setContextMenu({ x: event.clientX, y: event.clientY, nodeId: node.id });
+    },
+    [],
+  );
+
+  /* Close context menu on any click */
+  useEffect(() => {
+    if (!contextMenu) return;
+    const close = () => setContextMenu(null);
+    window.addEventListener("click", close);
+    return () => window.removeEventListener("click", close);
+  }, [contextMenu]);
+
+  /* Single-node execution: open mock input panel */
+  const handleRunSingleNode = useCallback(
+    (nodeId: string) => {
+      setContextMenu(null);
+      setSingleRunNodeId(nodeId);
+    },
+    [],
+  );
+
+  /* Execute single node with mock input */
+  const executeSingleNode = useCallback(
+    async (nodeId: string, mockInput: Record<string, unknown>) => {
+      if (!workflowId) return;
+      setSingleRunNodeId(null);
+      try {
+        const res = await fetch(`/api/workflows/${workflowId}/nodes/${nodeId}/run`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mock_input: mockInput }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ detail: "Failed to run node" }));
+          alert(err.detail || "Failed to run node");
+          return;
+        }
+        const result = await res.json();
+        setSingleRunResult({ runId: result.run_id, nodeId });
+        setInspectedNodeId(nodeId);
+        setSelectedNodeId(null);
+      } catch {
+        alert("Failed to run node");
+      }
+    },
+    [workflowId],
+  );
 
   /* Update a node's data (used by config panel) */
   const handleNodeDataUpdate = useCallback(
@@ -1739,6 +1807,7 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
       onDragOver={onDragOver}
       onDrop={onDrop}
       onNodeClick={onNodeClick}
+      onNodeContextMenu={onNodeContextMenu}
       onPaneClick={onPaneClick}
       colorMode={colorMode}
       snapToGrid
@@ -2147,16 +2216,307 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
         onNodeUpdate={handleNodeDataUpdate}
       />
 
-      {/* Node inspection panel (post-execution or debug) */}
-      {workflowId && (exec.runId || dbg.runId) && (
+      {/* Node inspection panel (post-execution, debug, or single-node run) */}
+      {workflowId && (exec.runId || dbg.runId || singleRunResult) && (
         <NodeInspectionPanel
           node={inspectedNode}
           workflowId={workflowId}
-          runId={(exec.runId || dbg.runId)!}
-          onClose={() => setInspectedNodeId(null)}
+          runId={
+            singleRunResult && inspectedNodeId === singleRunResult.nodeId
+              ? singleRunResult.runId
+              : (exec.runId || dbg.runId)!
+          }
+          onClose={() => {
+            setInspectedNodeId(null);
+            if (singleRunResult && inspectedNodeId === singleRunResult.nodeId) {
+              setSingleRunResult(null);
+            }
+          }}
+        />
+      )}
+
+      {/* Right-click context menu */}
+      {contextMenu && (
+        <NodeContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onRunNode={() => handleRunSingleNode(contextMenu.nodeId)}
+        />
+      )}
+
+      {/* Mock input panel for single-node execution */}
+      {singleRunNodeId && (
+        <MockInputPanel
+          node={nodes.find((n) => n.id === singleRunNodeId) ?? null}
+          onRun={(mockInput) => executeSingleNode(singleRunNodeId, mockInput)}
+          onClose={() => setSingleRunNodeId(null)}
         />
       )}
     </ReactFlow>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* NodeContextMenu — right-click context menu on canvas nodes          */
+/* ------------------------------------------------------------------ */
+
+function NodeContextMenu({
+  x,
+  y,
+  onRunNode,
+}: {
+  x: number;
+  y: number;
+  onRunNode: () => void;
+}) {
+  return (
+    <div
+      className="nodrag nopan nowheel"
+      style={{
+        position: "fixed",
+        left: x,
+        top: y,
+        zIndex: 50,
+        minWidth: 160,
+        background: "var(--zen-paper, #f2f0e3)",
+        border: "1px solid var(--zen-subtle, #e0ddd0)",
+        borderRadius: 8,
+        boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+        padding: "4px 0",
+        fontFamily: "'Bricolage Grotesque', sans-serif",
+        animation: "ctxFadeIn 100ms ease-out",
+      }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <button
+        onClick={onRunNode}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          width: "100%",
+          padding: "8px 12px",
+          border: "none",
+          background: "transparent",
+          cursor: "pointer",
+          fontSize: 12,
+          fontWeight: 500,
+          fontFamily: "'Bricolage Grotesque', sans-serif",
+          color: "var(--zen-dark, #2e2e2e)",
+          textAlign: "left",
+        }}
+        onMouseEnter={(e) => {
+          (e.currentTarget as HTMLElement).style.background = "var(--zen-subtle, #e0ddd0)";
+        }}
+        onMouseLeave={(e) => {
+          (e.currentTarget as HTMLElement).style.background = "transparent";
+        }}
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <polygon points="5 3 19 12 5 21 5 3" />
+        </svg>
+        Run This Node
+      </button>
+      <style>{`
+        @keyframes ctxFadeIn {
+          from { opacity: 0; transform: scale(0.95); }
+          to { opacity: 1; transform: scale(1); }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* MockInputPanel — editable JSON input for single-node execution      */
+/* ------------------------------------------------------------------ */
+
+function MockInputPanel({
+  node,
+  onRun,
+  onClose,
+}: {
+  node: Node | null;
+  onRun: (mockInput: Record<string, unknown>) => void;
+  onClose: () => void;
+}) {
+  const [inputText, setInputText] = useState("{}");
+  const [parseError, setParseError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!node) return;
+    // Pre-populate with the node's current data as a starting point.
+    const data = { ...(node.data as Record<string, unknown>) };
+    // Remove internal props (prefixed with _).
+    for (const key of Object.keys(data)) {
+      if (key.startsWith("_")) delete data[key];
+    }
+    setInputText(JSON.stringify(data, null, 2));
+    setParseError(null);
+  }, [node]);
+
+  const handleRun = useCallback(() => {
+    try {
+      const parsed = JSON.parse(inputText);
+      setParseError(null);
+      onRun(parsed);
+    } catch (e) {
+      setParseError((e as Error).message);
+    }
+  }, [inputText, onRun]);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") handleRun();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose, handleRun]);
+
+  if (!node) return null;
+
+  const nodeType = (node.data as { nodeType?: string }).nodeType ?? "default";
+  const label = (node.data as { label?: string }).label ?? nodeType;
+
+  return (
+    <div
+      className="nodrag nopan nowheel"
+      style={{
+        position: "absolute",
+        top: "50%",
+        left: "50%",
+        transform: "translate(-50%, -50%)",
+        width: 420,
+        maxHeight: "80vh",
+        zIndex: 30,
+        display: "flex",
+        flexDirection: "column",
+        background: "var(--zen-paper, #f2f0e3)",
+        border: "1px solid var(--zen-subtle, #e0ddd0)",
+        borderRadius: 12,
+        boxShadow: "0 8px 32px rgba(0,0,0,0.18)",
+        overflow: "hidden",
+        animation: "slideInRight 200ms ease-out",
+        fontFamily: "'Bricolage Grotesque', sans-serif",
+      }}
+    >
+      {/* Header */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "12px 14px 10px",
+          borderBottom: "1px solid var(--zen-subtle, #e0ddd0)",
+        }}
+      >
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--zen-dark, #2e2e2e)" }}>
+            Run: {label}
+          </div>
+          <div style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--zen-coral, #F76F53)" }}>
+            Mock Input
+          </div>
+        </div>
+        <button
+          onClick={onClose}
+          title="Close (Esc)"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: 26,
+            height: 26,
+            border: "none",
+            borderRadius: 6,
+            background: "transparent",
+            color: "var(--zen-muted, #999)",
+            cursor: "pointer",
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+
+      {/* JSON editor */}
+      <div style={{ flex: 1, padding: "12px 14px", overflow: "auto" }}>
+        <div style={{ fontSize: 11, fontWeight: 600, color: "var(--zen-muted, #999)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+          Input JSON
+        </div>
+        <textarea
+          value={inputText}
+          onChange={(e) => {
+            setInputText(e.target.value);
+            setParseError(null);
+          }}
+          spellCheck={false}
+          style={{
+            width: "100%",
+            minHeight: 200,
+            padding: "10px 12px",
+            fontSize: 12,
+            fontFamily: "monospace",
+            lineHeight: 1.5,
+            background: "var(--zen-subtle, #e0ddd0)",
+            border: parseError ? "1px solid #ef4444" : "1px solid transparent",
+            borderRadius: 8,
+            color: "var(--zen-dark, #2e2e2e)",
+            resize: "vertical",
+            outline: "none",
+          }}
+        />
+        {parseError && (
+          <div style={{ fontSize: 11, color: "#ef4444", marginTop: 4 }}>{parseError}</div>
+        )}
+      </div>
+
+      {/* Footer */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "flex-end",
+          gap: 8,
+          padding: "10px 14px",
+          borderTop: "1px solid var(--zen-subtle, #e0ddd0)",
+        }}
+      >
+        <button
+          onClick={onClose}
+          style={{
+            padding: "6px 14px",
+            fontSize: 12,
+            fontWeight: 500,
+            fontFamily: "'Bricolage Grotesque', sans-serif",
+            borderRadius: 6,
+            border: "1px solid var(--zen-subtle, #e0ddd0)",
+            background: "transparent",
+            color: "var(--zen-dark, #2e2e2e)",
+            cursor: "pointer",
+          }}
+        >
+          Cancel
+        </button>
+        <button
+          onClick={handleRun}
+          style={{
+            padding: "6px 14px",
+            fontSize: 12,
+            fontWeight: 600,
+            fontFamily: "'Bricolage Grotesque', sans-serif",
+            borderRadius: 6,
+            border: "1px solid var(--zen-coral, #F76F53)",
+            background: "var(--zen-coral, #F76F53)",
+            color: "#fff",
+            cursor: "pointer",
+          }}
+        >
+          Run Node
+        </button>
       </div>
     </div>
   );
