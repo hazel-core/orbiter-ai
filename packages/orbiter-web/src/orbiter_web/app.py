@@ -16,6 +16,7 @@ from orbiter_web.routes.models import router as models_router
 from orbiter_web.routes.projects import router as projects_router
 from orbiter_web.routes.provider_keys import router as provider_keys_router
 from orbiter_web.routes.providers import router as providers_router
+from orbiter_web.routes.tools import router as tools_router
 
 
 @asynccontextmanager
@@ -40,6 +41,7 @@ app.include_router(models_router)
 app.include_router(projects_router)
 app.include_router(provider_keys_router)
 app.include_router(providers_router)
+app.include_router(tools_router)
 
 
 @app.get("/api/health")

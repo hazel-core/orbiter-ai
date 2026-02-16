@@ -1,6 +1,7 @@
 ---
 import PageLayout from "../../../layouts/PageLayout.astro";
 import Button from "../../../components/Button.astro";
+import Modal from "../../../components/Modal.astro";
 
 const { id } = Astro.params;
 
@@ -77,6 +78,24 @@ const saveIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
             class="tab-btn relative pb-3 text-sm font-medium text-muted border-b-2 border-transparent hover:text-dark transition-colors"
           >
             Model
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected="false"
+            data-tab="tools"
+            class="tab-btn relative pb-3 text-sm font-medium text-muted border-b-2 border-transparent hover:text-dark transition-colors"
+          >
+            Tools
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected="false"
+            data-tab="handoffs"
+            class="tab-btn relative pb-3 text-sm font-medium text-muted border-b-2 border-transparent hover:text-dark transition-colors"
+          >
+            Handoffs
           </button>
         </nav>
       </div>
@@ -203,8 +222,96 @@ const saveIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
           </div>
         </div>
       </div>
+
+      <!-- Tools tab -->
+      <div id="panel-tools" class="tab-panel hidden" role="tabpanel">
+        <div class="flex flex-col gap-5">
+          <div class="flex items-center justify-between">
+            <div>
+              <h3 class="text-sm font-medium text-dark">Assigned Tools</h3>
+              <p class="text-xs text-muted mt-0.5">Tools this agent can use. Drag to reorder priority.</p>
+            </div>
+            <button
+              type="button"
+              id="add-tool-btn"
+              class="flex items-center gap-1.5 rounded-lg bg-dark text-paper px-3 py-1.5 text-xs font-medium hover:bg-dark/80 transition-colors cursor-pointer"
+            >
+              <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Add Tool
+            </button>
+          </div>
+
+          <!-- Tool list (populated by JS) -->
+          <div id="tools-list" class="flex flex-col gap-2">
+            <!-- Empty state -->
+            <div id="tools-empty" class="rounded-lg border border-dashed border-dark/[0.12] bg-subtle/50 py-8 text-center">
+              <p class="text-sm text-muted">No tools assigned yet.</p>
+              <p class="text-xs text-muted/60 mt-1">Click "Add Tool" to assign tools to this agent.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Handoffs tab -->
+      <div id="panel-handoffs" class="tab-panel hidden" role="tabpanel">
+        <div class="flex flex-col gap-5">
+          <div class="flex items-center justify-between">
+            <div>
+              <h3 class="text-sm font-medium text-dark">Handoff Targets</h3>
+              <p class="text-xs text-muted mt-0.5">Other agents this agent can hand off tasks to.</p>
+            </div>
+            <button
+              type="button"
+              id="add-handoff-btn"
+              class="flex items-center gap-1.5 rounded-lg bg-dark text-paper px-3 py-1.5 text-xs font-medium hover:bg-dark/80 transition-colors cursor-pointer"
+            >
+              <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Add Handoff
+            </button>
+          </div>
+
+          <!-- Handoff list (populated by JS) -->
+          <div id="handoffs-list" class="flex flex-col gap-2">
+            <!-- Empty state -->
+            <div id="handoffs-empty" class="rounded-lg border border-dashed border-dark/[0.12] bg-subtle/50 py-8 text-center">
+              <p class="text-sm text-muted">No handoff targets configured.</p>
+              <p class="text-xs text-muted/60 mt-1">Click "Add Handoff" to allow this agent to delegate to others.</p>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
+
+  <!-- Tool selector modal -->
+  <Modal id="tool-selector-modal" title="Add Tool">
+    <div class="flex flex-col gap-4">
+      <input
+        type="text"
+        id="tool-search"
+        placeholder="Search tools..."
+        class="w-full bg-paper border border-dark/[0.08] rounded-lg px-3 py-2 text-sm text-dark placeholder:text-muted/60 outline-none focus:border-coral focus:ring-2 focus:ring-coral/20"
+      />
+      <div id="tool-selector-list" class="flex flex-col gap-1 max-h-64 overflow-y-auto">
+        <p class="text-sm text-muted text-center py-4">Loading tools...</p>
+      </div>
+    </div>
+  </Modal>
+
+  <!-- Handoff agent selector modal -->
+  <Modal id="handoff-selector-modal" title="Add Handoff Target">
+    <div class="flex flex-col gap-4">
+      <input
+        type="text"
+        id="handoff-search"
+        placeholder="Search agents..."
+        class="w-full bg-paper border border-dark/[0.08] rounded-lg px-3 py-2 text-sm text-dark placeholder:text-muted/60 outline-none focus:border-coral focus:ring-2 focus:ring-coral/20"
+      />
+      <div id="handoff-selector-list" class="flex flex-col gap-1 max-h-64 overflow-y-auto">
+        <p class="text-sm text-muted text-center py-4">Loading agents...</p>
+      </div>
+    </div>
+  </Modal>
 </PageLayout>
 
 <script is:inline define:vars={{ agentId: id }}>
@@ -232,8 +339,36 @@ const saveIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
     var temperatureValue = document.getElementById("temperature-value");
     var maxTokensInput = document.getElementById("model-max-tokens");
 
+    /* Tools tab */
+    var toolsList = document.getElementById("tools-list");
+    var toolsEmpty = document.getElementById("tools-empty");
+    var addToolBtn = document.getElementById("add-tool-btn");
+    var toolSelectorModal = document.getElementById("tool-selector-modal");
+    var toolSelectorList = document.getElementById("tool-selector-list");
+    var toolSearch = document.getElementById("tool-search");
+
+    /* Handoffs tab */
+    var handoffsList = document.getElementById("handoffs-list");
+    var handoffsEmpty = document.getElementById("handoffs-empty");
+    var addHandoffBtn = document.getElementById("add-handoff-btn");
+    var handoffSelectorModal = document.getElementById("handoff-selector-modal");
+    var handoffSelectorList = document.getElementById("handoff-selector-list");
+    var handoffSearch = document.getElementById("handoff-search");
+
     var currentAgent = null;
     var allProviders = [];
+    var allModels = [];
+
+    /* State: assigned tools as array of {id, name, description, category} */
+    var assignedTools = [];
+    /* State: handoff targets as array of {id, name, description} */
+    var assignedHandoffs = [];
+    /* Cached data from API */
+    var availableTools = [];
+    var projectAgents = [];
+
+    /* Drag state */
+    var dragIndex = null;
 
     /* ------------------------------------------------------------------ */
     /* Tab switching                                                       */
@@ -280,7 +415,6 @@ const saveIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
 
       if (provider && model) {
         modelPreview.classList.remove("hidden");
-        /* Find provider name */
         var provName = provider;
         for (var i = 0; i < allProviders.length; i++) {
           if (allProviders[i].id === provider) {
@@ -339,11 +473,288 @@ const saveIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
     }
 
     /* ------------------------------------------------------------------ */
+    /* Tools management                                                    */
+    /* ------------------------------------------------------------------ */
+    var categoryIcons = {
+      retrieval: '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>',
+      filesystem: '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>',
+      execution: '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>',
+      data: '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>',
+      utility: '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>'
+    };
+
+    function renderToolsList() {
+      /* Clear everything except the empty state */
+      var items = toolsList.querySelectorAll(".tool-item");
+      items.forEach(function (el) { el.remove(); });
+
+      if (assignedTools.length === 0) {
+        toolsEmpty.classList.remove("hidden");
+        return;
+      }
+      toolsEmpty.classList.add("hidden");
+
+      assignedTools.forEach(function (tool, idx) {
+        var row = document.createElement("div");
+        row.className = "tool-item flex items-center gap-3 rounded-lg border border-dark/[0.08] bg-paper px-3 py-2.5 group transition-colors hover:border-dark/[0.15]";
+        row.setAttribute("draggable", "true");
+        row.setAttribute("data-tool-index", idx);
+
+        var icon = categoryIcons[tool.category] || categoryIcons.utility;
+        row.innerHTML =
+          '<span class="cursor-grab text-muted/40 hover:text-muted transition-colors" title="Drag to reorder">' +
+            '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="8" y2="6.01"/><line x1="16" y1="6" x2="16" y2="6.01"/><line x1="8" y1="12" x2="8" y2="12.01"/><line x1="16" y1="12" x2="16" y2="12.01"/><line x1="8" y1="18" x2="8" y2="18.01"/><line x1="16" y1="18" x2="16" y2="18.01"/></svg>' +
+          '</span>' +
+          '<span class="text-muted">' + icon + '</span>' +
+          '<div class="flex-1 min-w-0">' +
+            '<p class="text-sm font-medium text-dark">' + tool.name + '</p>' +
+            '<p class="text-xs text-muted truncate">' + tool.description + '</p>' +
+          '</div>' +
+          '<span class="rounded-full bg-subtle px-2 py-0.5 text-[10px] font-medium text-muted uppercase tracking-wider">' + tool.category + '</span>' +
+          '<button type="button" class="remove-tool-btn flex h-7 w-7 items-center justify-center rounded-md text-muted/40 hover:bg-coral/10 hover:text-coral transition-colors opacity-0 group-hover:opacity-100 cursor-pointer" title="Remove tool" data-tool-index="' + idx + '">' +
+            '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>' +
+          '</button>';
+
+        toolsList.appendChild(row);
+
+        /* Drag events */
+        row.addEventListener("dragstart", function (e) {
+          dragIndex = idx;
+          row.classList.add("opacity-50");
+          e.dataTransfer.effectAllowed = "move";
+        });
+        row.addEventListener("dragend", function () {
+          row.classList.remove("opacity-50");
+          dragIndex = null;
+          /* Remove all drag-over highlights */
+          toolsList.querySelectorAll(".tool-item").forEach(function (el) {
+            el.classList.remove("border-coral");
+          });
+        });
+        row.addEventListener("dragover", function (e) {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "move";
+          row.classList.add("border-coral");
+        });
+        row.addEventListener("dragleave", function () {
+          row.classList.remove("border-coral");
+        });
+        row.addEventListener("drop", function (e) {
+          e.preventDefault();
+          row.classList.remove("border-coral");
+          var dropIdx = parseInt(row.getAttribute("data-tool-index"), 10);
+          if (dragIndex !== null && dragIndex !== dropIdx) {
+            var moved = assignedTools.splice(dragIndex, 1)[0];
+            assignedTools.splice(dropIdx, 0, moved);
+            renderToolsList();
+          }
+        });
+      });
+
+      /* Remove buttons */
+      toolsList.querySelectorAll(".remove-tool-btn").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var idx = parseInt(btn.getAttribute("data-tool-index"), 10);
+          assignedTools.splice(idx, 1);
+          renderToolsList();
+        });
+      });
+    }
+
+    /* Fetch available tools and open modal */
+    function openToolSelector() {
+      toolSelectorModal.showModal();
+      toolSearch.value = "";
+
+      if (availableTools.length > 0) {
+        renderToolSelectorItems("");
+        return;
+      }
+
+      toolSelectorList.innerHTML = '<p class="text-sm text-muted text-center py-4">Loading tools...</p>';
+      fetch("/api/tools")
+        .then(function (res) { return res.ok ? res.json() : []; })
+        .then(function (tools) {
+          availableTools = tools;
+          renderToolSelectorItems("");
+        })
+        .catch(function () {
+          toolSelectorList.innerHTML = '<p class="text-sm text-coral text-center py-4">Failed to load tools.</p>';
+        });
+    }
+
+    function renderToolSelectorItems(query) {
+      var q = query.toLowerCase();
+      toolSelectorList.innerHTML = "";
+
+      var filtered = availableTools.filter(function (t) {
+        /* Exclude already-assigned tools */
+        for (var i = 0; i < assignedTools.length; i++) {
+          if (assignedTools[i].id === t.id) return false;
+        }
+        if (!q) return true;
+        return t.name.toLowerCase().indexOf(q) !== -1 ||
+               t.description.toLowerCase().indexOf(q) !== -1 ||
+               t.category.toLowerCase().indexOf(q) !== -1;
+      });
+
+      if (filtered.length === 0) {
+        toolSelectorList.innerHTML = '<p class="text-sm text-muted text-center py-4">No matching tools available.</p>';
+        return;
+      }
+
+      filtered.forEach(function (tool) {
+        var icon = categoryIcons[tool.category] || categoryIcons.utility;
+        var item = document.createElement("button");
+        item.type = "button";
+        item.className = "flex items-center gap-3 w-full rounded-lg px-3 py-2.5 text-left hover:bg-subtle/80 transition-colors cursor-pointer";
+        item.innerHTML =
+          '<span class="text-muted">' + icon + '</span>' +
+          '<div class="flex-1 min-w-0">' +
+            '<p class="text-sm font-medium text-dark">' + tool.name + '</p>' +
+            '<p class="text-xs text-muted truncate">' + tool.description + '</p>' +
+          '</div>' +
+          '<span class="rounded-full bg-subtle px-2 py-0.5 text-[10px] font-medium text-muted uppercase tracking-wider">' + tool.category + '</span>';
+
+        item.addEventListener("click", function () {
+          assignedTools.push({ id: tool.id, name: tool.name, description: tool.description, category: tool.category });
+          renderToolsList();
+          toolSelectorModal.close();
+        });
+
+        toolSelectorList.appendChild(item);
+      });
+    }
+
+    if (addToolBtn) {
+      addToolBtn.addEventListener("click", openToolSelector);
+    }
+    if (toolSearch) {
+      toolSearch.addEventListener("input", function () {
+        renderToolSelectorItems(toolSearch.value);
+      });
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Handoffs management                                                 */
+    /* ------------------------------------------------------------------ */
+    function renderHandoffsList() {
+      var items = handoffsList.querySelectorAll(".handoff-item");
+      items.forEach(function (el) { el.remove(); });
+
+      if (assignedHandoffs.length === 0) {
+        handoffsEmpty.classList.remove("hidden");
+        return;
+      }
+      handoffsEmpty.classList.add("hidden");
+
+      assignedHandoffs.forEach(function (agent, idx) {
+        var row = document.createElement("div");
+        row.className = "handoff-item flex items-center gap-3 rounded-lg border border-dark/[0.08] bg-paper px-3 py-2.5 group transition-colors hover:border-dark/[0.15]";
+        row.innerHTML =
+          '<span class="flex h-8 w-8 items-center justify-center rounded-full bg-zen-blue/10 text-zen-blue text-xs font-semibold">' +
+            (agent.name ? agent.name.charAt(0).toUpperCase() : "A") +
+          '</span>' +
+          '<div class="flex-1 min-w-0">' +
+            '<p class="text-sm font-medium text-dark">' + agent.name + '</p>' +
+            '<p class="text-xs text-muted truncate">' + (agent.description || "No description") + '</p>' +
+          '</div>' +
+          '<button type="button" class="remove-handoff-btn flex h-7 w-7 items-center justify-center rounded-md text-muted/40 hover:bg-coral/10 hover:text-coral transition-colors opacity-0 group-hover:opacity-100 cursor-pointer" title="Remove handoff" data-handoff-index="' + idx + '">' +
+            '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>' +
+          '</button>';
+
+        handoffsList.appendChild(row);
+      });
+
+      handoffsList.querySelectorAll(".remove-handoff-btn").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var idx = parseInt(btn.getAttribute("data-handoff-index"), 10);
+          assignedHandoffs.splice(idx, 1);
+          renderHandoffsList();
+        });
+      });
+    }
+
+    function openHandoffSelector() {
+      handoffSelectorModal.showModal();
+      handoffSearch.value = "";
+
+      if (projectAgents.length > 0) {
+        renderHandoffSelectorItems("");
+        return;
+      }
+
+      handoffSelectorList.innerHTML = '<p class="text-sm text-muted text-center py-4">Loading agents...</p>';
+      var projectId = currentAgent ? currentAgent.project_id : "";
+      var url = projectId ? "/api/agents?project_id=" + encodeURIComponent(projectId) : "/api/agents";
+      fetch(url)
+        .then(function (res) { return res.ok ? res.json() : []; })
+        .then(function (agents) {
+          projectAgents = agents;
+          renderHandoffSelectorItems("");
+        })
+        .catch(function () {
+          handoffSelectorList.innerHTML = '<p class="text-sm text-coral text-center py-4">Failed to load agents.</p>';
+        });
+    }
+
+    function renderHandoffSelectorItems(query) {
+      var q = query.toLowerCase();
+      handoffSelectorList.innerHTML = "";
+
+      var filtered = projectAgents.filter(function (a) {
+        /* Exclude self */
+        if (a.id === agentId) return false;
+        /* Exclude already-assigned handoffs */
+        for (var i = 0; i < assignedHandoffs.length; i++) {
+          if (assignedHandoffs[i].id === a.id) return false;
+        }
+        if (!q) return true;
+        return a.name.toLowerCase().indexOf(q) !== -1 ||
+               (a.description || "").toLowerCase().indexOf(q) !== -1;
+      });
+
+      if (filtered.length === 0) {
+        handoffSelectorList.innerHTML = '<p class="text-sm text-muted text-center py-4">No matching agents available.</p>';
+        return;
+      }
+
+      filtered.forEach(function (agent) {
+        var item = document.createElement("button");
+        item.type = "button";
+        item.className = "flex items-center gap-3 w-full rounded-lg px-3 py-2.5 text-left hover:bg-subtle/80 transition-colors cursor-pointer";
+        item.innerHTML =
+          '<span class="flex h-8 w-8 items-center justify-center rounded-full bg-zen-blue/10 text-zen-blue text-xs font-semibold">' +
+            (agent.name ? agent.name.charAt(0).toUpperCase() : "A") +
+          '</span>' +
+          '<div class="flex-1 min-w-0">' +
+            '<p class="text-sm font-medium text-dark">' + agent.name + '</p>' +
+            '<p class="text-xs text-muted truncate">' + (agent.description || "No description") + '</p>' +
+          '</div>';
+
+        item.addEventListener("click", function () {
+          assignedHandoffs.push({ id: agent.id, name: agent.name, description: agent.description || "" });
+          renderHandoffsList();
+          handoffSelectorModal.close();
+        });
+
+        handoffSelectorList.appendChild(item);
+      });
+    }
+
+    if (addHandoffBtn) {
+      addHandoffBtn.addEventListener("click", openHandoffSelector);
+    }
+    if (handoffSearch) {
+      handoffSearch.addEventListener("input", function () {
+        renderHandoffSelectorItems(handoffSearch.value);
+      });
+    }
+
+    /* ------------------------------------------------------------------ */
     /* Load agent data                                                     */
     /* ------------------------------------------------------------------ */
     function findProviderIdByName(providerName) {
-      /* The agent stores model_provider as a string (provider name/type).
-         We need to find the matching provider ID for the dropdown. */
       if (!providerName) return "";
       for (var i = 0; i < allProviders.length; i++) {
         if (allProviders[i].provider_type === providerName ||
@@ -376,8 +787,25 @@ const saveIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
         maxTokensInput.value = agent.max_tokens;
       }
 
-      /* Populate providers, then models.
-         We need providers loaded first to resolve model_provider. */
+      /* Tools tab — parse tools_json */
+      try {
+        var tools = JSON.parse(agent.tools_json || "[]");
+        assignedTools = Array.isArray(tools) ? tools : [];
+      } catch (e) {
+        assignedTools = [];
+      }
+      renderToolsList();
+
+      /* Handoffs tab — parse handoffs_json */
+      try {
+        var handoffs = JSON.parse(agent.handoffs_json || "[]");
+        assignedHandoffs = Array.isArray(handoffs) ? handoffs : [];
+      } catch (e) {
+        assignedHandoffs = [];
+      }
+      renderHandoffsList();
+
+      /* Populate providers, then models. */
       fetch("/api/providers")
         .then(function (res) { return res.ok ? res.json() : []; })
         .then(function (providers) {
@@ -390,7 +818,6 @@ const saveIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
             providerSelect.appendChild(opt);
           });
 
-          /* Try to match the agent's model_provider to a provider ID */
           var matchedId = findProviderIdByName(agent.model_provider);
           if (matchedId) {
             providerSelect.value = matchedId;
@@ -433,7 +860,6 @@ const saveIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
         var name = nameInput.value.trim();
         if (!name) {
           nameError.classList.remove("hidden");
-          /* Switch to basic tab */
           document.querySelector('[data-tab="basic"]').click();
           nameInput.focus();
           return;
@@ -456,6 +882,8 @@ const saveIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
           model_provider: modelProvider,
           model_name: modelSelect.value || "",
           temperature: parseFloat(temperatureSlider.value),
+          tools_json: JSON.stringify(assignedTools),
+          handoffs_json: JSON.stringify(assignedHandoffs),
         };
 
         var maxTokens = maxTokensInput.value.trim();
