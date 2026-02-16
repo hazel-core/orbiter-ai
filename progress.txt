@@ -619,3 +619,19 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Restore creates a new version (recording the restore action) and updates the template content — ensures no version history is lost
   - Manual browser verification needed (no browser testing tool available)
 ---
+
+## 2026-02-17 11:10 - US-038
+- What was implemented: Role-based agent persona section — collapsible persona panel in agent builder Basic tab with Role, Goal, and Backstory fields; 5 persona templates (Researcher, Writer, Coder, Reviewer, Planner); preview button showing full system prompt with persona injected; persona fields stored in DB via new migration
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/migrations/011_add_agent_persona.sql (new — ALTER TABLE adds persona_role, persona_goal, persona_backstory to agents)
+  - packages/orbiter-web/src/orbiter_web/routes/agents.py (updated — added persona_role, persona_goal, persona_backstory to AgentCreate, AgentUpdate, AgentResponse models and INSERT query)
+  - packages/orbiter-web/src/pages/agents/[id]/edit.astro (major update — added collapsible persona section with toggle, template dropdown, role/goal/backstory fields, preview modal, load/save integration)
+- **Learnings for future iterations:**
+  - Persona fields stored as top-level DB columns (not inside hooks_json) since they are primary agent config, not meta flags
+  - Collapsible section pattern: button toggles `hidden` on content div + rotates chevron via `style.transform`
+  - `personaBadge` shows "Set" pill when any persona field has content — gives visual indicator when section is collapsed
+  - Persona template dropdown pre-fills all 3 fields at once; selecting "Custom..." doesn't clear fields (user can manually edit after template)
+  - Preview builds full prompt with `## Persona` section (Role, Goal, Backstory) prepended before `## Instructions`
+  - Auto-expand persona section on load if agent has any persona data (persona_role/goal/backstory non-empty)
+  - Manual browser verification needed (no browser testing tool available)
+---
