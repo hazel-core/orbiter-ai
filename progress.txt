@@ -881,3 +881,16 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Import endpoint validates JSON fields (nodes_json, edges_json, viewport_json) with json.loads before insertion
   - The existing CRUD (list, create, get, update, delete) was already in place from earlier canvas work — only export/import and version column were missing
 ---
+
+## 2026-02-16 - US-054
+- What was implemented: Workflow auto-save with 2s debounce, save status indicator (Saved/Saving.../Unsaved changes), manual save via Cmd+S shortcut and toolbar Save button, editable workflow metadata header (name + description)
+- Files changed:
+  - packages/orbiter-web/src/islands/Canvas/CanvasIsland.tsx (updated — useAutoSave hook with SaveStatus tracking + saveNow(), save button + status indicator in toolbar, Cmd+S keyboard shortcut, metadata header with inline editing, saveMetadata debounced callback)
+- **Learnings for future iterations:**
+  - SaveStatus type tracks three states: "saved", "saving", "unsaved" — set "unsaved" on scheduleSave, "saving" on fetch start, "saved"/"unsaved" based on response
+  - `saveNow()` flushes pending debounce timer and calls save immediately — used by Cmd+S and toolbar button
+  - Metadata header sits above ReactFlow in a flex column layout — must wrap ReactFlow in a `flex: 1; min-height: 0` div to prevent overflow
+  - Metadata editing uses click-to-toggle between display and input mode; saves with 800ms debounce separate from canvas auto-save
+  - Save status color coding: green for saved, muted for saving, coral for unsaved — matches zen design tokens
+  - Changed auto-save debounce from 500ms to 2000ms per acceptance criteria
+---
