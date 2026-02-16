@@ -9,6 +9,7 @@ from fastapi import FastAPI
 
 from orbiter_web.config import settings
 from orbiter_web.database import run_migrations
+from orbiter_web.routes.projects import router as projects_router
 
 
 @asynccontextmanager
@@ -24,6 +25,9 @@ app = FastAPI(
     debug=settings.debug,
     lifespan=lifespan,
 )
+
+
+app.include_router(projects_router)
 
 
 @app.get("/api/health")
