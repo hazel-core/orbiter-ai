@@ -65,6 +65,7 @@ class AgentCreate(BaseModel):
     tools_json: str = "[]"
     handoffs_json: str = "[]"
     hooks_json: str = "{}"
+    knowledge_base_ids: str = "[]"
     persona_role: str = ""
     persona_goal: str = ""
     persona_backstory: str = ""
@@ -84,6 +85,7 @@ class AgentUpdate(BaseModel):
     tools_json: str | None = None
     handoffs_json: str | None = None
     hooks_json: str | None = None
+    knowledge_base_ids: str | None = None
     persona_role: str | None = None
     persona_goal: str | None = None
     persona_backstory: str | None = None
@@ -104,6 +106,7 @@ class AgentResponse(BaseModel):
     tools_json: str
     handoffs_json: str
     hooks_json: str
+    knowledge_base_ids: str
     persona_role: str
     persona_goal: str
     persona_backstory: str
@@ -588,10 +591,11 @@ async def create_agent(
                 id, name, description, instructions,
                 model_provider, model_name, temperature, max_tokens, max_steps,
                 output_type_json, tools_json, handoffs_json, hooks_json,
+                knowledge_base_ids,
                 persona_role, persona_goal, persona_backstory,
                 autonomous_mode,
                 project_id, user_id, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 agent_id,
@@ -607,6 +611,7 @@ async def create_agent(
                 body.tools_json,
                 body.handoffs_json,
                 body.hooks_json,
+                body.knowledge_base_ids,
                 body.persona_role,
                 body.persona_goal,
                 body.persona_backstory,

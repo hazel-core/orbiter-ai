@@ -30,6 +30,10 @@ class KnowledgeBaseCreate(BaseModel):
     embedding_model: str = "text-embedding-3-small"
     chunk_size: int = Field(512, ge=64, le=8192)
     chunk_overlap: int = Field(50, ge=0, le=4096)
+    search_type: str = Field("keyword", pattern=r"^(semantic|keyword|hybrid)$")
+    top_k: int = Field(5, ge=1, le=20)
+    similarity_threshold: float = Field(0.0, ge=0.0, le=1.0)
+    reranker_enabled: bool = False
     project_id: str | None = None
 
 
@@ -39,6 +43,10 @@ class KnowledgeBaseUpdate(BaseModel):
     embedding_model: str | None = None
     chunk_size: int | None = Field(None, ge=64, le=8192)
     chunk_overlap: int | None = Field(None, ge=0, le=4096)
+    search_type: str | None = Field(None, pattern=r"^(semantic|keyword|hybrid)$")
+    top_k: int | None = Field(None, ge=1, le=20)
+    similarity_threshold: float | None = Field(None, ge=0.0, le=1.0)
+    reranker_enabled: bool | None = None
 
 
 class KnowledgeBaseResponse(BaseModel):
@@ -48,6 +56,10 @@ class KnowledgeBaseResponse(BaseModel):
     embedding_model: str
     chunk_size: int
     chunk_overlap: int
+    search_type: str
+    top_k: int
+    similarity_threshold: float
+    reranker_enabled: bool
     doc_count: int
     chunk_count: int
     project_id: str | None
@@ -68,6 +80,19 @@ class DocumentResponse(BaseModel):
     created_at: str
 
 
+class SearchRequest(BaseModel):
+    query: str = Field(..., min_length=1)
+
+
+class SearchResult(BaseModel):
+    chunk_id: str
+    document_id: str
+    filename: str
+    chunk_index: int
+    content: str
+    score: float
+
+
 # Supported file extensions
 _SUPPORTED_TYPES = {"pdf", "docx", "txt", "md", "csv", "html"}
 
@@ -82,7 +107,10 @@ _MAX_FILE_SIZE = 50 * 1024 * 1024
 
 def _row_to_dict(row: Any) -> dict[str, Any]:
     """Convert an aiosqlite.Row to a plain dict."""
-    return dict(row)
+    d = dict(row)
+    if "reranker_enabled" in d:
+        d["reranker_enabled"] = bool(d["reranker_enabled"])
+    return d
 
 
 # ---------------------------------------------------------------------------
@@ -124,8 +152,10 @@ async def create_knowledge_base(
         await db.execute(
             """
             INSERT INTO knowledge_bases
-                (id, name, description, embedding_model, chunk_size, chunk_overlap, project_id, user_id, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (id, name, description, embedding_model, chunk_size, chunk_overlap,
+                 search_type, top_k, similarity_threshold, reranker_enabled,
+                 project_id, user_id, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 kb_id,
@@ -134,6 +164,10 @@ async def create_knowledge_base(
                 body.embedding_model,
                 body.chunk_size,
                 body.chunk_overlap,
+                body.search_type,
+                body.top_k,
+                body.similarity_threshold,
+                int(body.reranker_enabled),
                 body.project_id,
                 user["id"],
                 now,
@@ -177,6 +211,10 @@ async def update_knowledge_base(
     if not updates:
         raise HTTPException(status_code=422, detail="No fields to update")
 
+    # SQLite stores bools as integers
+    if "reranker_enabled" in updates:
+        updates["reranker_enabled"] = int(updates["reranker_enabled"])
+
     async with get_db() as db:
         cursor = await db.execute(
             "SELECT id FROM knowledge_bases WHERE id = ? AND user_id = ?",
@@ -218,6 +256,82 @@ async def delete_knowledge_base(
 
         await db.execute("DELETE FROM knowledge_bases WHERE id = ?", (kb_id,))
         await db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Search endpoint
+# ---------------------------------------------------------------------------
+
+
+def _keyword_score(query_terms: list[str], content: str) -> float:
+    """Compute a simple keyword match score (0.0-1.0) based on term frequency."""
+    lower = content.lower()
+    if not query_terms:
+        return 0.0
+    hits = sum(1 for term in query_terms if term in lower)
+    return hits / len(query_terms)
+
+
+@router.post("/{kb_id}/search", response_model=list[SearchResult])
+async def search_knowledge_base(
+    kb_id: str,
+    body: SearchRequest,
+    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+) -> list[dict[str, Any]]:
+    """Search a knowledge base and return ranked chunks with scores.
+
+    Uses keyword matching against stored document chunks. Semantic and hybrid
+    search modes will use the same keyword fallback until embedding support
+    is added.
+    """
+    async with get_db() as db:
+        # Verify KB access and get retrieval settings
+        cursor = await db.execute(
+            "SELECT * FROM knowledge_bases WHERE id = ? AND user_id = ?",
+            (kb_id, user["id"]),
+        )
+        kb = await cursor.fetchone()
+        if kb is None:
+            raise HTTPException(status_code=404, detail="Knowledge base not found")
+
+        kb = dict(kb)
+        top_k = kb.get("top_k", 5)
+        similarity_threshold = kb.get("similarity_threshold", 0.0)
+
+        # Build keyword search: split query into terms, search with LIKE
+        query_terms = [t.lower() for t in body.query.split() if t.strip()]
+        if not query_terms:
+            return []
+
+        # Use LIKE for each term with OR to find chunks containing any query term
+        like_clauses = " OR ".join(
+            "dc.content LIKE ?" for _ in query_terms
+        )
+        like_params = [f"%{term}%" for term in query_terms]
+
+        cursor = await db.execute(
+            f"""
+            SELECT dc.id AS chunk_id, dc.document_id, d.filename,
+                   dc.chunk_index, dc.content
+            FROM document_chunks dc
+            JOIN documents d ON d.id = dc.document_id
+            WHERE dc.kb_id = ? AND ({like_clauses})
+            """,
+            [kb_id, *like_params],
+        )
+        rows = await cursor.fetchall()
+
+    # Score and rank results
+    scored: list[dict[str, Any]] = []
+    for row in rows:
+        row_dict = dict(row)
+        score = _keyword_score(query_terms, row_dict["content"])
+        if score >= similarity_threshold:
+            scored.append({**row_dict, "score": round(score, 4)})
+
+    # Sort by score descending, take top_k
+    scored.sort(key=lambda x: x["score"], reverse=True)
+    return scored[:top_k]
 
 
 # ---------------------------------------------------------------------------

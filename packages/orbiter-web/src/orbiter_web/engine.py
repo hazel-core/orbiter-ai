@@ -64,6 +64,7 @@ def topological_sort(nodes: list[dict[str, Any]], edges: list[dict[str, Any]]) -
 # ---------------------------------------------------------------------------
 
 _AGENT_NODE_TYPES = {"agent_node", "sub_agent"}
+_RETRIEVAL_NODE_TYPE = "knowledge_retrieval"
 
 
 def _gather_upstream_inputs(
@@ -251,6 +252,103 @@ async def _execute_agent_node(
         }
 
 
+async def _execute_retrieval_node(
+    node: dict[str, Any],
+    query_text: str,
+) -> dict[str, Any]:
+    """Execute a knowledge_retrieval workflow node.
+
+    Queries a knowledge base using the search endpoint logic and returns
+    ranked chunks as the node result.
+    """
+    from orbiter_web.routes.knowledge_bases import _keyword_score
+
+    node_data = node.get("data", {})
+    node_id = node["id"]
+    kb_id = node_data.get("knowledge_base_id", "")
+
+    if not kb_id:
+        return {
+            "node_id": node_id,
+            "node_type": _RETRIEVAL_NODE_TYPE,
+            "label": node_data.get("label", ""),
+            "result": json.dumps([]),
+            "logs": "Error: no knowledge_base_id configured on retrieval node",
+        }
+
+    if not query_text.strip():
+        return {
+            "node_id": node_id,
+            "node_type": _RETRIEVAL_NODE_TYPE,
+            "label": node_data.get("label", ""),
+            "result": json.dumps([]),
+            "logs": "No query text provided",
+        }
+
+    async with get_db() as db:
+        # Load KB retrieval settings
+        cursor = await db.execute(
+            "SELECT top_k, similarity_threshold FROM knowledge_bases WHERE id = ?",
+            (kb_id,),
+        )
+        kb_row = await cursor.fetchone()
+        if kb_row is None:
+            return {
+                "node_id": node_id,
+                "node_type": _RETRIEVAL_NODE_TYPE,
+                "label": node_data.get("label", ""),
+                "result": json.dumps([]),
+                "logs": f"Knowledge base {kb_id} not found",
+            }
+
+        top_k = kb_row["top_k"]
+        similarity_threshold = kb_row["similarity_threshold"]
+
+        # Keyword search
+        query_terms = [t.lower() for t in query_text.split() if t.strip()]
+        if not query_terms:
+            return {
+                "node_id": node_id,
+                "node_type": _RETRIEVAL_NODE_TYPE,
+                "label": node_data.get("label", ""),
+                "result": json.dumps([]),
+                "logs": "Empty query after tokenization",
+            }
+
+        like_clauses = " OR ".join("dc.content LIKE ?" for _ in query_terms)
+        like_params = [f"%{term}%" for term in query_terms]
+
+        cursor = await db.execute(
+            f"""
+            SELECT dc.id AS chunk_id, dc.document_id, d.filename,
+                   dc.chunk_index, dc.content
+            FROM document_chunks dc
+            JOIN documents d ON d.id = dc.document_id
+            WHERE dc.kb_id = ? AND ({like_clauses})
+            """,
+            [kb_id, *like_params],
+        )
+        rows = await cursor.fetchall()
+
+    scored = []
+    for row in rows:
+        row_dict = dict(row)
+        score = _keyword_score(query_terms, row_dict["content"])
+        if score >= similarity_threshold:
+            scored.append({**row_dict, "score": round(score, 4)})
+
+    scored.sort(key=lambda x: x["score"], reverse=True)
+    results = scored[:top_k]
+
+    return {
+        "node_id": node_id,
+        "node_type": _RETRIEVAL_NODE_TYPE,
+        "label": node_data.get("label", ""),
+        "result": json.dumps(results),
+        "logs": f"query: {query_text[:200]}\nresults: {len(results)} chunks returned",
+    }
+
+
 async def _execute_node(
     node: dict[str, Any],
     edges: list[dict[str, Any]] | None = None,
@@ -280,6 +378,11 @@ async def _execute_node(
     if node_type in _AGENT_NODE_TYPES:
         upstream_text = _gather_upstream_inputs(node["id"], edges, variables)
         return await _execute_agent_node(node, upstream_text, event_callback)
+
+    # --- Knowledge retrieval node ---
+    if node_type == _RETRIEVAL_NODE_TYPE:
+        query_text = _gather_upstream_inputs(node["id"], edges, variables)
+        return await _execute_retrieval_node(node, query_text)
 
     # --- Other node types: stub execution ---
     await asyncio.sleep(0.01)
