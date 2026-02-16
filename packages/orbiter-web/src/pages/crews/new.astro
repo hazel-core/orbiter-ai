@@ -612,7 +612,7 @@ const chevronUp = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="
       }
 
       showToast('Crew created successfully!', 'success');
-      setTimeout(function() { window.location.href = '/agents'; }, 1000);
+      setTimeout(function() { window.location.href = '/crews/' + crew.id; }, 1000);
 
     } catch(e) {
       showToast(e.message || 'Failed to create crew', 'error');
