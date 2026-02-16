@@ -2695,7 +2695,7 @@
         "Typecheck passes"
       ],
       "priority": 18,
-      "passes": false,
+      "passes": true,
       "notes": "Gap fill: auth system has login (US-018) but no way to create the first user"
     }
   ]

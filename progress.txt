@@ -71,6 +71,7 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
 - Workflow execution: `engine.py` has topological_sort (Kahn's) + execute_workflow; `routes/workflow_runs.py` has REST + WS endpoints; both share `/api/workflows` prefix
 - Background asyncio tasks: store in a module-level `set()` and use `task.add_done_callback(set.discard)` to prevent GC (ruff RUF006)
 - Ruff SIM105: use `contextlib.suppress(Exception)` instead of `try/except pass`
+- CLI commands: use `asyncio.run()` to bridge sync argparse with async aiosqlite; call `run_migrations()` at start to ensure schema is current
 - Debug execution pattern: asyncio.Queue bridges WebSocket commands to engine; _wait_for_debug_command handles side-effect commands inline while waiting for flow-control
 - Variable tracking: both normal and debug execution emit `variables` dict in WebSocket events (node_completed, execution_completed); keyed by node_id
 - Canvas panels: use `variablePanelOpen` state + Cmd+J shortcut for toggling; panel shows in both exec and debug modes
@@ -1518,4 +1519,31 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Delegation shows in playground as tool calls (delegate_to_<agent_name>), no special trace UI needed
   - agents/new/ directory is for wizard-style creation flows (vs [id]/edit.astro for editing)
   - CSS hierarchy preview: vertical lines + horizontal connector + branch items, no SVG/ReactFlow needed for simple tree viz
+---
+
+## 2026-02-17 - US-091
+- What was implemented: Crew schema (migration 023) and full REST API for crew-based agent orchestration
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/migrations/023_create_crews.sql (new — crews + crew_tasks tables)
+  - packages/orbiter-web/src/orbiter_web/routes/crews.py (new — full CRUD for crews and crew_tasks, plus POST /run execution)
+  - packages/orbiter-web/src/orbiter_web/app.py (updated — register crews_router)
+- **Learnings for future iterations:**
+  - Crew process_type is constrained via CHECK constraint in SQLite: `CHECK (process_type IN ('sequential', 'parallel'))`
+  - Crew tasks use task_order for sequencing and dependencies_json for dependency tracking
+  - Run endpoint: sequential mode chains outputs as context to subsequent tasks; parallel runs all at once via asyncio.gather
+  - Pydantic Field(pattern=...) validates enum-like strings on the API layer
+  - Import ordering: ruff I001 enforces strict alphabetical ordering for imports — crews comes before costs
+---
+
+## 2026-02-17 03:30 - US-154
+- What was implemented: CLI command `python -m orbiter_web.cli create-user` for user registration
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/cli.py (new — argparse CLI with create-user subcommand)
+  - packages/orbiter-web/src/orbiter_web/migrations/024_add_is_admin.sql (new — adds is_admin column)
+- **Learnings for future iterations:**
+  - CLI uses `asyncio.run()` to bridge sync argparse entry point with async aiosqlite database operations
+  - Reuses bcrypt hashing same as auth.py (`bcrypt.hashpw` + `bcrypt.gensalt`)
+  - Migration uses `ALTER TABLE ... ADD COLUMN` with `NOT NULL DEFAULT 0` — SQLite supports this form
+  - CLI calls `run_migrations()` before inserting to ensure schema is up to date
+  - `python -m orbiter_web.cli` works because of `if __name__ == "__main__": main()` guard
 ---
