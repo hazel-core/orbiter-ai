@@ -423,3 +423,19 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - httpx lazy-imported inside `_fetch_models_from_provider` (same pattern as provider test endpoint)
   - JOIN with providers table in queries to include provider_name and provider_type in model responses
 ---
+
+## 2026-02-17 03:10 - US-026
+- What was implemented: Model catalog page UI at /models — card grid of all models with provider icons, capability tags, context window, pricing; filters (search, provider dropdown, capability, context window range); per-provider Fetch buttons for model discovery; "Fetch All" button; manual model entry form modal
+- Files changed:
+  - packages/orbiter-web/src/pages/models.astro (new — full models catalog page with card grid, filters, discover bar, add custom model modal)
+- **Learnings for future iterations:**
+  - Models page follows same patterns as projects page: `<template>` + `cloneNode(true)` for card rendering, `is:inline` script
+  - Provider icons use colored letter badges (O/A/G/V/L/C) with provider-specific bg/text colors
+  - Capability tags use per-capability colors: zen-blue for chat, zen-green for embedding, coral for vision, purple for reasoning, amber for code
+  - Filter bar uses debounced `onFilterChange` (150ms) to avoid re-rendering on every keystroke
+  - Provider bar is populated from `/api/providers` — each provider gets a "Fetch" button that triggers POST `/api/providers/:id/discover`
+  - "Fetch All" button iterates over all providers and calls discover in parallel, then refreshes the model list
+  - Manual model entry uses checkboxes for capabilities (multi-select) — `formData.getAll("capabilities")` collects all checked values
+  - Discover button shows inline success/error feedback with auto-reset after 3-4 seconds
+  - Manual browser verification needed (no browser testing tool available)
+---
