@@ -49,6 +49,8 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
 - /api/tools returns built-in tool catalog (static, no DB) — will be augmented with user-defined tools later
 - Highlight-overlay pattern for textarea: use transparent text textarea (z-10) + backdrop div with styled HTML behind it; sync scroll and resize
 - Agent meta config (variables, memory, context toggles) stored as `_` prefixed keys in `hooks_json` to avoid schema changes
+- Version tracking pattern: auto-create version on template save via `_create_version()` helper; use COALESCE(MAX(version_number), 0) + 1 for auto-incrementing within a template
+- Shared model API helper: `_send_prompt_to_model()` returns dict with optional `error` field (doesn't raise) — safe for asyncio.gather parallel calls
 
 ---
 
@@ -598,5 +600,22 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Load template modal includes inline delete buttons (trash icon) with confirm() dialog — no separate delete modal needed for lightweight items
   - Test result panel sits between editor and variables panel, using `max-h-64 overflow-y-auto` for long outputs
   - Provider-specific API call patterns: OpenAI uses /v1/chat/completions, Anthropic uses /v1/messages with x-api-key header, Gemini uses generateContent with key param, Ollama uses /api/generate
+  - Manual browser verification needed (no browser testing tool available)
+---
+
+## 2026-02-17 10:00 - US-037
+- What was implemented: Prompt model comparison and version history — multi-model comparison (send same prompt to 2-3 models in parallel, side-by-side output display with per-model metrics), prompt version history (every template save creates a version), side-by-side diff view between any two versions, restore previous version button
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/migrations/010_create_prompt_versions.sql (new — prompt_versions table with template FK, version_number, content, variables_json)
+  - packages/orbiter-web/src/orbiter_web/routes/prompt_templates.py (major update — added VersionResponse, CompareRequest/Response Pydantic models, _create_version helper, _send_prompt_to_model shared helper, version CRUD endpoints: list/get/restore, POST /compare endpoint with asyncio.gather for parallel model calls; template create/update auto-creates versions; delete cascades to versions)
+  - packages/orbiter-web/src/pages/agents/[id]/edit.astro (major update — added Compare and History buttons next to Test button, model comparison selector modal with 3 provider/model slots, comparison result grid panel, version history modal with checkbox-based diff selection, side-by-side diff view with change highlighting, restore version button, currentTemplateId tracking)
+- **Learnings for future iterations:**
+  - Refactored _send_prompt_to_model as a shared helper (returns dict with error field on failure instead of raising) — reused by both /test and /compare endpoints
+  - asyncio.gather runs parallel API calls for comparison — each model gets its own httpx.AsyncClient
+  - Version history diff uses simple line-by-line comparison: same lines plain, different lines highlighted with bg-coral/10 (removed) and bg-zen-green/10 (added)
+  - Diff view requires exactly 2 checkboxes selected — when a 3rd is checked, the first selection is automatically unchecked (FIFO rotation)
+  - currentTemplateId is set when saving or loading a template — tracked as a JS closure variable for version history API calls
+  - Compare result grid uses CSS `grid-template-columns: repeat(N, minmax(0, 1fr))` dynamically set based on the number of models (2 or 3)
+  - Restore creates a new version (recording the restore action) and updates the template content — ensures no version history is lost
   - Manual browser verification needed (no browser testing tool available)
 ---
