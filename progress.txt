@@ -1020,3 +1020,17 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - ruff format reformats `async with` statements to use parenthesized context managers
   - Manual browser verification needed (no browser testing tool available)
 ---
+
+## 2026-02-17 00:30 - US-062
+- What was implemented: Collapsible trace panel shell in the playground page
+- Files changed:
+  - packages/orbiter-web/src/pages/playground.astro (added trace panel HTML, toggle logic, Cmd+I shortcut, expandable trace entries)
+- **Learnings for future iterations:**
+  - Trace panel uses flex layout alongside chat column — `flex flex-1 min-h-0` wrapper with `min-w-0` on chat column for proper flex shrinking
+  - Panel toggle: `hidden` class + state variable; button highlights with `text-coral` when panel is open
+  - Cmd+I / Ctrl+I shortcut: listen on `document`, use `e.metaKey || e.ctrlKey` for cross-platform
+  - TraceEntry interface stores id, timestamp, usage, and contentPreview (truncated to 120 chars)
+  - Chevron expand/collapse pattern: swap innerHTML between CHEVRON_RIGHT and CHEVRON_DOWN SVGs
+  - Trace entries are cleared when chat is cleared (via `clearTraceEntries()` in `clearMessages()`)
+  - Manual browser verification needed (no browser testing tool available)
+---

@@ -7,6 +7,7 @@ const breadcrumbs = [{ label: "Playground" }];
 const sendIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>';
 const botIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/><line x1="8" y1="16" x2="8" y2="16"/><line x1="16" y1="16" x2="16" y2="16"/></svg>';
 const clearIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
+const traceIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>';
 ---
 
 <PageLayout
@@ -29,7 +30,15 @@ const clearIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="
       <div id="agent-info" class="text-xs text-muted hidden">
         <span id="agent-model" class="inline-flex items-center gap-1 px-2 py-0.5 bg-subtle rounded-full"></span>
       </div>
-      <div class="ml-auto">
+      <div class="ml-auto flex items-center gap-1">
+        <button
+          id="trace-toggle-btn"
+          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-muted hover:text-dark transition-colors rounded-lg hover:bg-subtle"
+          title="Toggle trace panel (Cmd+I)"
+        >
+          <span set:html={traceIcon} />
+          <span class="hidden sm:inline">Trace</span>
+        </button>
         <button
           id="clear-btn"
           class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-muted hover:text-dark transition-colors rounded-lg hover:bg-subtle"
@@ -41,51 +50,85 @@ const clearIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="
       </div>
     </div>
 
-    <!-- Messages area (relative for scroll-to-bottom button) -->
-    <div class="relative flex-1">
-      <div id="messages" class="absolute inset-0 overflow-y-auto px-4 py-6 space-y-4">
-        <!-- Empty state -->
-        <div id="empty-state" class="flex flex-col items-center justify-center h-full text-center">
-          <div class="w-16 h-16 rounded-full bg-subtle flex items-center justify-center mb-4">
-            <span class="text-muted" set:html={botIcon} />
+    <!-- Main content: chat + trace panel side by side -->
+    <div class="flex flex-1 min-h-0">
+      <!-- Chat column -->
+      <div class="flex flex-col flex-1 min-w-0">
+        <!-- Messages area (relative for scroll-to-bottom button) -->
+        <div class="relative flex-1">
+          <div id="messages" class="absolute inset-0 overflow-y-auto px-4 py-6 space-y-4">
+            <!-- Empty state -->
+            <div id="empty-state" class="flex flex-col items-center justify-center h-full text-center">
+              <div class="w-16 h-16 rounded-full bg-subtle flex items-center justify-center mb-4">
+                <span class="text-muted" set:html={botIcon} />
+              </div>
+              <h3 class="text-lg font-medium text-dark mb-2">Chat Playground</h3>
+              <p class="text-sm text-muted max-w-sm">Select an agent above and start chatting. Messages stream in real-time via WebSocket.</p>
+            </div>
           </div>
-          <h3 class="text-lg font-medium text-dark mb-2">Chat Playground</h3>
-          <p class="text-sm text-muted max-w-sm">Select an agent above and start chatting. Messages stream in real-time via WebSocket.</p>
+
+          <!-- Scroll to bottom button -->
+          <button
+            id="scroll-bottom-btn"
+            class="absolute bottom-4 left-1/2 -translate-x-1/2 hidden items-center gap-1.5 px-3 py-1.5 bg-dark text-paper text-xs rounded-full shadow-lg hover:opacity-90 transition-all z-10"
+            title="Scroll to bottom"
+          >
+            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+            New messages
+          </button>
+        </div>
+
+        <!-- Input area -->
+        <div class="flex-shrink-0 border-t border-dark/[0.08] bg-paper px-4 py-3">
+          <div id="connection-status" class="hidden text-xs text-coral mb-2 px-1"></div>
+          <div class="flex items-end gap-3 max-w-4xl mx-auto">
+            <textarea
+              id="message-input"
+              rows="1"
+              placeholder="Type a message... (Enter to send, Shift+Enter for newline)"
+              disabled
+              class="flex-1 px-4 py-2.5 text-sm border border-dark/[0.08] rounded-xl bg-paper text-dark placeholder:text-muted/60 focus:outline-none focus:ring-2 focus:ring-coral/20 focus:border-coral transition-colors resize-none max-h-40 disabled:opacity-50"
+            ></textarea>
+            <button
+              id="send-btn"
+              disabled
+              class="flex-shrink-0 p-2.5 bg-coral text-white rounded-xl hover:bg-coral/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              title="Send message"
+            >
+              <span set:html={sendIcon} />
+            </button>
+          </div>
         </div>
       </div>
 
-      <!-- Scroll to bottom button -->
-      <button
-        id="scroll-bottom-btn"
-        class="absolute bottom-4 left-1/2 -translate-x-1/2 hidden items-center gap-1.5 px-3 py-1.5 bg-dark text-paper text-xs rounded-full shadow-lg hover:opacity-90 transition-all z-10"
-        title="Scroll to bottom"
+      <!-- Trace panel (collapsible right panel) -->
+      <div
+        id="trace-panel"
+        class="hidden flex-shrink-0 w-80 lg:w-96 border-l border-dark/[0.08] bg-paper flex flex-col transition-all duration-200"
       >
-        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="6 9 12 15 18 9"></polyline>
-        </svg>
-        New messages
-      </button>
-    </div>
-
-    <!-- Input area -->
-    <div class="flex-shrink-0 border-t border-dark/[0.08] bg-paper px-4 py-3">
-      <div id="connection-status" class="hidden text-xs text-coral mb-2 px-1"></div>
-      <div class="flex items-end gap-3 max-w-4xl mx-auto">
-        <textarea
-          id="message-input"
-          rows="1"
-          placeholder="Type a message... (Enter to send, Shift+Enter for newline)"
-          disabled
-          class="flex-1 px-4 py-2.5 text-sm border border-dark/[0.08] rounded-xl bg-paper text-dark placeholder:text-muted/60 focus:outline-none focus:ring-2 focus:ring-coral/20 focus:border-coral transition-colors resize-none max-h-40 disabled:opacity-50"
-        ></textarea>
-        <button
-          id="send-btn"
-          disabled
-          class="flex-shrink-0 p-2.5 bg-coral text-white rounded-xl hover:bg-coral/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          title="Send message"
-        >
-          <span set:html={sendIcon} />
-        </button>
+        <!-- Trace panel header -->
+        <div class="flex items-center justify-between px-4 py-3 border-b border-dark/[0.08]">
+          <h3 class="text-sm font-medium text-dark">Execution Trace</h3>
+          <button
+            id="trace-close-btn"
+            class="p-1 rounded text-muted hover:text-dark hover:bg-subtle transition-colors"
+            title="Close trace panel"
+          >
+            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <!-- Trace entries list -->
+        <div id="trace-entries" class="flex-1 overflow-y-auto px-3 py-3 space-y-2">
+          <div id="trace-empty" class="flex flex-col items-center justify-center h-full text-center px-4">
+            <div class="w-10 h-10 rounded-full bg-subtle flex items-center justify-center mb-3">
+              <span class="text-muted" set:html={traceIcon} />
+            </div>
+            <p class="text-xs text-muted">Execution traces will appear here as the agent responds.</p>
+            <p class="text-[10px] text-muted/60 mt-1">Toggle with <kbd class="px-1 py-0.5 bg-subtle rounded text-[10px]">Cmd+I</kbd></p>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -110,6 +153,11 @@ const sendBtn = document.getElementById("send-btn") as HTMLButtonElement;
 const clearBtn = document.getElementById("clear-btn")!;
 const connectionStatus = document.getElementById("connection-status")!;
 const scrollBottomBtn = document.getElementById("scroll-bottom-btn")!;
+const tracePanel = document.getElementById("trace-panel")!;
+const traceToggleBtn = document.getElementById("trace-toggle-btn")!;
+const traceCloseBtn = document.getElementById("trace-close-btn")!;
+const traceEntries = document.getElementById("trace-entries")!;
+const traceEmpty = document.getElementById("trace-empty")!;
 
 let ws: WebSocket | null = null;
 let currentAgentId: string | null = null;
@@ -117,9 +165,158 @@ let currentConversationId: string | null = null;
 let agents: Array<{ id: string; name: string; model_provider?: string; model_name?: string }> = [];
 let isStreaming = false;
 let userScrolledUp = false;
+let tracePanelOpen = false;
+let traceCounter = 0;
+
+interface TraceEntry {
+  id: number;
+  timestamp: number;
+  usage: { prompt_tokens?: number; completion_tokens?: number } | null;
+  contentPreview: string;
+}
+
+const traceData: TraceEntry[] = [];
+
+const CHEVRON_DOWN = '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
+const CHEVRON_RIGHT = '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>';
 
 const COPY_ICON = '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
 const CHECK_ICON = '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+
+/* ---- Trace panel ---- */
+function toggleTracePanel() {
+  tracePanelOpen = !tracePanelOpen;
+  if (tracePanelOpen) {
+    tracePanel.classList.remove("hidden");
+    traceToggleBtn.classList.add("text-coral");
+    traceToggleBtn.classList.remove("text-muted");
+  } else {
+    tracePanel.classList.add("hidden");
+    traceToggleBtn.classList.remove("text-coral");
+    traceToggleBtn.classList.add("text-muted");
+  }
+}
+
+function addTraceEntry(usage: { prompt_tokens?: number; completion_tokens?: number } | null, contentPreview: string) {
+  traceCounter++;
+  const entry: TraceEntry = {
+    id: traceCounter,
+    timestamp: Date.now(),
+    usage: usage,
+    contentPreview: contentPreview.slice(0, 120) + (contentPreview.length > 120 ? "..." : ""),
+  };
+  traceData.push(entry);
+  traceEmpty.classList.add("hidden");
+  renderTraceEntry(entry);
+}
+
+function renderTraceEntry(entry: TraceEntry) {
+  const el = document.createElement("div");
+  el.className = "border border-dark/[0.06] rounded-lg overflow-hidden";
+
+  const header = document.createElement("button");
+  header.className = "w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-subtle/50 transition-colors";
+  header.type = "button";
+
+  const chevron = document.createElement("span");
+  chevron.className = "flex-shrink-0 text-muted transition-transform";
+  chevron.innerHTML = CHEVRON_RIGHT;
+
+  const label = document.createElement("span");
+  label.className = "flex-1 text-xs font-medium text-dark truncate";
+  label.textContent = "Response #" + entry.id;
+
+  const time = document.createElement("span");
+  time.className = "text-[10px] text-muted/60 flex-shrink-0";
+  const d = new Date(entry.timestamp);
+  time.textContent = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+
+  header.appendChild(chevron);
+  header.appendChild(label);
+  header.appendChild(time);
+
+  const body = document.createElement("div");
+  body.className = "hidden px-3 pb-3 pt-1 border-t border-dark/[0.04]";
+
+  /* Usage section */
+  if (entry.usage) {
+    const usageSection = document.createElement("div");
+    usageSection.className = "mb-2";
+    const usageLabel = document.createElement("div");
+    usageLabel.className = "text-[10px] font-medium text-muted uppercase tracking-wide mb-1";
+    usageLabel.textContent = "Token Usage";
+    usageSection.appendChild(usageLabel);
+
+    const usageGrid = document.createElement("div");
+    usageGrid.className = "grid grid-cols-2 gap-1";
+    if (entry.usage.prompt_tokens) {
+      const pt = document.createElement("div");
+      pt.className = "text-[11px] text-dark";
+      pt.innerHTML = '<span class="text-muted">In:</span> ' + entry.usage.prompt_tokens;
+      usageGrid.appendChild(pt);
+    }
+    if (entry.usage.completion_tokens) {
+      const ct = document.createElement("div");
+      ct.className = "text-[11px] text-dark";
+      ct.innerHTML = '<span class="text-muted">Out:</span> ' + entry.usage.completion_tokens;
+      usageGrid.appendChild(ct);
+    }
+    const total = (entry.usage.prompt_tokens || 0) + (entry.usage.completion_tokens || 0);
+    if (total > 0) {
+      const tt = document.createElement("div");
+      tt.className = "text-[11px] text-dark col-span-2";
+      tt.innerHTML = '<span class="text-muted">Total:</span> ' + total;
+      usageGrid.appendChild(tt);
+    }
+    usageSection.appendChild(usageGrid);
+    body.appendChild(usageSection);
+  }
+
+  /* Content preview */
+  const previewSection = document.createElement("div");
+  const previewLabel = document.createElement("div");
+  previewLabel.className = "text-[10px] font-medium text-muted uppercase tracking-wide mb-1";
+  previewLabel.textContent = "Response Preview";
+  previewSection.appendChild(previewLabel);
+  const previewText = document.createElement("div");
+  previewText.className = "text-[11px] text-dark/70 bg-subtle/50 rounded px-2 py-1.5 whitespace-pre-wrap break-words";
+  previewText.textContent = entry.contentPreview || "(empty response)";
+  previewSection.appendChild(previewText);
+  body.appendChild(previewSection);
+
+  /* Toggle expand/collapse */
+  let expanded = false;
+  header.addEventListener("click", function() {
+    expanded = !expanded;
+    if (expanded) {
+      body.classList.remove("hidden");
+      chevron.innerHTML = CHEVRON_DOWN;
+    } else {
+      body.classList.add("hidden");
+      chevron.innerHTML = CHEVRON_RIGHT;
+    }
+  });
+
+  el.appendChild(header);
+  el.appendChild(body);
+  traceEntries.appendChild(el);
+
+  /* Auto-scroll trace panel to latest entry */
+  traceEntries.scrollTop = traceEntries.scrollHeight;
+}
+
+function clearTraceEntries() {
+  traceData.length = 0;
+  traceCounter = 0;
+  const children = Array.from(traceEntries.children);
+  children.forEach(function(c) {
+    if (c.id !== "trace-empty") traceEntries.removeChild(c);
+  });
+  traceEmpty.classList.remove("hidden");
+}
+
+traceToggleBtn.addEventListener("click", toggleTracePanel);
+traceCloseBtn.addEventListener("click", toggleTracePanel);
 
 /* ---- Load agents ---- */
 async function loadAgents() {
@@ -376,6 +573,9 @@ function finishStream(usage: { prompt_tokens?: number; completion_tokens?: numbe
         wrapper.appendChild(meta);
       }
     }
+
+    /* Add trace entry for this response */
+    addTraceEntry(usage, rawText);
   }
   currentStreamBubble = null;
   streamedContent = "";
@@ -446,6 +646,7 @@ function clearMessages() {
   userScrolledUp = false;
   scrollBottomBtn.classList.add("hidden");
   scrollBottomBtn.classList.remove("flex");
+  clearTraceEntries();
   /* Reconnect to reset conversation history on server (new conversation) */
   if (currentAgentId) {
     connectWebSocket(currentAgentId);
@@ -501,6 +702,14 @@ messageInput.addEventListener("keydown", function(e) {
   if (e.key === "Enter" && !e.shiftKey) {
     e.preventDefault();
     sendMessage();
+  }
+});
+
+/* Cmd+I / Ctrl+I to toggle trace panel */
+document.addEventListener("keydown", function(e) {
+  if ((e.metaKey || e.ctrlKey) && e.key === "i") {
+    e.preventDefault();
+    toggleTracePanel();
   }
 });
 
