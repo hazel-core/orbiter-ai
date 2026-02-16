@@ -251,7 +251,7 @@
         "Pyright passes"
       ],
       "priority": 13,
-      "passes": false,
+      "passes": true,
       "notes": "Depends on US-003 through US-007 being complete (all orbiter-trace functionality ported). Test files to port: test_trace_config.py, test_trace_decorator.py, test_trace_instrumentation.py, test_trace_prompt_logger.py, test_trace_propagation.py. Rename them with test_obs_ prefix."
     },
     {

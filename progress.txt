@@ -21,6 +21,8 @@ Started: Mon Feb 16 2026
 - RUF006: `loop.create_task()` must store return value — use `set.add(task)` + `task.add_done_callback(set.discard)`
 - hatchling requires a README.md in each package directory (build fails without it)
 - Ruff UP017: use `datetime.UTC` alias, not `datetime.timezone.utc`
+- OTel is now in root dev deps (was a hard dep of orbiter-trace; orbiter-observability has it optional)
+- pyright ignore on multi-line imports: put ignore on the `from` line, not on individual symbol lines
 ---
 
 ## 2026-02-16 - US-001
@@ -240,4 +242,20 @@ Started: Mon Feb 16 2026
   - Pyright `reportAttributeAccessIssue` fires on re-exported symbols from shim modules — add ignore on each symbol line in multiline imports
   - `configure_logging()` uses a `_configured` flag for idempotency — tests must call `reset_logging()` not just `root.handlers.clear()`
   - Ruff isort merges `from X import a` and `from X import b` — pyright inline ignores must be on individual symbol lines, not on the `from` line
+---
+
+## 2026-02-16 - US-013
+- Removed orbiter-trace package (packages/orbiter-trace/ directory deleted)
+- Root pyproject.toml: removed orbiter-trace from workspace members, dev dependencies, and uv.sources
+- Added `opentelemetry-api>=1.20` and `opentelemetry-sdk>=1.20` to root dev deps (OTel was a hard dep of orbiter-trace; now it's optional in orbiter-observability, so tests need it in dev deps)
+- orbiter-ai meta-package (packages/orbiter/): replaced `orbiter-trace>=0.1.0` dependency with `orbiter-observability>=0.1.0`
+- Updated packages/orbiter/README.md and root README.md to reference orbiter-observability instead of orbiter-trace
+- Fixed pre-existing pyright issue in test_obs_tracing.py: moved `# pyright: ignore[reportMissingImports]` to the `from` line
+- All 3146 tests pass, uv sync succeeds, pyright clean, ruff clean on changed packages
+- Files changed: pyproject.toml, packages/orbiter/pyproject.toml, packages/orbiter/README.md, README.md, packages/orbiter-observability/tests/test_obs_tracing.py, packages/orbiter-trace/ (deleted)
+- **Learnings for future iterations:**
+  - When removing a package that had hard OTel deps, add OTel to root dev deps if tests elsewhere need it
+  - `uv sync` automatically uninstalls packages removed from workspace — verify nothing else needed them
+  - Pre-existing pyright ignores may need fixing when they're on the wrong line of a multi-line import
+  - Docs/README references to removed packages should be updated but non-code references (docs/, tasks/) can be updated later
 ---
