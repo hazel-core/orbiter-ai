@@ -817,3 +817,18 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Auth type selector clears all auth fields on type change to avoid stale data leaking between auth modes
   - Manual browser verification needed (no browser testing tool available)
 ---
+
+## 2026-02-17 05:00 - US-050
+- What was implemented: Knowledge Retrieval node configuration panel — select knowledge base dropdown (fetches from /api/knowledge-bases), top-k slider (1-20), similarity threshold slider (0.0-1.0), inline validation errors, required field asterisks, info box with dynamic parameter display
+- Files changed:
+  - packages/orbiter-web/src/islands/Canvas/KnowledgeRetrievalConfig.tsx (new — KnowledgeRetrievalConfig component with KB dropdown, top-k and similarity sliders, validation, info box)
+  - packages/orbiter-web/src/islands/Canvas/NodeConfigPanel.tsx (updated — added import and renderTypeConfig case for knowledge_retrieval node type)
+- **Learnings for future iterations:**
+  - Knowledge Retrieval config follows same pattern as other node configs: data prop + onChange callback, shared style constants
+  - Knowledge base dropdown gracefully handles missing /api/knowledge-bases endpoint — shows "No knowledge bases available" with helpful hint
+  - Validation uses `touched` state to avoid showing errors before user interaction — set on first dropdown change
+  - Error state uses separate `errorSelectStyle` with `borderColor: coral` override on the select style object
+  - Sliders use `accent-color` CSS property (via inline style `accentColor`) for the coral theme — works in modern browsers
+  - Info box at the bottom shows dynamic parameter values (top-k count and threshold) to help users understand their config
+  - Manual browser verification needed (no browser testing tool available)
+---
