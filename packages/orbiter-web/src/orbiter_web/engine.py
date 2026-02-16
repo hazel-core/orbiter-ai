@@ -68,6 +68,9 @@ async def _execute_node(node: dict[str, Any]) -> dict[str, Any]:
 
     This is a stub implementation that simulates execution for each node type.
     Real implementations will call LLM APIs, run code, make HTTP requests, etc.
+
+    Returns a dict with keys: node_id, node_type, label, result, and optionally
+    logs (str) and token_usage (dict) for inspection support.
     """
     node_type = node.get("data", {}).get("nodeType", node.get("type", "unknown"))
     node_data = node.get("data", {})
@@ -75,12 +78,28 @@ async def _execute_node(node: dict[str, Any]) -> dict[str, Any]:
     # Simulate a tiny delay so concurrent execution is observable.
     await asyncio.sleep(0.01)
 
-    return {
+    result: dict[str, Any] = {
         "node_id": node["id"],
         "node_type": node_type,
         "label": node_data.get("label", ""),
         "result": f"Executed {node_type} node",
     }
+
+    # Capture type-specific execution details for inspection.
+    if node_type == "llm":
+        prompt = node_data.get("prompt", "")
+        result["result"] = f"LLM response for: {prompt[:100]}"
+        result["logs"] = f"prompt: {prompt}\nresponse: {result['result']}"
+        result["token_usage"] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+    elif node_type == "code":
+        code = node_data.get("code", "")
+        result["result"] = "Code executed successfully"
+        result["logs"] = f"stdout: \nstderr: \ncode: {code[:200]}"
+    elif node_type == "api":
+        url = node_data.get("url", "")
+        result["logs"] = f"request: {node_data.get('method', 'GET')} {url}\nresponse: 200 OK"
+
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -167,13 +186,14 @@ async def execute_workflow(
             if node is None:
                 continue
 
-            # Create log entry.
+            # Create log entry with input snapshot for inspection.
             log_id = str(uuid.uuid4())
             started = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
+            input_snapshot = json.dumps(node.get("data", {}))
             async with get_db() as db:
                 await db.execute(
-                    "INSERT INTO workflow_run_logs (id, run_id, node_id, status, started_at) VALUES (?, ?, ?, 'running', ?)",
-                    (log_id, run_id, nid, started),
+                    "INSERT INTO workflow_run_logs (id, run_id, node_id, status, started_at, input_json) VALUES (?, ?, ?, 'running', ?, ?)",
+                    (log_id, run_id, nid, started, input_snapshot),
                 )
                 await db.commit()
 
@@ -191,10 +211,14 @@ async def execute_workflow(
                 output = await task
                 completed_at = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
 
+                logs_text = output.pop("logs", None)
+                token_usage = output.pop("token_usage", None)
+                token_usage_json = json.dumps(token_usage) if token_usage else None
+
                 async with get_db() as db:
                     await db.execute(
-                        "UPDATE workflow_run_logs SET status = 'completed', output_json = ?, completed_at = ? WHERE run_id = ? AND node_id = ?",
-                        (json.dumps(output), completed_at, run_id, nid),
+                        "UPDATE workflow_run_logs SET status = 'completed', output_json = ?, logs_text = ?, token_usage_json = ?, completed_at = ? WHERE run_id = ? AND node_id = ?",
+                        (json.dumps(output), logs_text, token_usage_json, completed_at, run_id, nid),
                     )
                     await db.commit()
 

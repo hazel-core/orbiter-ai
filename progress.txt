@@ -1175,3 +1175,18 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Elapsed timer uses `setInterval` with 1s tick — cleaned up on unmount and on run completion
   - Missing config badge is hidden during execution to avoid overlap with execution status badges
 ---
+
+## 2026-02-17 - US-071
+- What was implemented: Node inspection backend — per-node execution data storage and retrieval API
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/migrations/017_add_node_execution_fields.sql (new — adds input_json, logs_text, token_usage_json to workflow_run_logs)
+  - packages/orbiter-web/src/orbiter_web/engine.py (updated — _execute_node captures type-specific logs/token_usage; engine stores input_json, logs_text, token_usage_json in DB)
+  - packages/orbiter-web/src/orbiter_web/routes/workflow_runs.py (updated — new GET /{workflow_id}/runs/{run_id}/nodes/{node_id} endpoint)
+  - prd.json (updated — US-071 passes: true)
+- **Learnings for future iterations:**
+  - workflow_run_logs table serves as the node_executions table — extended with ALTER TABLE rather than creating a new table
+  - _execute_node returns optional `logs` and `token_usage` keys — engine pops these before storing output_json, stores them in separate columns
+  - Node input is captured from node.data at execution start (input_json column)
+  - JSON fields (input_json, output_json, token_usage_json) are parsed in the API response for convenience
+  - LLM nodes store prompt+response in logs_text; Code nodes store stdout/stderr; API nodes store request/response
+---

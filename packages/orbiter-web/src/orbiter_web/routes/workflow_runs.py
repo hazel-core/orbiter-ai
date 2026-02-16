@@ -143,6 +143,48 @@ async def cancel_workflow_run(
 
 
 # ---------------------------------------------------------------------------
+# GET /api/workflows/:id/runs/:runId/nodes/:nodeId — node execution data
+# ---------------------------------------------------------------------------
+
+
+@router.get("/{workflow_id}/runs/{run_id}/nodes/{node_id}")
+async def get_node_execution(
+    workflow_id: str,
+    run_id: str,
+    node_id: str,
+    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+) -> dict[str, Any]:
+    """Return execution data for a specific node within a run."""
+    async with get_db() as db:
+        await _verify_workflow_ownership(db, workflow_id, user["id"])
+
+        # Verify the run belongs to this workflow.
+        cursor = await db.execute(
+            "SELECT id FROM workflow_runs WHERE id = ? AND workflow_id = ?",
+            (run_id, workflow_id),
+        )
+        if await cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Run not found")
+
+        cursor = await db.execute(
+            "SELECT id, run_id, node_id, status, input_json, output_json, logs_text, started_at, completed_at, error, token_usage_json FROM workflow_run_logs WHERE run_id = ? AND node_id = ?",
+            (run_id, node_id),
+        )
+        row = await cursor.fetchone()
+
+    if row is None:
+        raise HTTPException(status_code=404, detail="Node execution not found")
+
+    result = dict(row)
+    # Parse JSON fields for the response.
+    for field in ("input_json", "output_json", "token_usage_json"):
+        if result.get(field):
+            result[field] = json.loads(result[field])
+
+    return result
+
+
+# ---------------------------------------------------------------------------
 # WebSocket /api/workflows/:id/runs/:runId/stream — live execution events
 # ---------------------------------------------------------------------------
 
