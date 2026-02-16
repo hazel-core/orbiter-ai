@@ -754,3 +754,14 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - NODE_CATEGORIES exported for reuse (e.g., color lookup in CanvasIsland drop handler)
   - Manual browser verification needed (no browser testing tool available)
 ---
+
+## 2026-02-16 23:40 - US-046
+- What was implemented: Node drag-and-drop and search — enhanced sidebar search to also match category names (not just node type labels). All other acceptance criteria (drag from sidebar, drop at position, search input, real-time filtering) were already implemented in US-045.
+- Files changed:
+  - packages/orbiter-web/src/islands/Canvas/NodeSidebar.tsx (updated — filteredCategories now matches against cat.label in addition to node type t.label; if category matches, all its types are shown)
+- **Learnings for future iterations:**
+  - Category-level search match: if search term matches the category label, show ALL types in that category (don't filter individual types)
+  - This is a one-line logic change: check `cat.label.toLowerCase().includes(q)` before filtering individual types
+  - US-045 already implemented most of US-046's acceptance criteria (drag-to-add, search input, real-time filtering) — always check existing code before starting
+  - Manual browser verification needed (no browser testing tool available)
+---
