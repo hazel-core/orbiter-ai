@@ -112,6 +112,29 @@ class AgentResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Sub-agent / supervisor models
+# ---------------------------------------------------------------------------
+
+
+class SubAgentAdd(BaseModel):
+    sub_agent_id: str = Field(..., min_length=1)
+    relationship_type: str = "delegation"
+    routing_rule_json: str = "{}"
+
+
+class SubAgentRelationshipResponse(BaseModel):
+    id: str
+    supervisor_id: str
+    sub_agent_id: str
+    sub_agent_name: str
+    sub_agent_description: str
+    relationship_type: str
+    routing_rule_json: str
+    created_at: str
+    updated_at: str
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
@@ -131,6 +154,61 @@ async def _verify_ownership(db: Any, agent_id: str, user_id: str) -> dict[str, A
     if row is None:
         raise HTTPException(status_code=404, detail="Agent not found")
     return _row_to_dict(row)
+
+
+async def _get_sub_agents(db: Any, supervisor_id: str) -> list[dict[str, Any]]:
+    """Return sub-agent rows (joined with agent info) for a supervisor."""
+    cursor = await db.execute(
+        """
+        SELECT ar.id, ar.supervisor_id, ar.sub_agent_id,
+               a.name AS sub_agent_name, a.description AS sub_agent_description,
+               ar.relationship_type, ar.routing_rule_json,
+               ar.created_at, ar.updated_at
+        FROM agent_relationships ar
+        JOIN agents a ON a.id = ar.sub_agent_id
+        WHERE ar.supervisor_id = ?
+        ORDER BY ar.created_at ASC
+        """,
+        (supervisor_id,),
+    )
+    rows = await cursor.fetchall()
+    return [_row_to_dict(r) for r in rows]
+
+
+def _build_sub_agent_tools(sub_agents: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Build tool definitions that wrap each sub-agent as a callable tool."""
+    tools = []
+    for sa in sub_agents:
+        tool_id = f"delegate_{sa['sub_agent_id']}"
+        routing = sa.get("routing_rule_json", "{}")
+        tools.append(
+            {
+                "id": tool_id,
+                "name": f"delegate_to_{sa['sub_agent_name'].lower().replace(' ', '_')}",
+                "description": (
+                    f"Delegate a task to sub-agent '{sa['sub_agent_name']}': "
+                    f"{sa['sub_agent_description']}"
+                ),
+                "type": "sub_agent",
+                "sub_agent_id": sa["sub_agent_id"],
+                "routing_rule": json.loads(routing) if routing else {},
+            }
+        )
+    return tools
+
+
+def _build_sub_agent_prompt_section(sub_agents: list[dict[str, Any]]) -> str:
+    """Build system prompt section describing available sub-agents."""
+    if not sub_agents:
+        return ""
+    lines = ["\n\n## Available Sub-Agents\nYou can delegate tasks to these sub-agents:\n"]
+    for sa in sub_agents:
+        lines.append(f"- **{sa['sub_agent_name']}**: {sa['sub_agent_description']}")
+        routing = sa.get("routing_rule_json", "{}")
+        rules = json.loads(routing) if routing and routing != "{}" else {}
+        if rules:
+            lines.append(f"  Routing rules: {json.dumps(rules)}")
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
@@ -588,3 +666,143 @@ async def delete_agent(
         await _verify_ownership(db, agent_id, user["id"])
         await db.execute("DELETE FROM agents WHERE id = ?", (agent_id,))
         await db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Sub-agent / supervisor endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/{agent_id}/sub-agents",
+    response_model=list[SubAgentRelationshipResponse],
+)
+async def list_sub_agents(
+    agent_id: str,
+    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+) -> list[dict[str, Any]]:
+    """List all sub-agents for a supervisor agent."""
+    async with get_db() as db:
+        await _verify_ownership(db, agent_id, user["id"])
+        return await _get_sub_agents(db, agent_id)
+
+
+@router.post(
+    "/{agent_id}/sub-agents",
+    response_model=SubAgentRelationshipResponse,
+    status_code=201,
+)
+async def add_sub_agent(
+    agent_id: str,
+    body: SubAgentAdd,
+    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+) -> dict[str, Any]:
+    """Add a sub-agent to a supervisor agent."""
+    if agent_id == body.sub_agent_id:
+        raise HTTPException(status_code=422, detail="Agent cannot be its own sub-agent")
+
+    async with get_db() as db:
+        # Verify both agents exist and belong to user
+        await _verify_ownership(db, agent_id, user["id"])
+        await _verify_ownership(db, body.sub_agent_id, user["id"])
+
+        # Check for duplicate
+        cursor = await db.execute(
+            "SELECT id FROM agent_relationships WHERE supervisor_id = ? AND sub_agent_id = ?",
+            (agent_id, body.sub_agent_id),
+        )
+        if await cursor.fetchone() is not None:
+            raise HTTPException(status_code=409, detail="Sub-agent relationship already exists")
+
+        rel_id = str(uuid.uuid4())
+        now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
+
+        await db.execute(
+            """
+            INSERT INTO agent_relationships (
+                id, supervisor_id, sub_agent_id, relationship_type,
+                routing_rule_json, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                rel_id,
+                agent_id,
+                body.sub_agent_id,
+                body.relationship_type,
+                body.routing_rule_json,
+                now,
+                now,
+            ),
+        )
+        await db.commit()
+
+        # Return the joined result
+        cursor = await db.execute(
+            """
+            SELECT ar.id, ar.supervisor_id, ar.sub_agent_id,
+                   a.name AS sub_agent_name, a.description AS sub_agent_description,
+                   ar.relationship_type, ar.routing_rule_json,
+                   ar.created_at, ar.updated_at
+            FROM agent_relationships ar
+            JOIN agents a ON a.id = ar.sub_agent_id
+            WHERE ar.id = ?
+            """,
+            (rel_id,),
+        )
+        row = await cursor.fetchone()
+        return _row_to_dict(row)
+
+
+@router.delete("/{agent_id}/sub-agents/{sub_agent_id}", status_code=204)
+async def remove_sub_agent(
+    agent_id: str,
+    sub_agent_id: str,
+    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+) -> None:
+    """Remove a sub-agent from a supervisor agent."""
+    async with get_db() as db:
+        await _verify_ownership(db, agent_id, user["id"])
+        cursor = await db.execute(
+            "SELECT id FROM agent_relationships WHERE supervisor_id = ? AND sub_agent_id = ?",
+            (agent_id, sub_agent_id),
+        )
+        if await cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Sub-agent relationship not found")
+        await db.execute(
+            "DELETE FROM agent_relationships WHERE supervisor_id = ? AND sub_agent_id = ?",
+            (agent_id, sub_agent_id),
+        )
+        await db.commit()
+
+
+@router.get(
+    "/{agent_id}/effective-config",
+)
+async def get_effective_config(
+    agent_id: str,
+    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+) -> dict[str, Any]:
+    """Return agent config with sub-agents injected as tools and prompt additions.
+
+    This merges the agent's own tools_json with auto-generated sub-agent tool
+    entries and appends sub-agent descriptions to the instructions.
+    """
+    async with get_db() as db:
+        agent = await _verify_ownership(db, agent_id, user["id"])
+        sub_agents = await _get_sub_agents(db, agent_id)
+
+        # Merge tools
+        existing_tools = json.loads(agent.get("tools_json", "[]"))
+        sub_agent_tools = _build_sub_agent_tools(sub_agents)
+        effective_tools = [*existing_tools, *sub_agent_tools]
+
+        # Augment instructions
+        prompt_section = _build_sub_agent_prompt_section(sub_agents)
+        effective_instructions = agent.get("instructions", "") + prompt_section
+
+        return {
+            **agent,
+            "tools_json": json.dumps(effective_tools),
+            "instructions": effective_instructions,
+            "sub_agents": sub_agents,
+        }
