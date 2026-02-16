@@ -739,3 +739,18 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - React.MutableRefObject is deprecated in newer React types — use React.RefObject instead
   - Manual browser verification needed (no browser testing tool available)
 ---
+
+## 2026-02-16 23:30 - US-045
+- What was implemented: Node sidebar with 9 categorized node types — collapsible left panel inside the canvas with drag-to-add support, search filter, per-category color accents, and distinct SVG icons for each of the 28 node types
+- Files changed:
+  - packages/orbiter-web/src/islands/Canvas/NodeSidebar.tsx (new — sidebar component with NODE_CATEGORIES catalog, category expand/collapse, drag start handler, search filter)
+  - packages/orbiter-web/src/islands/Canvas/CanvasIsland.tsx (updated — added NodeSidebar import, sidebar collapse state, onDragOver/onDrop handlers, screenToFlowPosition for accurate node placement)
+- **Learnings for future iterations:**
+  - NodeSidebar uses absolute positioning inside ReactFlow container (not a Panel) — gives more control over full-height layout
+  - `className="nodrag nopan nowheel"` on sidebar root prevents ReactFlow from capturing drag/pan/scroll events on the sidebar
+  - Drag-and-drop from sidebar to canvas: set `application/reactflow-type` and `application/reactflow-label` in dataTransfer, read in onDrop handler
+  - `screenToFlowPosition()` from useReactFlow converts screen coordinates to flow coordinates — essential for accurate node drop placement
+  - Category colors use CSS hex with alpha suffix for hover bg (e.g., `${color}18`) and icon bg (e.g., `${color}20`)
+  - NODE_CATEGORIES exported for reuse (e.g., color lookup in CanvasIsland drop handler)
+  - Manual browser verification needed (no browser testing tool available)
+---
