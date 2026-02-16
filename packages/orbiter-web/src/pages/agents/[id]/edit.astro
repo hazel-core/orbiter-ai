@@ -150,17 +150,53 @@ const saveIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
             />
           </div>
 
-          <!-- Instructions / System Prompt -->
-          <div class="flex flex-col gap-1.5">
-            <label for="agent-instructions" class="text-sm font-medium text-dark">Instructions (System Prompt)</label>
-            <textarea
-              id="agent-instructions"
-              name="instructions"
-              rows="12"
-              class="w-full bg-paper border border-dark/[0.08] rounded-lg px-3 py-2 text-dark placeholder:text-muted/60 transition-all duration-200 outline-none focus:border-coral focus:ring-2 focus:ring-coral/20 resize-y font-mono text-sm leading-relaxed"
-              placeholder="You are a helpful assistant..."
-            ></textarea>
-            <p class="text-xs text-muted">The system prompt that guides the agent's behavior.</p>
+          <!-- Instructions / System Prompt (Enhanced Editor) -->
+          <div class="flex flex-col lg:flex-row gap-4">
+            <!-- Editor column -->
+            <div class="flex-1 flex flex-col gap-1.5 min-w-0">
+              <label for="agent-instructions" class="text-sm font-medium text-dark">Instructions (System Prompt)</label>
+              <div class="relative">
+                <!-- Highlight backdrop -->
+                <div
+                  id="instructions-backdrop"
+                  class="absolute inset-0 bg-paper border border-transparent rounded-lg px-3 py-2 font-mono text-sm leading-relaxed whitespace-pre-wrap break-words overflow-hidden pointer-events-none"
+                  aria-hidden="true"
+                ></div>
+                <!-- Actual textarea (transparent text, on top) -->
+                <textarea
+                  id="agent-instructions"
+                  name="instructions"
+                  rows="12"
+                  class="relative z-10 w-full bg-transparent border border-dark/[0.08] rounded-lg px-3 py-2 text-transparent caret-dark placeholder:text-muted/60 transition-all duration-200 outline-none focus:border-coral focus:ring-2 focus:ring-coral/20 resize-y font-mono text-sm leading-relaxed"
+                  placeholder="You are a helpful assistant..."
+                  spellcheck="false"
+                ></textarea>
+              </div>
+              <!-- Token counter -->
+              <div class="flex items-center justify-between">
+                <p class="text-xs text-muted">Use <code class="bg-subtle/80 px-1 py-0.5 rounded text-[11px]">{"{{variable_name}}"}</code> for template variables.</p>
+                <div id="token-counter" class="flex items-center gap-1.5 text-xs text-muted">
+                  <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                  <span id="token-count-value">~0 tokens</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Variables panel -->
+            <div id="variables-panel" class="hidden lg:w-64 flex-shrink-0">
+              <div class="rounded-lg border border-dark/[0.08] bg-paper">
+                <div class="flex items-center justify-between px-3 py-2.5 border-b border-dark/[0.06]">
+                  <h4 class="text-xs font-semibold text-dark uppercase tracking-wider">Variables</h4>
+                  <span id="variable-count" class="text-[10px] font-medium text-muted bg-subtle rounded-full px-2 py-0.5">0</span>
+                </div>
+                <div id="variables-list" class="flex flex-col divide-y divide-dark/[0.06] max-h-80 overflow-y-auto">
+                  <div class="px-3 py-4 text-center">
+                    <p class="text-xs text-muted">No variables detected.</p>
+                    <p class="text-[11px] text-muted/60 mt-0.5">Use {"{{name}}"} syntax in your prompt.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -523,6 +559,15 @@ const saveIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
   </Modal>
 </PageLayout>
 
+<style>
+  .prompt-variable {
+    color: #F76F53;
+    background: rgba(247, 111, 83, 0.08);
+    border-radius: 3px;
+    padding: 0 2px;
+  }
+</style>
+
 <script is:inline define:vars={{ agentId: id }}>
   (function () {
     var loadingState = document.getElementById("loading-state");
@@ -538,6 +583,11 @@ const saveIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
     var nameError = document.getElementById("name-error");
     var descriptionInput = document.getElementById("agent-description");
     var instructionsInput = document.getElementById("agent-instructions");
+    var instructionsBackdrop = document.getElementById("instructions-backdrop");
+    var tokenCountValue = document.getElementById("token-count-value");
+    var variablesPanel = document.getElementById("variables-panel");
+    var variablesList = document.getElementById("variables-list");
+    var variableCount = document.getElementById("variable-count");
 
     /* Model tab fields */
     var providerSelect = document.getElementById("model-provider");
@@ -620,6 +670,136 @@ const saveIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
         if (panel) panel.classList.remove("hidden");
       });
     });
+
+    /* ------------------------------------------------------------------ */
+    /* Instructions editor: highlighting, variables, token counter         */
+    /* ------------------------------------------------------------------ */
+
+    /* Variable state: {name: {type: "string", defaultValue: ""}} */
+    var detectedVariables = {};
+
+    function escapeHtml(text) {
+      return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    function highlightInstructions() {
+      var text = instructionsInput.value;
+      /* Build highlighted HTML — color {{variable}} patterns */
+      var html = escapeHtml(text).replace(
+        /\{\{(\w+)\}\}/g,
+        '<span class="prompt-variable">{{$1}}</span>'
+      );
+      /* Add a trailing newline so the backdrop height matches the textarea */
+      instructionsBackdrop.innerHTML = html + "\n";
+    }
+
+    function syncBackdropScroll() {
+      instructionsBackdrop.scrollTop = instructionsInput.scrollTop;
+      instructionsBackdrop.scrollLeft = instructionsInput.scrollLeft;
+    }
+
+    function extractVariables(text) {
+      var matches = text.match(/\{\{(\w+)\}\}/g);
+      if (!matches) return [];
+      var seen = {};
+      var names = [];
+      matches.forEach(function (m) {
+        var name = m.slice(2, -2);
+        if (!seen[name]) {
+          seen[name] = true;
+          names.push(name);
+        }
+      });
+      return names;
+    }
+
+    function estimateTokens(text) {
+      /* Rough estimate: ~4 chars per token for English text */
+      if (!text || !text.trim()) return 0;
+      return Math.ceil(text.length / 4);
+    }
+
+    function updateTokenCounter() {
+      var count = estimateTokens(instructionsInput.value);
+      tokenCountValue.textContent = "~" + count.toLocaleString() + " tokens";
+    }
+
+    function renderVariablesPanel() {
+      var names = extractVariables(instructionsInput.value);
+
+      if (names.length === 0) {
+        variablesPanel.classList.add("hidden");
+        variableCount.textContent = "0";
+        variablesList.innerHTML =
+          '<div class="px-3 py-4 text-center">' +
+            '<p class="text-xs text-muted">No variables detected.</p>' +
+            '<p class="text-[11px] text-muted/60 mt-0.5">Use {{name}} syntax in your prompt.</p>' +
+          '</div>';
+        return;
+      }
+
+      variablesPanel.classList.remove("hidden");
+      variableCount.textContent = names.length;
+
+      /* Preserve existing variable configs */
+      var prev = detectedVariables;
+      detectedVariables = {};
+      names.forEach(function (name) {
+        detectedVariables[name] = prev[name] || { type: "string", defaultValue: "" };
+      });
+
+      variablesList.innerHTML = "";
+      names.forEach(function (name) {
+        var v = detectedVariables[name];
+        var item = document.createElement("div");
+        item.className = "px-3 py-2.5 flex flex-col gap-1.5";
+        item.innerHTML =
+          '<div class="flex items-center gap-1.5">' +
+            '<span class="flex h-5 w-5 items-center justify-center rounded bg-coral/10 text-coral text-[10px] font-bold">x</span>' +
+            '<span class="text-xs font-medium text-dark font-mono truncate">' + escapeHtml(name) + '</span>' +
+          '</div>' +
+          '<select data-var-type="' + escapeHtml(name) + '" class="w-full bg-subtle/50 border border-dark/[0.06] rounded px-2 py-1 text-[11px] text-dark outline-none focus:border-coral transition-all cursor-pointer">' +
+            '<option value="string"' + (v.type === "string" ? " selected" : "") + '>String</option>' +
+            '<option value="number"' + (v.type === "number" ? " selected" : "") + '>Number</option>' +
+            '<option value="boolean"' + (v.type === "boolean" ? " selected" : "") + '>Boolean</option>' +
+          '</select>' +
+          '<input type="text" data-var-default="' + escapeHtml(name) + '" value="' + escapeHtml(v.defaultValue) + '" placeholder="Default value" class="w-full bg-subtle/50 border border-dark/[0.06] rounded px-2 py-1 text-[11px] text-dark placeholder:text-muted/50 outline-none focus:border-coral transition-all" />';
+        variablesList.appendChild(item);
+      });
+
+      /* Attach change listeners for type and default value */
+      variablesList.querySelectorAll("[data-var-type]").forEach(function (sel) {
+        sel.addEventListener("change", function () {
+          var n = sel.getAttribute("data-var-type");
+          if (detectedVariables[n]) detectedVariables[n].type = sel.value;
+        });
+      });
+      variablesList.querySelectorAll("[data-var-default]").forEach(function (inp) {
+        inp.addEventListener("input", function () {
+          var n = inp.getAttribute("data-var-default");
+          if (detectedVariables[n]) detectedVariables[n].defaultValue = inp.value;
+        });
+      });
+    }
+
+    var instructionsUpdateTimer = null;
+    function onInstructionsChange() {
+      highlightInstructions();
+      updateTokenCounter();
+      /* Debounce variable panel update */
+      clearTimeout(instructionsUpdateTimer);
+      instructionsUpdateTimer = setTimeout(renderVariablesPanel, 200);
+    }
+
+    if (instructionsInput) {
+      instructionsInput.addEventListener("input", onInstructionsChange);
+      instructionsInput.addEventListener("scroll", syncBackdropScroll);
+      /* Handle resize — keep backdrop in sync */
+      var resizeObserver = new ResizeObserver(function () {
+        instructionsBackdrop.style.height = instructionsInput.offsetHeight + "px";
+      });
+      resizeObserver.observe(instructionsInput);
+    }
 
     /* ------------------------------------------------------------------ */
     /* Temperature slider                                                  */
@@ -1070,6 +1250,11 @@ const saveIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
       descriptionInput.value = agent.description || "";
       instructionsInput.value = agent.instructions || "";
 
+      /* Trigger highlighting, variable detection, and token counter for loaded instructions */
+      highlightInstructions();
+      updateTokenCounter();
+      renderVariablesPanel();
+
       /* Model tab */
       if (agent.temperature != null) {
         temperatureSlider.value = agent.temperature;
@@ -1126,7 +1311,7 @@ const saveIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
         }
       }
 
-      /* Memory and context toggles — stored in hooks_json as meta flags */
+      /* Memory, context, and variable config — stored in hooks_json as meta flags */
       try {
         var hooksData = JSON.parse(agent.hooks_json || "{}");
         if (hooksData._memory_enabled) {
@@ -1136,6 +1321,9 @@ const saveIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
         if (hooksData._context_enabled) {
           contextEnabled = true;
           setToggle(toggleContext, true);
+        }
+        if (hooksData._variables && typeof hooksData._variables === "object") {
+          detectedVariables = hooksData._variables;
         }
       } catch (e) {
         /* ignore */
@@ -1229,6 +1417,10 @@ const saveIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
         /* Store toggle state as meta flags */
         if (memoryEnabled) hooksObj._memory_enabled = true;
         if (contextEnabled) hooksObj._context_enabled = true;
+        /* Store variable config */
+        if (Object.keys(detectedVariables).length > 0) {
+          hooksObj._variables = detectedVariables;
+        }
 
         var outputTypeVal = outputTypeTextarea.value.trim() || "{}";
 
