@@ -43,6 +43,8 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
 - Provider test endpoint: use httpx AsyncClient for lightweight API calls; lazy-import httpx to avoid overhead on CRUD routes
 - Provider keys: multiple keys per provider in `provider_keys` table; load balance strategy on `providers.load_balance_strategy`
 - Key selection: POST `/api/providers/:id/keys/select` returns decrypted key based on strategy; report usage via POST `/api/providers/:id/keys/:keyId/report`
+- Applications: 5 types (chatbot, chatflow, workflow, agent, text_generator); duplicate endpoint copies with "(Copy)" suffix
+- Application routes at `/api/applications` — use `project_id` query param for filtering by project
 
 ---
 
@@ -455,4 +457,18 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - ProjectUpdate Pydantic model already accepts `default_model` — no backend changes needed
   - Workspace default model uses localStorage (`orbiter_default_model`), project default model uses server-side storage via the projects API
   - Manual browser verification needed (no browser testing tool available)
+---
+
+## 2026-02-17 04:30 - US-028
+- What was implemented: Application schema (migration) and REST API with 7 endpoints (list, create, get, update, delete, duplicate)
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/migrations/007_create_applications.sql (new — applications table with type CHECK constraint, FK to projects and users, indexes)
+  - packages/orbiter-web/src/orbiter_web/routes/applications.py (new — APIRouter with ApplicationCreate, ApplicationUpdate, ApplicationResponse, 7 endpoints including duplicate)
+  - packages/orbiter-web/src/orbiter_web/app.py (updated — registered applications_router)
+- **Learnings for future iterations:**
+  - Applications route follows same pattern as providers: `get_current_user` dependency, `_verify_ownership` helper for 404 checks
+  - Duplicate endpoint copies name with "(Copy)" suffix, type, project_id, config_json — resets status to "draft" (default)
+  - `config_json` stored as TEXT (not JSON type) in SQLite — no JSON validation at DB level, just Pydantic string field
+  - GET /api/applications supports optional `project_id` query param via `Query(None)` — builds different SQL based on presence
+  - Applications have both `project_id` FK (to projects) and `user_id` FK (to users) — ownership check is on user_id
 ---
