@@ -1052,3 +1052,19 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - pendingToolCalls + pendingReasoning pattern: accumulate trace data from WS events between messages, consume on `done` event
   - Manual browser verification needed (no browser testing tool available)
 ---
+
+## 2026-02-17 01:00 - US-064
+- What was implemented: Token usage and cost estimation in trace panel — per-message cost estimates, cumulative conversation token/cost summary, and /api/costs/pricing endpoint
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/routes/costs.py (new — GET /api/costs/pricing returns model pricing data from models+providers tables)
+  - packages/orbiter-web/src/orbiter_web/app.py (updated — registered costs_router)
+  - packages/orbiter-web/src/pages/playground.astro (enhanced — added pricing fetch, calcCost() helper, cumulative summary bar in trace panel header, per-message cost display in trace entries and below chat messages)
+- **Learnings for future iterations:**
+  - Pricing lookup matches model_name from the `done` WebSocket event against models table pricing_input/pricing_output ($/1K tokens)
+  - Cost formatting: use 4 decimal places for <$0.01, 2 decimal places otherwise
+  - Cumulative summary in trace panel header uses a grid layout for clean alignment (Total Tokens, In/Out, Est. Cost)
+  - Cost badge shown in trace entry header alongside finish_reason badge — small rounded pill with tabular-nums
+  - `resetCumulativeSummary()` called from `clearTraceEntries()` ensures totals reset when conversation is cleared
+  - `loadPricing()` is non-critical — wrapped in try/catch with empty fallback so missing pricing degrades gracefully
+  - Manual browser verification needed (no browser testing tool available)
+---
