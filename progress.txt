@@ -68,6 +68,9 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
 - FastAPI route ordering: define `/search` or other static paths BEFORE `/{id}` param routes to prevent FastAPI matching "search" as an id
 - Ruff B008: only `Depends()` triggers it — `Query(...)` with keyword args does NOT; don't add unnecessary noqa comments
 - Confirmation dialogs: use native `<dialog>` with `.showModal()` and `backdrop:bg-dark/40` — no external modal library needed; close on backdrop click via `e.target === dialog`
+- Workflow execution: `engine.py` has topological_sort (Kahn's) + execute_workflow; `routes/workflow_runs.py` has REST + WS endpoints; both share `/api/workflows` prefix
+- Background asyncio tasks: store in a module-level `set()` and use `task.add_done_callback(set.discard)` to prevent GC (ruff RUF006)
+- Ruff SIM105: use `contextlib.suppress(Exception)` instead of `try/except pass`
 
 ---
 
@@ -1138,4 +1141,21 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Thread items show hover-visible delete button using Tailwind group-hover pattern (`opacity-0 group-hover:opacity-100`)
   - When switching to a thread, messages are loaded via REST API and rendered using existing `addUserMessage`/`addRestoredAgentMessage` helpers
   - Manual browser verification needed (no browser testing tool available)
+---
+
+## 2026-02-17 01:15 - US-069
+- What was implemented: Workflow execution engine backend with topological sort DAG runner, REST endpoints, and WebSocket streaming
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/migrations/016_create_workflow_runs.sql (new — workflow_runs + workflow_run_logs tables)
+  - packages/orbiter-web/src/orbiter_web/engine.py (new — topological_sort, execute_workflow, cancel_run, _execute_node stub)
+  - packages/orbiter-web/src/orbiter_web/routes/workflow_runs.py (new — POST /:id/run, DELETE /:id/runs/:runId, WS /:id/runs/:runId/stream)
+  - packages/orbiter-web/src/orbiter_web/app.py (updated — registered workflow_runs_router)
+- **Learnings for future iterations:**
+  - Workflow execution uses Kahn's algorithm for topological sort, grouping nodes into layers for parallel execution within each layer
+  - Engine uses `asyncio.Event` for cooperative cancellation — checked between layers
+  - Background tasks from `asyncio.create_task` must be stored in a set to prevent garbage collection (ruff RUF006)
+  - WebSocket endpoint has two modes: if run is "pending" it starts execution with a callback, if already "running" it falls back to DB polling (0.3s interval)
+  - Node execution is stubbed (`_execute_node`) — returns simulated output; real implementations will be added in future stories
+  - `contextlib.suppress(Exception)` is preferred over `try/except pass` (ruff SIM105)
+  - `workflow_runs_router` registered before `workflows_router` in app.py since both share `/api/workflows` prefix — more specific paths matched first
 ---
