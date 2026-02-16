@@ -14,6 +14,7 @@ interface WorkflowNodeData {
   _missingConfig?: boolean;
   _unreachable?: boolean;
   _disconnectedInputs?: string[];
+  _execStatus?: "running" | "completed" | "failed" | null;
   [key: string]: unknown;
 }
 
@@ -27,6 +28,7 @@ function WorkflowNode({ data, selected }: NodeProps) {
   const hasMissingConfig = d._missingConfig ?? false;
   const isUnreachable = d._unreachable ?? false;
   const disconnectedInputs = new Set(d._disconnectedInputs ?? []);
+  const execStatus = d._execStatus ?? null;
 
   const handles = getHandlesForNodeType(nodeType);
   const inputs = handles.filter((h) => h.type === "target");
@@ -50,8 +52,18 @@ function WorkflowNode({ data, selected }: NodeProps) {
           ? "0 0 0 3px rgba(99, 247, 139, 0.25)"
           : null;
 
+  /* Execution status overrides relationship tinting */
+  const execBorder =
+    execStatus === "running"
+      ? "var(--zen-coral, #F76F53)"
+      : execStatus === "completed"
+        ? "var(--zen-green, #63f78b)"
+        : execStatus === "failed"
+          ? "#ef4444"
+          : null;
+
   const borderColor =
-    tintBorder ?? (selected ? "var(--zen-coral, #F76F53)" : "var(--zen-subtle, #e0ddd0)");
+    execBorder ?? tintBorder ?? (selected ? "var(--zen-coral, #F76F53)" : "var(--zen-subtle, #e0ddd0)");
   const shadow =
     tintShadow ?? (selected ? "0 0 0 2px rgba(247, 111, 83, 0.25)" : "0 1px 3px rgba(0,0,0,0.06)");
 
@@ -68,8 +80,64 @@ function WorkflowNode({ data, selected }: NodeProps) {
         boxShadow: shadow,
       }}
     >
-      {/* Warning badge for missing config (top-right corner) */}
-      {hasMissingConfig && (
+      {/* Execution status overlay badges */}
+      {execStatus === "completed" && (
+        <div
+          title="Completed"
+          style={{
+            position: "absolute",
+            top: -8,
+            right: -8,
+            width: 20,
+            height: 20,
+            borderRadius: "50%",
+            background: "var(--zen-green, #63f78b)",
+            color: "#fff",
+            fontSize: 13,
+            fontWeight: 700,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 10,
+            boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+            lineHeight: 1,
+          }}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+        </div>
+      )}
+      {execStatus === "failed" && (
+        <div
+          title="Failed"
+          style={{
+            position: "absolute",
+            top: -8,
+            right: -8,
+            width: 20,
+            height: 20,
+            borderRadius: "50%",
+            background: "#ef4444",
+            color: "#fff",
+            fontSize: 13,
+            fontWeight: 700,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 10,
+            boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+            lineHeight: 1,
+          }}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </div>
+      )}
+
+      {/* Warning badge for missing config (top-right corner, hidden during execution) */}
+      {hasMissingConfig && !execStatus && (
         <div
           title="Missing required configuration"
           style={{

@@ -61,6 +61,14 @@ const EDGE_ANIMATION_CSS = `
 .relationships-mode .react-flow__edge.rel-highlighted {
   opacity: 1;
 }
+/* Execution status: pulsing coral border for running nodes */
+@keyframes execPulse {
+  0%, 100% { box-shadow: 0 0 0 2px rgba(247, 111, 83, 0.3); }
+  50% { box-shadow: 0 0 0 6px rgba(247, 111, 83, 0.15); }
+}
+.exec-running {
+  animation: execPulse 1.5s ease-in-out infinite;
+}
 `;
 
 if (typeof document !== "undefined") {
@@ -361,6 +369,16 @@ const icons = {
       <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
     </svg>
   ),
+  play: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+      <polygon points="6,3 20,12 6,21" />
+    </svg>
+  ),
+  stop: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+      <rect x="5" y="5" width="14" height="14" rx="2" />
+    </svg>
+  ),
 };
 
 /* ------------------------------------------------------------------ */
@@ -435,6 +453,161 @@ function useAutoSave(
   }, []);
 
   return { scheduleSave, saveNow, saveStatus };
+}
+
+/* ------------------------------------------------------------------ */
+/* Execution state                                                     */
+/* ------------------------------------------------------------------ */
+
+type NodeExecStatus = "running" | "completed" | "failed";
+type RunStatus = "idle" | "pending" | "running" | "completed" | "failed" | "cancelled";
+
+interface ExecutionState {
+  runId: string | null;
+  status: RunStatus;
+  nodeStatuses: Record<string, NodeExecStatus>;
+  startTime: number | null;
+  completedCount: number;
+  totalNodes: number;
+}
+
+const INITIAL_EXEC_STATE: ExecutionState = {
+  runId: null,
+  status: "idle",
+  nodeStatuses: {},
+  startTime: null,
+  completedCount: 0,
+  totalNodes: 0,
+};
+
+function useWorkflowExecution(workflowId: string | undefined, totalNodes: number) {
+  const [exec, setExec] = useState<ExecutionState>(INITIAL_EXEC_STATE);
+  const wsRef = useRef<WebSocket | null>(null);
+  const [elapsed, setElapsed] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const clearTimer = useCallback(() => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  }, []);
+
+  /** Start a workflow run. */
+  const startRun = useCallback(async () => {
+    if (!workflowId) return;
+
+    setExec({
+      runId: null,
+      status: "pending",
+      nodeStatuses: {},
+      startTime: Date.now(),
+      completedCount: 0,
+      totalNodes,
+    });
+    setElapsed(0);
+
+    try {
+      const res = await fetch(`/api/workflows/${workflowId}/run`, { method: "POST" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: "Failed to start run" }));
+        setExec((s) => ({ ...s, status: "failed", runId: null }));
+        alert(err.detail || "Failed to start run");
+        return;
+      }
+      const { run_id } = await res.json();
+
+      setExec((s) => ({ ...s, runId: run_id, status: "running" }));
+
+      // Start elapsed timer
+      timerRef.current = setInterval(() => {
+        setElapsed((e) => e + 1);
+      }, 1000);
+
+      // Connect WebSocket for live events
+      const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const ws = new WebSocket(`${proto}//${window.location.host}/api/workflows/${workflowId}/runs/${run_id}/stream`);
+      wsRef.current = ws;
+
+      ws.onmessage = (ev) => {
+        const event = JSON.parse(ev.data);
+        if (event.type === "node_started") {
+          setExec((s) => ({
+            ...s,
+            nodeStatuses: { ...s.nodeStatuses, [event.node_id]: "running" },
+          }));
+        } else if (event.type === "node_completed") {
+          setExec((s) => ({
+            ...s,
+            nodeStatuses: { ...s.nodeStatuses, [event.node_id]: "completed" },
+            completedCount: s.completedCount + 1,
+          }));
+        } else if (event.type === "node_failed") {
+          setExec((s) => ({
+            ...s,
+            nodeStatuses: { ...s.nodeStatuses, [event.node_id]: "failed" },
+            completedCount: s.completedCount + 1,
+          }));
+        } else if (event.type === "execution_completed") {
+          setExec((s) => ({
+            ...s,
+            status: event.status as RunStatus,
+          }));
+          clearTimer();
+          ws.close();
+        }
+      };
+
+      ws.onerror = () => {
+        setExec((s) => ({ ...s, status: "failed" }));
+        clearTimer();
+      };
+    } catch {
+      setExec((s) => ({ ...s, status: "failed" }));
+      clearTimer();
+    }
+  }, [workflowId, totalNodes, clearTimer]);
+
+  /** Cancel the current run. */
+  const cancelRun = useCallback(async () => {
+    if (!workflowId || !exec.runId) return;
+
+    try {
+      await fetch(`/api/workflows/${workflowId}/runs/${exec.runId}`, { method: "DELETE" });
+    } catch {
+      // Ignore cancel errors
+    }
+
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+    clearTimer();
+    setExec((s) => ({ ...s, status: "cancelled" }));
+  }, [workflowId, exec.runId, clearTimer]);
+
+  /** Reset back to idle. */
+  const resetExec = useCallback(() => {
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+    clearTimer();
+    setExec(INITIAL_EXEC_STATE);
+    setElapsed(0);
+  }, [clearTimer]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (wsRef.current) wsRef.current.close();
+      clearTimer();
+    };
+  }, [clearTimer]);
+
+  const isRunning = exec.status === "running" || exec.status === "pending";
+
+  return { exec, elapsed, isRunning, startRun, cancelRun, resetExec };
 }
 
 /* ------------------------------------------------------------------ */
@@ -520,6 +693,10 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
   /* History tracking */
   const { past, future, record, canUndo, canRedo, skipRecord } =
     useUndoRedo(nodes, edges);
+
+  /* Execution state */
+  const { exec, elapsed, isRunning, startRun, cancelRun, resetExec } =
+    useWorkflowExecution(workflowId, nodes.length);
 
   /* Workflow metadata (name, description) */
   const [workflowName, setWorkflowName] = useState("");
@@ -671,7 +848,7 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
     return computeRelationships(relationshipNodeId, edges);
   }, [relationshipNodeId, edges]);
 
-  /* Apply relationship classes + validation decorations to nodes and edges */
+  /* Apply relationship classes + validation decorations + execution status to nodes and edges */
   const displayNodes = useMemo(() => {
     return nodes.map((n) => {
       // Relationship mode
@@ -688,19 +865,25 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
       const disconnectedHandles = validationResult?.disconnectedInputs.get(n.id);
       const disconnectedArr = disconnectedHandles ? [...disconnectedHandles] : [];
 
+      // Execution status
+      const execStatus = exec.nodeStatuses[n.id] ?? null;
+      const execClass = execStatus === "running" ? "exec-running" : undefined;
+      const cls = [relClass, execClass].filter(Boolean).join(" ") || undefined;
+
       return {
         ...n,
-        className: relClass,
+        className: cls,
         data: {
           ...n.data,
           _relTint: tint,
           _missingConfig: hasMissingConfig,
           _unreachable: isUnreachable,
           _disconnectedInputs: disconnectedArr,
+          _execStatus: execStatus,
         },
       };
     });
-  }, [nodes, relationships, relationshipNodeId, validationResult]);
+  }, [nodes, relationships, relationshipNodeId, validationResult, exec.nodeStatuses]);
 
   const displayEdges = useMemo(() => {
     return edges.map((e) => {
@@ -709,9 +892,23 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
         : undefined;
       const cycleClass = validationResult?.cycleEdges.has(e.id) ? "cycle-edge" : undefined;
       const cls = [relClass, cycleClass].filter(Boolean).join(" ") || undefined;
-      return { ...e, className: cls };
+
+      // Animate edges where source is completed and target is running
+      const srcStatus = exec.nodeStatuses[e.source];
+      const tgtStatus = exec.nodeStatuses[e.target];
+      const execAnimated = srcStatus === "completed" && tgtStatus === "running";
+
+      const edgeData = (e.data ?? {}) as Record<string, unknown>;
+      return {
+        ...e,
+        className: cls,
+        data: {
+          ...edgeData,
+          animated: execAnimated || edgeData.animated,
+        },
+      };
     });
-  }, [edges, relationships, validationResult]);
+  }, [edges, relationships, validationResult, exec.nodeStatuses]);
 
   /* Node selection — open config panel, Shift+click for relationships mode */
   const onNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
@@ -1210,6 +1407,25 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
               {validationResult.issues.length}
             </span>
           )}
+
+          {workflowId && (
+            <>
+              <Separator />
+              {isRunning ? (
+                <ToolbarButton onClick={cancelRun} title="Cancel Execution">
+                  {icons.stop}
+                </ToolbarButton>
+              ) : (
+                <ToolbarButton
+                  onClick={startRun}
+                  title="Run Workflow"
+                  disabled={nodes.length === 0}
+                >
+                  {icons.play}
+                </ToolbarButton>
+              )}
+            </>
+          )}
         </div>
       </Panel>
 
@@ -1227,6 +1443,89 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
         onToggle={() => setValidationPanelOpen((v) => !v)}
         onNavigateToNode={navigateToNode}
       />
+
+      {/* Execution status bar */}
+      {exec.status !== "idle" && (
+        <Panel position="bottom-center">
+          <div
+            className="nodrag nopan"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              padding: "8px 16px",
+              borderRadius: 10,
+              background: "var(--zen-paper, #f2f0e3)",
+              border: "1px solid var(--zen-subtle, #e0ddd0)",
+              boxShadow: "0 -1px 4px rgba(0,0,0,0.08)",
+              fontFamily: "'Bricolage Grotesque', sans-serif",
+              fontSize: 12,
+              fontWeight: 500,
+            }}
+          >
+            {/* Status indicator dot */}
+            <div
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                background:
+                  exec.status === "running" || exec.status === "pending"
+                    ? "var(--zen-coral, #F76F53)"
+                    : exec.status === "completed"
+                      ? "var(--zen-green, #63f78b)"
+                      : "#ef4444",
+                animation:
+                  exec.status === "running" || exec.status === "pending"
+                    ? "execPulse 1.5s ease-in-out infinite"
+                    : undefined,
+                flexShrink: 0,
+              }}
+            />
+
+            {/* Status label */}
+            <span style={{ color: "var(--zen-dark, #2e2e2e)", textTransform: "capitalize" }}>
+              {exec.status}
+            </span>
+
+            {/* Separator */}
+            <div style={{ width: 1, height: 14, background: "var(--zen-muted, #ccc)", opacity: 0.3 }} />
+
+            {/* Elapsed time */}
+            <span style={{ color: "var(--zen-muted, #999)" }}>
+              {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, "0")}
+            </span>
+
+            {/* Separator */}
+            <div style={{ width: 1, height: 14, background: "var(--zen-muted, #ccc)", opacity: 0.3 }} />
+
+            {/* Step count */}
+            <span style={{ color: "var(--zen-muted, #999)" }}>
+              {exec.completedCount}/{exec.totalNodes} steps
+            </span>
+
+            {/* Close/dismiss button when done */}
+            {!isRunning && (
+              <button
+                onClick={resetExec}
+                style={{
+                  marginLeft: 4,
+                  padding: "2px 8px",
+                  fontSize: 11,
+                  borderRadius: 6,
+                  border: "1px solid var(--zen-subtle, #e0ddd0)",
+                  background: "transparent",
+                  color: "var(--zen-dark, #2e2e2e)",
+                  cursor: "pointer",
+                  fontFamily: "'Bricolage Grotesque', sans-serif",
+                }}
+              >
+                Dismiss
+              </button>
+            )}
+          </div>
+        </Panel>
+      )}
 
       {/* Node config panel */}
       <NodeConfigPanel

@@ -1159,3 +1159,19 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - `contextlib.suppress(Exception)` is preferred over `try/except pass` (ruff SIM105)
   - `workflow_runs_router` registered before `workflows_router` in app.py since both share `/api/workflows` prefix — more specific paths matched first
 ---
+
+## 2026-02-17 01:15 - US-070
+- What was implemented: Workflow execution visualization — real-time canvas feedback during workflow runs
+- Files changed:
+  - packages/orbiter-web/src/islands/Canvas/CanvasIsland.tsx (execution state hook, WebSocket connection, toolbar play/stop buttons, execution status bar, edge animation, CSS pulse animation)
+  - packages/orbiter-web/src/islands/Canvas/WorkflowNode.tsx (execution status badges: green checkmark overlay for completed, red X for failed, coral pulsing border for running nodes)
+- **Learnings for future iterations:**
+  - `useWorkflowExecution` hook manages full lifecycle: POST to start run → WebSocket for live events → cancel via DELETE
+  - Execution node statuses are injected via `_execStatus` data prop (same pattern as `_relTint`, `_missingConfig` etc.)
+  - Edge animation between completed→running nodes uses the existing `animated` data prop on TypedBezierEdge
+  - CSS `exec-running` class with `execPulse` keyframe animation is applied via `className` on the ReactFlow node wrapper (not inline styles)
+  - Execution status bar uses ReactFlow `<Panel position="bottom-center">` — same pattern as toolbar and validation panel
+  - WebSocket URL constructed from `window.location.protocol` + `window.location.host` to support both http/https
+  - Elapsed timer uses `setInterval` with 1s tick — cleaned up on unmount and on run completion
+  - Missing config badge is hidden during execution to avoid overlap with execution status badges
+---
