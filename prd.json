@@ -60,7 +60,7 @@
         "Pyright passes"
       ],
       "priority": 3,
-      "passes": false,
+      "passes": true,
       "notes": "Port all constants from packages/orbiter-trace/src/orbiter/trace/config.py lines 87-151. Add new cost conventions. This is a pure-data module with no logic dependencies — needed by metrics, tracing, and instrumentation stories."
     },
     {

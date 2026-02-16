@@ -50,3 +50,20 @@ Started: Mon Feb 16 2026
   - LogContext nesting works by merging parent context into child — child overrides take precedence
   - Text/JSON formatter tests should set `_log_context` directly for unit testing (no need to use LogContext CM in formatter tests)
 ---
+
+## 2026-02-16 - US-003
+- Created semantic conventions module at `packages/orbiter-observability/src/orbiter/observability/semconv.py` (~85 lines)
+- Ported all constants from `packages/orbiter-trace/src/orbiter/trace/config.py` (lines 87-151)
+- GenAI conventions: 18 constants (gen_ai.system, gen_ai.request.*, gen_ai.usage.*, etc.)
+- Agent conventions: 7 constants (orbiter.agent.{id,name,type,model,step,max_steps,run.success})
+- Tool conventions: 7 constants (orbiter.tool.{name,call_id,arguments,result,error,duration,step.success})
+- Task/session/user: 5 constants (orbiter.task.id, orbiter.session.id, etc.)
+- Cost conventions (new): 3 constants (orbiter.cost.{input_tokens,output_tokens,total_usd})
+- Span name prefixes: 4 constants (agent., tool., llm., task.)
+- 24 tests covering: strings check, no duplicates, naming pattern validation, completeness, exact value parity
+- Files changed: packages/orbiter-observability/src/orbiter/observability/semconv.py, packages/orbiter-observability/tests/test_obs_semconv.py
+- **Learnings for future iterations:**
+  - Pure-data modules (constants only) are the simplest to implement — no dependencies, no logic
+  - Test pattern for convention modules: check types, no dupes, naming patterns, group completeness, exact values
+  - semconv.py has zero imports (except `__future__` annotations) — keeps it dependency-free
+---
