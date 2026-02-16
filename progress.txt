@@ -765,3 +765,18 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - US-045 already implemented most of US-046's acceptance criteria (drag-to-add, search input, real-time filtering) — always check existing code before starting
   - Manual browser verification needed (no browser testing tool available)
 ---
+
+## 2026-02-17 04:45 - US-047
+- What was implemented: Node configuration panel shell — right-side slide-in panel that opens when a node is clicked on the canvas, with editable node name, category/type display, node ID, and placeholder for type-specific config fields
+- Files changed:
+  - packages/orbiter-web/src/islands/Canvas/NodeConfigPanel.tsx (new — slide-in panel with name editing, type info display, auto-save debounce, Escape/X close)
+  - packages/orbiter-web/src/islands/Canvas/CanvasIsland.tsx (updated — added selectedNodeId state, onNodeClick/onPaneClick handlers, handleNodeDataUpdate callback, NodeConfigPanel integration, panel-aware delete)
+- **Learnings for future iterations:**
+  - NodeConfigPanel uses absolute positioning inside ReactFlow (same as NodeSidebar) with `className="nodrag nopan nowheel"` to prevent canvas interaction
+  - Slide-in animation via inline `<style>` tag with `@keyframes slideInRight` — works in React islands
+  - Config panel debounce (500ms) is separate from auto-save debounce — panel debounces calling onNodeUpdate, which then triggers the existing useAutoSave via nodes state change
+  - When deleting nodes, must check if the deleted node is the one shown in the config panel and close it
+  - `getNodeTypeInfo()` looks up NODE_CATEGORIES to display category color, icon, and label for any node type
+  - Panel closes on: X button click, Escape key, clicking empty canvas (onPaneClick)
+  - Manual browser verification needed (no browser testing tool available)
+---
