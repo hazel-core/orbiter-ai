@@ -4,7 +4,9 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "astro dev",
+    "dev": "concurrently --names astro,api --prefix-colors cyan,magenta \"npm run dev:astro\" \"npm run dev:api\"",
+    "dev:astro": "astro dev",
+    "dev:api": "uv run uvicorn orbiter_web.app:app --reload --host 127.0.0.1 --port 8000",
     "build": "astro check && astro build",
     "preview": "astro preview",
     "check": "astro check"
@@ -19,6 +21,7 @@
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.0",
+    "concurrently": "^9.2.1",
     "typescript": "^5.7.0"
   }
 }

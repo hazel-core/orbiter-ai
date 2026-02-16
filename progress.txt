@@ -8,6 +8,17 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
 - Tailwind CSS v4 must be integrated via `@tailwindcss/vite`, NOT `@astrojs/tailwind`
 - Astro typecheck: run `npx astro check` from the orbiter-web directory
 - `.gitignore` in orbiter-web excludes `node_modules/`, `dist/`, `.astro/`
+- Fonts: Bricolage Grotesque via @fontsource imports, Junicode via woff2 in `public/fonts/`; use `font-junicode` utility class for display headings
+- cn() utility at `src/utils/merge.ts` — import via `import { cn } from "../utils/merge"` for class merging in components
+- All pages should use `<BaseLayout>` wrapper — it provides theme detection, global styles, and animation support
+- Use `is:inline` for Astro scripts that must block rendering (e.g., theme detection to prevent flash)
+- Use `data-animate="zenReveal|zenFade|zenScale"` on elements for scroll-triggered animations
+- Proxy API requests in dev: configure `vite.server.proxy` in astro.config.mjs (NOT Astro-specific proxy)
+- Use `uv run` prefix in npm scripts that need the Python venv (e.g., `uv run uvicorn ...`)
+- orbiter-web has BOTH package.json (Astro frontend) AND pyproject.toml (FastAPI backend) — it's a dual Node+Python package
+- FastAPI app entry point: `orbiter_web.app:app` — run with `uvicorn orbiter_web.app:app`
+- Settings via dataclass in `orbiter_web/config.py` — reads ORBITER_DATABASE_URL, ORBITER_SECRET_KEY, ORBITER_DEBUG env vars
+- When adding a new Python package to UV workspace: update `members`, `dependency-groups.dev`, and `tool.uv.sources` in root pyproject.toml
 
 ---
 
@@ -38,4 +49,77 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - In Tailwind v4, `@theme {}` block defines custom design tokens that map directly to utility classes (e.g., `--color-coral` → `bg-coral`, `text-coral`)
   - CSS custom properties + @theme var() references allow theme switching via data attributes without JS runtime
   - Astro integrates Tailwind v4 via `vite.plugins` in astro.config.mjs, NOT via `@astrojs/tailwind`
+---
+
+## 2026-02-16 20:22 - US-003
+- What was implemented: Font setup with Bricolage Grotesque (via @fontsource) and Junicode (variable woff2 files)
+- Files changed:
+  - packages/orbiter-web/package.json (added @fontsource/bricolage-grotesque)
+  - packages/orbiter-web/package-lock.json (updated)
+  - packages/orbiter-web/public/fonts/JunicodeVF-Roman.woff2 (new — variable font, Roman)
+  - packages/orbiter-web/public/fonts/JunicodeVF-Italic.woff2 (new — variable font, Italic)
+  - packages/orbiter-web/src/styles/global.css (added @fontsource imports, @font-face for Junicode, body font, font-junicode utility)
+- **Learnings for future iterations:**
+  - Use @fontsource for Google/open-source fonts — import individual weight CSS files (e.g., `@fontsource/bricolage-grotesque/400.css`)
+  - Junicode v2.x ships as variable fonts (woff2) — use `font-weight: 100 900` in @font-face
+  - Tailwind v4 @theme block supports `--font-*` custom properties that map to `font-*` utilities
+  - `font-display: swap` prevents FOIT (flash of invisible text) during font loading
+---
+
+## 2026-02-16 20:25 - US-004
+- What was implemented: cn() class merging utility using clsx + tailwind-merge
+- Files changed:
+  - packages/orbiter-web/package.json (added clsx, tailwind-merge)
+  - packages/orbiter-web/package-lock.json (updated)
+  - packages/orbiter-web/src/utils/merge.ts (new — exports cn() function)
+- **Learnings for future iterations:**
+  - cn() pattern: `twMerge(clsx(inputs))` — clsx handles conditional classes, twMerge resolves Tailwind conflicts
+  - Import cn() via `import { cn } from "../utils/merge"` in Astro/TS components
+  - tailwind-merge v3.x works with Tailwind v4 out of the box
+---
+
+## 2026-02-16 20:27 - US-005
+- What was implemented: BaseLayout.astro with theme detection, animation support, and SEOHead component
+- Files changed:
+  - packages/orbiter-web/src/layouts/BaseLayout.astro (new — html/head/body shell with theme detection and IntersectionObserver)
+  - packages/orbiter-web/src/components/SEOHead.astro (new — meta tags, OpenGraph, Twitter cards)
+  - packages/orbiter-web/src/styles/global.css (added zenReveal, zenFade, zenScale keyframes)
+  - packages/orbiter-web/src/pages/index.astro (updated to use BaseLayout)
+- **Learnings for future iterations:**
+  - Use `is:inline` on `<script>` tags in Astro for blocking scripts that must run before first paint (theme detection)
+  - Theme detection pattern: localStorage → prefers-color-scheme → 'light' fallback, set on `document.documentElement`
+  - `data-animate` attribute drives IntersectionObserver animations; value maps to keyframe name (zenReveal, zenFade, zenScale)
+  - `prefers-reduced-motion: reduce` must be checked — skip animations and show elements immediately
+  - SEOHead as a separate component allows pages to override title/description via props
+  - BaseLayout uses `<slot />` for content projection — all pages should wrap content in `<BaseLayout>`
+---
+
+## 2026-02-16 20:30 - US-006
+- What was implemented: Python FastAPI server foundation for orbiter-web
+- Files changed:
+  - packages/orbiter-web/pyproject.toml (new — fastapi, uvicorn, aiosqlite deps, hatchling build)
+  - packages/orbiter-web/src/orbiter_web/__init__.py (new — package init with __version__)
+  - packages/orbiter-web/src/orbiter_web/app.py (new — FastAPI app with GET /api/health endpoint)
+  - packages/orbiter-web/src/orbiter_web/config.py (new — Settings dataclass with database_url, secret_key, debug)
+  - pyproject.toml (added orbiter-web to workspace members, dev deps, uv.sources, ruff isort)
+  - uv.lock (regenerated with orbiter-web + aiosqlite)
+- **Learnings for future iterations:**
+  - orbiter-web is a hybrid package: package.json for Astro frontend, pyproject.toml for FastAPI backend
+  - When adding a workspace package: must update 3 sections in root pyproject.toml (members, dev deps, uv.sources)
+  - Use `orbiter_web` (underscore) as Python package name since `orbiter-web` (hyphen) isn't valid Python
+  - `hatch.build.targets.wheel.packages` must point to `["src/orbiter_web"]` for the wheel to include the code
+  - Settings uses os.getenv in dataclass defaults — simple pattern, no pydantic-settings needed
+---
+
+## 2026-02-16 20:33 - US-007
+- What was implemented: Dev server script using concurrently to run Astro + FastAPI together, with Vite proxy for /api/* requests
+- Files changed:
+  - packages/orbiter-web/astro.config.mjs (added vite.server.proxy for /api → http://127.0.0.1:8000)
+  - packages/orbiter-web/package.json (added concurrently devDep, dev script uses concurrently, added dev:astro and dev:api scripts)
+  - packages/orbiter-web/package-lock.json (updated with concurrently)
+- **Learnings for future iterations:**
+  - Astro uses Vite under the hood — configure proxies via `vite.server.proxy` in astro.config.mjs, NOT via Astro-specific config
+  - Use `uv run uvicorn ...` in npm scripts to ensure the UV venv is active (avoids needing manual venv activation)
+  - concurrently with `--names` and `--prefix-colors` makes dual-server output readable
+  - uvicorn `--reload` watches Python files for changes; Astro has HMR built-in
 ---
