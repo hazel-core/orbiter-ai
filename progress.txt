@@ -1700,3 +1700,18 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - CORSMiddleware must be added before route registration for correct middleware ordering
   - Credentials=true is needed for cookie-based session auth (orbiter_session cookie)
 ---
+
+## 2026-02-17 - US-095
+- What was implemented: Autonomous mode UI — plan display panel with step list, modification capabilities, verification results, and plan history
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/routes/plans.py (added step CRUD endpoints: POST add step, PUT update step, DELETE remove step, PUT reorder steps)
+  - packages/orbiter-web/src/islands/PlanPanel/PlanPanelIsland.tsx (new — React island with full plan management UI)
+  - packages/orbiter-web/src/pages/agents/[id]/plan.astro (new — Astro page for agent plan view)
+- **Learnings for future iterations:**
+  - PlanPanel is a React island at `src/islands/PlanPanel/PlanPanelIsland.tsx` — follows same patterns as Canvas panels (inline styles, zen design tokens)
+  - Plan API lives at `/api/agents/{agentId}/plans` — supports full CRUD on steps (add/update/delete/reorder) plus plan versioning
+  - Plan step modification endpoints only allow changes to `pending` steps — running/completed/failed steps are immutable
+  - React island accepts `agentId` prop and polls `/api/agents/{agentId}/plans/active` every 3s for live updates
+  - Plan page at `/agents/[id]/plan.astro` uses same loading/error pattern as edit page — fetch agent first, then render island
+  - Step reorder endpoint takes ordered list of step IDs and assigns sequential step_numbers
+---
