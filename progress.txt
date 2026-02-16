@@ -1646,4 +1646,20 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Step dependency resolution: get all steps, build completed set, find first pending step where all deps are in completed set
   - Routes sharing prefix (`/api/agents`) must be in separate routers registered independently — no conflict since FastAPI merges them
   - `from __future__ import annotations` enables forward references in type hints but Pydantic models used as FastAPI params still need to be defined before use (or use `model_rebuild()`)
+  - WebSocket manager: `orbiter_web.websocket` exports `manager` singleton and `get_ws_user()` for auth; use `manager.broadcast_to_user(user_id, channel, msg)` for server-initiated pushes
+---
+
+## 2026-02-17 - US-156
+- What was implemented: Multiplexed WebSocket manager with channel-based routing at `ws://api/ws`
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/websocket.py (new — WebSocketManager, _Connection, get_ws_user, heartbeat, message dispatcher)
+  - packages/orbiter-web/src/orbiter_web/app.py (updated — import and register ws_router)
+- **Learnings for future iterations:**
+  - WebSocket auth: validate `orbiter_session` cookie via `get_ws_user()` *before* `websocket.accept()` — reject with code 4001 if invalid
+  - Channel envelope format: `{channel, type, payload}` — all messages must conform
+  - Valid channels: chat, execution, logs, sandbox, notifications, system
+  - Server heartbeat sends ping every 30s on system channel; client should respond with `{type: "pong"}`
+  - `manager.broadcast_to_user(user_id, channel, message)` pushes to all connections for a user subscribed to that channel
+  - Subscribe/unsubscribe via `{type: "subscribe", channel: "..."}` messages
+  - `get_ws_user()` is a reusable auth helper — existing `_get_user_from_cookie()` duplicated across crews.py, playground.py, workflow_runs.py can eventually be replaced
 ---

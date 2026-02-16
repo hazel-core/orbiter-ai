@@ -2737,7 +2737,7 @@
         "Typecheck passes"
       ],
       "priority": 16,
-      "passes": false,
+      "passes": true,
       "notes": "Gap fill: PRD architecture decision #3 requires single multiplexed WS. Currently 4+ ad-hoc endpoints defined across stories"
     },
     {
