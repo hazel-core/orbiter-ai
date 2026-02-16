@@ -55,6 +55,8 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
 - Canvas island lives at `src/islands/Canvas/CanvasIsland.tsx`; sync theme via MutationObserver on `data-theme` attribute
 - Workflows table stores canvas state as JSON TEXT columns: `nodes_json`, `edges_json`, `viewport_json`; workflow routes at `/api/workflows`
 - CanvasIsland accepts optional `workflowId` prop — loads from GET /api/workflows/:id on mount, auto-saves with 500ms debounce via PUT
+- Handle types defined in `handleTypes.ts` — `getHandlesForNodeType(nodeType)` returns HandleSpec[]; all nodes use `type: "workflow"` for custom rendering via WorkflowNode.tsx
+- Custom nodeTypes/edgeTypes must be defined OUTSIDE the component (stable reference) — passed to `<ReactFlow nodeTypes={...} edgeTypes={...}>`
 
 ---
 
@@ -830,5 +832,21 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Error state uses separate `errorSelectStyle` with `borderColor: coral` override on the select style object
   - Sliders use `accent-color` CSS property (via inline style `accentColor`) for the coral theme — works in modern browsers
   - Info box at the bottom shows dynamic parameter values (top-k count and threshold) to help users understand their config
+  - Manual browser verification needed (no browser testing tool available)
+---
+
+## 2026-02-16 - US-051
+- What was implemented: Edge connections with typed, color-coded handles for workflow canvas nodes
+- Files changed:
+  - packages/orbiter-web/src/islands/Canvas/handleTypes.ts (new — HandleDataType, HANDLE_COLORS, HandleSpec, getHandlesForNodeType with per-node-type handle maps)
+  - packages/orbiter-web/src/islands/Canvas/WorkflowNode.tsx (new — custom React Flow node with color-coded input/output handles and labels)
+  - packages/orbiter-web/src/islands/Canvas/CanvasIsland.tsx (updated — registered workflow nodeType, typed BezierEdge, handle color lookup, migration for saved workflows)
+- **Learnings for future iterations:**
+  - Custom node types in React Flow: define outside component, register via `nodeTypes` prop on `<ReactFlow>`; same for `edgeTypes`
+  - BezierEdge from @xyflow/react can be wrapped to inject custom stroke color via style prop
+  - Handle positioning: use percentage `top` values on the Handle `style` prop; distribute evenly from 45%-90% for multi-handle nodes
+  - When loading saved workflows, migrate `type: "default"` nodes to `type: "workflow"` and add edge color data to avoid breaking older saves
+  - Handle type definitions are static per nodeType — no need to store in DB; computed at render time from `getHandlesForNodeType()`
+  - Conditional nodes have special handles: `output-true` and `output-false` with labels "True"/"False"
   - Manual browser verification needed (no browser testing tool available)
 ---
