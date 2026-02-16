@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+/* Design system color tokens as CSS custom properties */
+:root {
+  --zen-paper: #f2f0e3;
+  --zen-dark: #2e2e2e;
+  --zen-muted: #8a877a;
+  --zen-subtle: #e8e6d9;
+  --zen-coral: #f76f53;
+  --zen-blue: #6287f5;
+  --zen-green: #63f78b;
+}
+
+[data-theme='dark'] {
+  --zen-paper: #1f1f1f;
+  --zen-dark: #d1cfc0;
+  --zen-muted: #8a877a;
+  --zen-subtle: #2e2e2e;
+  --zen-coral: #f76f53;
+  --zen-blue: #6287f5;
+  --zen-green: #63f78b;
+}
+
+/* Map design tokens to Tailwind theme variables */
+@theme {
+  --color-paper: var(--zen-paper);
+  --color-dark: var(--zen-dark);
+  --color-muted: var(--zen-muted);
+  --color-subtle: var(--zen-subtle);
+  --color-coral: var(--zen-coral);
+  --color-zen-blue: var(--zen-blue);
+  --color-zen-green: var(--zen-green);
+}
