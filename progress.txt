@@ -1293,3 +1293,18 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Route ordering: GET /{workflow_id}/runs must be defined BEFORE any /{workflow_id}/runs/{run_id} routes to avoid path conflicts in FastAPI
   - The Query import from fastapi is used for list endpoints with pagination params (limit, offset, ge/le constraints)
 ---
+
+## 2026-02-17 - US-078
+- What was implemented: Run history UI and replay panel for workflow canvas
+- Files changed:
+  - packages/orbiter-web/src/islands/Canvas/RunHistoryPanel.tsx (new — complete run history panel with list, detail, comparison, replay)
+  - packages/orbiter-web/src/islands/Canvas/CanvasIsland.tsx (updated — integrated RunHistoryPanel, added history icon, Cmd+H shortcut, history node coloring, past run overlay indicator)
+- **Learnings for future iterations:**
+  - RunHistoryPanel uses the existing GET /api/workflows/:id/runs endpoint with filters (status, trigger_type, date range)
+  - Run detail uses GET /api/workflows/:id/runs/:runId which includes node_executions array
+  - History node coloring: store historyNodeStatuses state and fall back to it in displayNodes when no active exec/debug
+  - Comparison mode: select two runs, fetch both details, side-by-side diff grouped by node_id, highlight differences
+  - Replay: for "same inputs" calls startRun(); "modified inputs" opens a JSON editor modal
+  - History overlay: a blue bottom-center panel indicates when viewing a past run, with dismiss button
+  - Cmd+H keyboard shortcut toggles history panel visibility
+---
