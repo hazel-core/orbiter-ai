@@ -406,3 +406,20 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Delete key uses same modal pattern as delete provider but with separate state variables (deleteKeyTargetId, deleteKeyProviderId, deleteKeyCardEl)
   - Manual browser verification needed (no browser testing tool available)
 ---
+
+## 2026-02-16 24:00 - US-025
+- What was implemented: Model catalog backend — migration for models table, REST API with list/create/discover endpoints
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/migrations/006_create_models.sql (new — models table with provider FK, unique constraint on provider_id+model_name, indexes)
+  - packages/orbiter-web/src/orbiter_web/routes/models.py (new — APIRouter with GET /api/models (filter by provider_id, provider_type, capability, search), POST /api/models (manual entry), POST /api/providers/:id/discover (auto-discovery from provider API))
+  - packages/orbiter-web/src/orbiter_web/app.py (updated — registered models_router)
+- **Learnings for future iterations:**
+  - Models router uses `/api` prefix (not `/api/models`) to support both `/api/models` and `/api/providers/:id/discover` under one router
+  - capabilities stored as JSON string in SQLite, parsed to list in `_row_to_response()`
+  - is_custom stored as INTEGER (0/1) in SQLite, converted to bool in response
+  - Discover endpoint tries provider-level `encrypted_api_key` first, falls back to `provider_keys` table for active keys
+  - Upsert pattern: check existence by (provider_id, model_name) unique constraint, UPDATE if exists else INSERT
+  - Provider-specific model listing: OpenAI/Anthropic use `/v1/models` (data array), Gemini uses `/v1beta/models` (models array with "models/" prefix), Ollama uses `/api/tags`
+  - httpx lazy-imported inside `_fetch_models_from_provider` (same pattern as provider test endpoint)
+  - JOIN with providers table in queries to include provider_name and provider_type in model responses
+---
