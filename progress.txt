@@ -47,6 +47,8 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
 - Application routes at `/api/applications` — use `project_id` query param for filtering by project
 - tools_json and handoffs_json are JSON arrays stored as TEXT in agents table — parse on load, stringify on save
 - /api/tools returns built-in tool catalog (static, no DB) — will be augmented with user-defined tools later
+- Highlight-overlay pattern for textarea: use transparent text textarea (z-10) + backdrop div with styled HTML behind it; sync scroll and resize
+- Agent meta config (variables, memory, context toggles) stored as `_` prefixed keys in `hooks_json` to avoid schema changes
 
 ---
 
@@ -562,5 +564,21 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - JSON validation on blur: `JSON.parse()` in try/catch, show `border-coral` + error message on failure; validate again before save and switch to Advanced tab if invalid
   - Max steps slider uses same pattern as temperature: `input` event updates a `<span>` with current value, `accent-coral` for the range thumb
   - Output type textarea pretty-prints stored JSON on load with `JSON.stringify(JSON.parse(...), null, 2)` for readability
+  - Manual browser verification needed (no browser testing tool available)
+---
+
+## 2026-02-17 08:20 - US-035
+- What was implemented: Enhanced system prompt editor on agent builder Basic tab — replaces plain textarea with highlight-overlay editor that colorizes `{{variable_name}}` patterns, a right-side variables panel showing detected variables with type selector (string/number/boolean) and default value input, and a token counter estimating input tokens
+- Files changed:
+  - packages/orbiter-web/src/pages/agents/[id]/edit.astro (major update — instructions section replaced with highlight-overlay editor, variables panel, token counter; JS added for highlighting, variable extraction, token estimation, scroll sync, resize observer; variable config stored/loaded via hooks_json `_variables` meta flag; scoped CSS for `.prompt-variable` styling)
+- **Learnings for future iterations:**
+  - Highlight-overlay pattern: transparent-text textarea on z-10 + backdrop div with styled HTML behind it; caret-dark ensures cursor visible while text is transparent
+  - Sync backdrop scroll with textarea via `scrollTop`/`scrollLeft` on `scroll` event; use `ResizeObserver` to keep backdrop height in sync with textarea resize
+  - `{{variable}}` detection via regex `\{\{(\w+)\}\}/g` — deduplicate names with a seen-set
+  - Token estimation: rough ~4 chars/token for English text (Math.ceil(text.length / 4))
+  - Variable config (type + defaultValue) stored as `_variables` object inside `hooks_json` meta flags — avoids new DB migration
+  - Variables panel uses `lg:w-64 flex-shrink-0` alongside `flex-1 min-w-0` for the editor — responsive side-by-side on lg+, stacked below on mobile
+  - Debounce variable panel rendering (200ms) to avoid excessive DOM rebuilds on fast typing; highlighting + token counter update immediately
+  - Scoped `<style>` block in Astro for `.prompt-variable` keeps highlighting styles local to the editor page
   - Manual browser verification needed (no browser testing tool available)
 ---
