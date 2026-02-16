@@ -17,6 +17,7 @@ Started: Mon Feb 16 2026
 - Ruff B039: `ContextVar` default cannot be mutable — use `default=None` with `T | None` type
 - `@asynccontextmanager` returns single-use CMs — when mocking, use `side_effect=lambda: factory()` not `return_value=cm`
 - Don't use `# noqa: PLW0603` or `# noqa: S101` — those rules aren't enabled in ruff config (ruff RUF100 catches unused noqa)
+- Pyright `reportAttributeAccessIssue` on re-exported symbols: add `# pyright: ignore[reportAttributeAccessIssue]` on each symbol line in multiline imports
 - RUF006: `loop.create_task()` must store return value — use `set.add(task)` + `task.add_done_callback(set.discard)`
 - hatchling requires a README.md in each package directory (build fails without it)
 - Ruff UP017: use `datetime.UTC` alias, not `datetime.timezone.utc`
@@ -222,4 +223,21 @@ Started: Mon Feb 16 2026
   - Budget remaining is fraction-based (0.0 to 1.0), not percentage — keeps math simple
   - GT comparator: values below target are violating; LT comparator: values at or above target are violating
   - Separate reset() vs clear() is useful — reset for between tests, clear for full teardown
+---
+
+## 2026-02-16 - US-012
+- Updated orbiter-core to depend on orbiter-observability instead of its inline log.py
+- orbiter-core/pyproject.toml: added `orbiter-observability>=0.1.0` dependency with `[tool.uv.sources]` workspace entry
+- orbiter/log.py replaced with thin re-export shim: imports `TextFormatter as _Formatter`, `configure_logging as configure`, `get_logger` from `orbiter.observability.logging`
+- Internal imports in agent.py, swarm.py, _internal/call_runner.py updated to import directly from `orbiter.observability.logging`
+- orbiter/__init__.py exports `configure` (aliased from `configure_logging`) and `get_logger` from new location
+- test_log.py updated: uses `reset_logging()` from observability to properly reset state between tests; added pyright ignore for re-exported symbols
+- All 18 existing test_log.py tests pass, full suite: 1081 tests (orbiter-core + observability) pass
+- uv sync succeeds, ruff passes, pyright passes
+- Files changed: packages/orbiter-core/pyproject.toml, packages/orbiter-core/src/orbiter/log.py, packages/orbiter-core/src/orbiter/__init__.py, packages/orbiter-core/src/orbiter/agent.py, packages/orbiter-core/src/orbiter/swarm.py, packages/orbiter-core/src/orbiter/_internal/call_runner.py, packages/orbiter-core/tests/test_log.py, prd.json
+- **Learnings for future iterations:**
+  - Re-export shims need `# pyright: ignore[reportMissingImports]` on each `from` statement (ruff isort splits multi-line imports)
+  - Pyright `reportAttributeAccessIssue` fires on re-exported symbols from shim modules — add ignore on each symbol line in multiline imports
+  - `configure_logging()` uses a `_configured` flag for idempotency — tests must call `reset_logging()` not just `root.handlers.clear()`
+  - Ruff isort merges `from X import a` and `from X import b` — pyright inline ignores must be on individual symbol lines, not on the `from` line
 ---

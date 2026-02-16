@@ -12,6 +12,7 @@ from orbiter._internal.message_builder import build_messages
 from orbiter._internal.output_parser import parse_response, parse_tool_arguments
 from orbiter.config import parse_model_string
 from orbiter.hooks import Hook, HookManager, HookPoint
+from orbiter.observability.logging import get_logger  # pyright: ignore[reportMissingImports]
 from orbiter.tool import Tool, ToolError
 from orbiter.types import (
     AgentOutput,
@@ -21,6 +22,8 @@ from orbiter.types import (
     ToolResult,
     UserMessage,
 )
+
+_log = get_logger(__name__)
 
 
 class AgentError(OrbiterError):
@@ -243,15 +246,20 @@ class Agent:
 
             except Exception as exc:
                 if _is_context_length_error(exc):
+                    _log.error("Context length exceeded on '%s'", self.name)
                     raise AgentError(
                         f"Context length exceeded on agent '{self.name}': {exc}"
                     ) from exc
 
                 last_error = exc
                 if attempt < max_retries - 1:
+                    _log.warning(
+                        "Retry %d/%d for '%s': %s", attempt + 1, max_retries, self.name, exc
+                    )
                     delay = 2**attempt
                     await asyncio.sleep(delay)
 
+        _log.error("Agent '%s' failed after %d retries", self.name, max_retries)
         raise AgentError(
             f"Agent '{self.name}' failed after {max_retries} retries: {last_error}"
         ) from last_error
@@ -291,6 +299,7 @@ class Agent:
                         content=content,
                     )
                 except (ToolError, Exception) as exc:
+                    _log.warning("Tool '%s' failed on '%s': %s", action.tool_name, self.name, exc)
                     result = ToolResult(
                         tool_call_id=action.tool_call_id,
                         tool_name=action.tool_name,

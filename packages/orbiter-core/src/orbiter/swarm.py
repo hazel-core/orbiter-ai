@@ -22,8 +22,11 @@ from typing import Any
 
 from orbiter._internal.call_runner import call_runner
 from orbiter._internal.graph import GraphError, parse_flow_dsl, topological_sort
+from orbiter.observability.logging import get_logger  # pyright: ignore[reportMissingImports]
 from orbiter.tool import Tool
 from orbiter.types import Message, OrbiterError, RunResult
+
+_log = get_logger(__name__)
 
 
 class SwarmError(OrbiterError):
@@ -68,6 +71,7 @@ class Swarm:
         for agent in agents:
             name = agent.name
             if name in self.agents:
+                _log.error("Duplicate agent name '%s' in swarm", name)
                 raise SwarmError(f"Duplicate agent name '{name}' in swarm")
             self.agents[name] = agent
 
@@ -86,6 +90,7 @@ class Swarm:
             try:
                 self.flow_order = topological_sort(graph)
             except GraphError as exc:
+                _log.error("Cycle detected in flow DSL: %s", exc)
                 raise SwarmError(f"Cycle in flow DSL: {exc}") from exc
         else:
             # Default: run in the order agents were provided
