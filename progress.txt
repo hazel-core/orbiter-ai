@@ -1593,3 +1593,41 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Provider key lookup: check `providers.encrypted_api_key` first, fall back to `provider_keys` table
   - `build_messages()` from `orbiter._internal.message_builder` handles system prompt + message list assembly
 ---
+
+## 2026-02-17 - US-093
+- What was implemented: Crew execution view — detail page at /crews/[id] with run trigger, execution timeline, WebSocket streaming, and run history
+- Features:
+  - Crew detail page at /crews/[id] with crew header, process type badge, and Run button
+  - Input section for optional crew context/instructions
+  - Task list display showing crew task definitions
+  - Horizontal execution timeline with animated nodes (pending → running → completed/failed)
+  - Connector lines between timeline nodes that activate as tasks complete
+  - Per-task output panels showing agent name, status badge, duration, and output/error
+  - Live updates via WebSocket connection to /api/crews/{crew_id}/runs/{run_id}/stream
+  - Timer showing elapsed execution time
+  - Run history section with paginated previous executions
+  - Sequential mode: output chaining (each task gets previous outputs as context)
+  - Parallel mode: all tasks run simultaneously via asyncio.gather
+- Backend additions:
+  - Migration 025: crew_runs + crew_run_tasks tables for persistent run tracking
+  - POST /api/crews/{id}/run creates a crew_run record and fires async execution
+  - GET /api/crews/{id}/runs — paginated run history
+  - GET /api/crews/{id}/runs/{run_id} — detailed run with task results
+  - WebSocket /api/crews/{id}/runs/{run_id}/stream — real-time execution events
+  - Poll-based fallback for already-running executions (_poll_crew_run)
+  - Event types: execution_started, task_started, task_completed, execution_completed
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/routes/crews.py (enhanced — persistent runs, WebSocket streaming, duration tracking, background tasks)
+  - packages/orbiter-web/src/orbiter_web/migrations/025_create_crew_runs.sql (new — crew_runs + crew_run_tasks tables)
+  - packages/orbiter-web/src/pages/crews/[id].astro (new — 506 lines, crew detail/execution page)
+  - packages/orbiter-web/src/pages/crews/new.astro (updated — redirect to crew detail page after creation)
+- **Learnings for future iterations:**
+  - WebSocket auth: extract session cookie via `websocket.cookies.get("orbiter_session")`, validate before `websocket.accept()`
+  - Event queue pattern: asyncio.Queue bridges background execution task to WebSocket send loop
+  - For already-completed runs: send cached task results from DB immediately, then close WebSocket
+  - For pending runs: attach event_callback to _execute_crew_run; for already-running: poll DB every 1 second
+  - Background tasks: store in module-level `set()` with `task.add_done_callback(set.discard)` to prevent GC (ruff RUF006)
+  - Timeline animation: CSS `pulse-ring` keyframe with box-shadow for running state dot
+  - `run_task_id` separate from `task_id` — run tasks have their own UUIDs for per-run tracking
+  - Manual browser verification needed (no dev-browser skill configured)
+---
