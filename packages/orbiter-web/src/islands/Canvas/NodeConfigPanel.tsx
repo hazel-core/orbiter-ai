@@ -6,6 +6,7 @@ import AgentNodeConfig from "./AgentNodeConfig";
 import ConditionalConfig from "./ConditionalConfig";
 import CodeNodeConfig from "./CodeNodeConfig";
 import HttpRequestConfig from "./HttpRequestConfig";
+import KnowledgeRetrievalConfig from "./KnowledgeRetrievalConfig";
 
 /* ------------------------------------------------------------------ */
 /* Types                                                                */
@@ -118,6 +119,19 @@ function renderTypeConfig(
           auth_header_name: node.data.auth_header_name as string | undefined,
           auth_header_value: node.data.auth_header_value as string | undefined,
           timeout_seconds: node.data.timeout_seconds as number | undefined,
+        }}
+        onChange={onDataChange}
+      />
+    );
+  }
+
+  if (nodeType === "knowledge_retrieval") {
+    return (
+      <KnowledgeRetrievalConfig
+        data={{
+          knowledge_base_id: node.data.knowledge_base_id as string | undefined,
+          top_k: node.data.top_k as number | undefined,
+          similarity_threshold: node.data.similarity_threshold as number | undefined,
         }}
         onChange={onDataChange}
       />
