@@ -484,9 +484,11 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
       logoutBtn.addEventListener("click", function () {
         fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" })
           .then(function () {
+            if (window.clearCsrfToken) window.clearCsrfToken();
             window.location.replace("/login");
           })
           .catch(function () {
+            if (window.clearCsrfToken) window.clearCsrfToken();
             window.location.replace("/login");
           });
       });

@@ -282,9 +282,59 @@ const closeIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="
   <!-- Auth check: redirect unauthenticated users to /login -->
   <script is:inline>
     (function () {
-      fetch("/api/auth/me", { credentials: "same-origin" })
+      /* ---------- CSRF auto-include ---------- */
+      var _csrfToken = null;
+      var _csrfPromise = null;
+      var _unsafeMethods = { POST: 1, PUT: 1, DELETE: 1, PATCH: 1 };
+      var _origFetch = window.fetch;
+
+      /** Fetch and cache the CSRF token for the current session. */
+      window.getCsrfToken = function () {
+        if (_csrfToken) return Promise.resolve(_csrfToken);
+        if (_csrfPromise) return _csrfPromise;
+        _csrfPromise = _origFetch("/api/auth/csrf", { credentials: "same-origin" })
+          .then(function (r) {
+            if (!r.ok) return "";
+            return r.json().then(function (d) { _csrfToken = d.token; return _csrfToken; });
+          })
+          .catch(function () { return ""; })
+          .finally(function () { _csrfPromise = null; });
+        return _csrfPromise;
+      };
+
+      /** Clear cached CSRF token (call on logout). */
+      window.clearCsrfToken = function () { _csrfToken = null; };
+
+      /** Patched fetch: auto-includes X-CSRF-Token on unsafe same-origin requests. */
+      window.fetch = function (input, init) {
+        init = init || {};
+        var method = (init.method || "GET").toUpperCase();
+        if (!_unsafeMethods[method]) return _origFetch(input, init);
+
+        // Only patch same-origin requests.
+        var url = typeof input === "string" ? input : (input.url || "");
+        if (url.indexOf("://") !== -1 && url.indexOf(location.origin) !== 0) {
+          return _origFetch(input, init);
+        }
+
+        return window.getCsrfToken().then(function (token) {
+          if (token) {
+            init.headers = init.headers || {};
+            if (typeof init.headers.set === "function") {
+              init.headers.set("X-CSRF-Token", token);
+            } else {
+              init.headers["X-CSRF-Token"] = token;
+            }
+          }
+          return _origFetch(input, init);
+        });
+      };
+
+      /* ---------- Auth check ---------- */
+      _origFetch("/api/auth/me", { credentials: "same-origin" })
         .then(function (res) {
           if (!res.ok) window.location.replace("/login");
+          else window.getCsrfToken(); // Prefetch CSRF token.
         })
         .catch(function () {
           window.location.replace("/login");

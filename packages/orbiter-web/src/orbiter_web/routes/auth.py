@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -97,16 +98,17 @@ async def login(body: LoginRequest, response: Response) -> dict[str, Any]:
     if user is None or not _verify_password(body.password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    # Create session.
+    # Create session with CSRF token.
     session_id = str(uuid.uuid4())
+    csrf_token = secrets.token_urlsafe(32)
     expires_at = (
         datetime.now(UTC) + timedelta(hours=settings.session_expiry_hours)
     ).strftime("%Y-%m-%d %H:%M:%S")
 
     async with get_db() as db:
         await db.execute(
-            "INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)",
-            (session_id, user["id"], expires_at),
+            "INSERT INTO sessions (id, user_id, expires_at, csrf_token) VALUES (?, ?, ?, ?)",
+            (session_id, user["id"], expires_at, csrf_token),
         )
         await db.commit()
 
@@ -142,3 +144,28 @@ async def me(
 ) -> dict[str, Any]:
     """Return the current authenticated user."""
     return user
+
+
+class CsrfResponse(BaseModel):
+    token: str
+
+
+@router.get("/csrf", response_model=CsrfResponse)
+async def get_csrf_token(
+    orbiter_session: str | None = Cookie(None),
+) -> dict[str, str]:
+    """Return the CSRF token for the current session."""
+    if not orbiter_session:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    async with get_db() as db:
+        cursor = await db.execute(
+            "SELECT csrf_token FROM sessions WHERE id = ? AND expires_at > datetime('now')",
+            (orbiter_session,),
+        )
+        row = await cursor.fetchone()
+
+    if row is None or row["csrf_token"] is None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    return {"token": row["csrf_token"]}
