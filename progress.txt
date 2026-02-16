@@ -202,3 +202,24 @@ Started: Mon Feb 16 2026
   - `register_pricing()` uses `insert(0, ...)` to prepend — custom pricing overrides defaults without removing them
   - Cost module has no OTel dependency — pure stdlib (logging, re, threading, datetime)
 ---
+
+## 2026-02-16 - US-011
+- Implemented SLO tracking module at `packages/orbiter-observability/src/orbiter/observability/slo.py` (~150 lines)
+- New module — no existing code to port, designed from scratch
+- `SLO` frozen dataclass: name, metric_name, target, window_seconds (default 3600), comparator ("gt" or "lt")
+- `SLOReport` frozen dataclass: slo_name, target, actual, budget_remaining, compliant, window_start, total_samples, violating_samples
+- `SLOTracker`: register/unregister SLOs, record(metric_name, value), report(slo_name), report_all()
+- Sliding window: uses `time.monotonic()` timestamps, filters expired samples on each report() call
+- Budget calculation: `1.0 - (violating / total)` — 1.0 means all good, 0.0 means all violating
+- GT comparator: actual average must be >= target (success rate style), LT: actual must be < target (latency style)
+- reset() clears samples only, clear() clears both SLOs and samples
+- Module-level convenience: `get_tracker()`, `reset()`
+- 29 tests covering: SLO/SLOReport dataclasses (creation/custom/frozen), registration (register/overwrite/unregister/clear), recording, GT reports (compliant/violation/budget/no-samples), LT reports (compliant/violation/exact-threshold), sliding window (expired/all-expired), report_all (multiple/empty), unknown SLO, reset (clears/preserves), module functions (singleton/reset/full-flow)
+- Files changed: packages/orbiter-observability/src/orbiter/observability/slo.py, packages/orbiter-observability/tests/test_obs_slo.py, prd.json
+- **Learnings for future iterations:**
+  - `time.monotonic()` for sliding window timestamps — monotonic clock avoids wall-clock drift issues
+  - SLO module has no external dependencies — pure stdlib (time, dataclasses, datetime)
+  - Budget remaining is fraction-based (0.0 to 1.0), not percentage — keeps math simple
+  - GT comparator: values below target are violating; LT comparator: values at or above target are violating
+  - Separate reset() vs clear() is useful — reset for between tests, clear for full teardown
+---

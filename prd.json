@@ -217,7 +217,7 @@
         "Pyright passes"
       ],
       "priority": 11,
-      "passes": false,
+      "passes": true,
       "notes": "New module — no existing code to port. Use time.monotonic() for timestamps in the sliding window. Store samples as list of (timestamp, value) tuples. Filter expired samples on each report() call."
     },
     {
