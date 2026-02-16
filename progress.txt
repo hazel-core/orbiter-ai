@@ -652,3 +652,18 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - `model` field in request uses "provider_id:model_name" format for explicit selection, or just model_name for auto-provider resolution
   - Manual browser verification needed (no browser testing tool available)
 ---
+
+## 2026-02-17 13:00 - US-040
+- What was implemented: AI-assisted agent builder UI — "AI Builder" button on project detail page, multi-step modal with natural language description input, loading state, review panel with editable fields (name, role, instructions, tools as removable pills, model), confirm button that creates agent via POST /api/agents
+- Files changed:
+  - packages/orbiter-web/src/pages/projects/[id].astro (major update — added AI Builder button, ai-builder-modal with 3 steps: describe, loading, review; JS for generate/review/create flow)
+- **Learnings for future iterations:**
+  - AI Builder added as a "bordered" variant button next to "New Application" on project detail page — keeps it visible but secondary
+  - Multi-step modal pattern: hide/show step divs (ai-step-describe, ai-step-loading, ai-step-review) within a single Modal component
+  - AI-generate API returns `{agents: [...]}` — take first agent for single-agent generation flow
+  - Tool pills rendered as removable badges with `&times;` close button; tools stored as simple string array, mapped to `{id, name}` objects on creation
+  - Enter key in textarea submits (Shift+Enter for newline) — same pattern as chat inputs
+  - After agent creation, navigates to `/agents/:id/edit` so user can further customize
+  - generatedTools tracked as a JS array alongside the DOM — re-render on every change (add/remove)
+  - Manual browser verification needed (no browser testing tool available)
+---
