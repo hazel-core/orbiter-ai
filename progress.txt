@@ -848,5 +848,24 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - When loading saved workflows, migrate `type: "default"` nodes to `type: "workflow"` and add edge color data to avoid breaking older saves
   - Handle type definitions are static per nodeType — no need to store in DB; computed at render time from `getHandlesForNodeType()`
   - Conditional nodes have special handles: `output-true` and `output-false` with labels "True"/"False"
+- Edge type validation: `areTypesCompatible()` in handleTypes.ts — "any" matches everything, otherwise types must match exactly
+- Custom SVG edges: use `getBezierPath()` + `<path>` elements (not `<BezierEdge>`) when needing hover labels or animation overlays
+- CSS injection pattern: `document.createElement('style')` with ID guard at module level for React island CSS that can't go through Astro's build
+  - Manual browser verification needed (no browser testing tool available)
+---
+
+## 2026-02-16 23:36 - US-052
+- What was implemented: Edge type validation, animated edges, hover labels, and conditional branch colors
+- Files changed:
+  - packages/orbiter-web/src/islands/Canvas/handleTypes.ts (added `areTypesCompatible()` function and `BRANCH_COLORS` constant)
+  - packages/orbiter-web/src/islands/Canvas/CanvasIsland.tsx (replaced BezierEdge with custom SVG edge: type-aware `isValidConnection`, animated dashed overlay, hover label with data type, CSS keyframe injection)
+  - packages/orbiter-web/src/islands/Canvas/WorkflowNode.tsx (added `getHandleColor()` helper for branch-colored conditional handles)
+- **Learnings for future iterations:**
+  - `getBezierPath()` from @xyflow/react returns `[edgePath, labelX, labelY]` — use for custom SVG edge rendering with hover labels
+  - ReactFlow `isValidConnection` callback receives `Edge | Connection` — use it to prevent incompatible handle type connections
+  - For edge hover detection, layer a transparent wide stroke (16px) path behind the visible edge
+  - CSS keyframe animations can be injected via `document.createElement('style')` at module load time with an ID guard to prevent duplicates
+  - Conditional node handles use `BRANCH_COLORS` (green/red) distinct from data-type colors — check `h.label` for "True"/"False" to select
+  - `foreignObject` in SVG allows React-rendered HTML labels on edges; use `pointerEvents: "none"` to prevent blocking mouse events
   - Manual browser verification needed (no browser testing tool available)
 ---
