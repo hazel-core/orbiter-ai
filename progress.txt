@@ -1335,3 +1335,18 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - "Add to Agent" pattern: fetch agents, parse `tools_json` array, push tool ID, PUT back to agent endpoint
   - Grid/list view toggle state persisted in localStorage (`tools-view` key)
 ---
+
+## 2026-02-17 - US-081
+- What was implemented: Custom tool creation backend with AST-based parameter extraction and schema generation
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/routes/tools.py (added POST /api/tools/custom, PUT /api/tools/custom/:id, POST /api/tools/custom/:id/test, POST /api/tools/schema endpoints)
+  - prd.json (updated — US-081 passes: true)
+- **Learnings for future iterations:**
+  - Custom tool routes must be defined BEFORE `/{tool_id}` param routes to prevent "custom" matching as a tool_id (FastAPI route ordering)
+  - AST-based parameter extraction: use `ast.parse()` + `ast.walk()` to find functions, `ast.get_docstring()` for docs, `func_node.args` for parameters
+  - Default value alignment in AST: defaults are right-aligned — last N defaults match last N args; compute `default_index = arg_index - (num_args - num_defaults)`
+  - Google-style docstring parsing: look for "Args:" section, parse "param_name: description" or "param_name (type): description" patterns
+  - Tool execution sandbox: build restricted namespace removing dangerous builtins (exec, eval, compile, __import__, open), provide no-op @tool decorator
+  - `__builtins__` type varies between modules (dict in __main__, module elsewhere) — handle both with isinstance check
+  - Schema generation endpoint (`POST /api/tools/schema`) is useful for live preview without saving to DB
+---
