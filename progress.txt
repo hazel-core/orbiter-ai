@@ -1320,3 +1320,18 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Agent edit page and AgentNodeConfig.tsx both fetch /api/tools — they'll now get user-defined tools (empty initially); built-in tools were just placeholders
   - CHECK constraints in SQLite enforce category and tool_type enums at the DB level
 ---
+
+## 2026-02-17 02:20 - US-080
+- What was implemented: Tools page UI with grid/list view toggle, search, category filter, tool detail page with JSON schema viewer, parameter descriptions, and "Add to Agent" modal
+- Files changed:
+  - packages/orbiter-web/src/pages/tools/index.astro (new — tools listing page)
+  - packages/orbiter-web/src/pages/tools/[id].astro (new — tool detail page)
+  - prd.json (updated — US-080 passes: true)
+- **Learnings for future iterations:**
+  - Tools pages use directory-based routing: `tools/index.astro` for listing, `tools/[id].astro` for detail
+  - Category metadata (icons, colors) stored as JS object in inline script — shared across index and detail pages
+  - `define:vars={{ id }}` passes Astro.params.id into inline scripts for dynamic route pages
+  - Schema parameter extraction: check both `schema.properties` and `schema.parameters.properties` for JSON Schema compat
+  - "Add to Agent" pattern: fetch agents, parse `tools_json` array, push tool ID, PUT back to agent endpoint
+  - Grid/list view toggle state persisted in localStorage (`tools-view` key)
+---
