@@ -53,6 +53,7 @@ class ProviderResponse(BaseModel):
     base_url: str | None
     max_retries: int
     timeout: int
+    load_balance_strategy: str
     user_id: str
     created_at: str
     updated_at: str
