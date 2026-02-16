@@ -5,12 +5,15 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import logging
 import uuid
 from collections import defaultdict, deque
 from datetime import UTC, datetime
 from typing import Any
 
 from orbiter_web.database import get_db
+
+_log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Topological sort
@@ -57,23 +60,228 @@ def topological_sort(nodes: list[dict[str, Any]], edges: list[dict[str, Any]]) -
 
 
 # ---------------------------------------------------------------------------
-# Node executors (stub — each returns simulated output)
+# Node executors
 # ---------------------------------------------------------------------------
 
+_AGENT_NODE_TYPES = {"agent_node", "sub_agent"}
 
-async def _execute_node(node: dict[str, Any]) -> dict[str, Any]:
+
+def _gather_upstream_inputs(
+    node_id: str,
+    edges: list[dict[str, Any]],
+    variables: dict[str, Any],
+) -> str:
+    """Collect text from all upstream nodes feeding into this node.
+
+    Joins upstream outputs separated by newlines. Returns an empty string
+    if no upstream data is available.
+    """
+    parts: list[str] = []
+    for edge in edges:
+        if edge.get("target") == node_id:
+            src_id = edge.get("source", "")
+            val = variables.get(src_id, "")
+            if val:
+                parts.append(str(val))
+    return "\n".join(parts)
+
+
+async def _execute_agent_node(
+    node: dict[str, Any],
+    upstream_text: str,
+    event_callback: Any | None = None,
+) -> dict[str, Any]:
+    """Execute an agent_node or sub_agent workflow node.
+
+    Resolves the agent from DB (by agent_id or inline config), builds an
+    Orbiter Agent, calls its tool loop, and returns the structured result.
+
+    Supports streaming: if ``event_callback`` is provided, emits
+    ``agent_token`` events as the agent streams its response.
+    """
+    from orbiter.types import UserMessage
+    from orbiter_web.services.agent_runtime import (
+        AgentRuntimeError,
+        AgentService,
+        _resolve_provider,
+        _resolve_tools,
+    )
+
+    node_data = node.get("data", {})
+    node_id = node["id"]
+    agent_id = node_data.get("agent_id")
+    is_inline = node_data.get("inline", False)
+
+    user_text = upstream_text or "Hello"
+    messages = [UserMessage(content=user_text)]
+
+    svc = AgentService()
+
+    async def emit(event: dict[str, Any]) -> None:
+        if event_callback is not None:
+            with contextlib.suppress(Exception):
+                await event_callback(event)
+
+    if agent_id and not is_inline:
+        # --- Referenced agent from DB ---
+        # Try streaming first for real-time token events.
+        if event_callback is not None:
+            try:
+                collected_text = ""
+                usage_dict = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+                tool_calls_info: list[Any] = []
+                async for chunk in svc.stream_agent(agent_id, messages):
+                    if chunk.delta:
+                        collected_text += chunk.delta
+                        await emit({"type": "agent_token", "node_id": node_id, "token": chunk.delta})
+                    if chunk.usage:
+                        usage_dict = {
+                            "prompt_tokens": chunk.usage.get("input_tokens", 0),
+                            "completion_tokens": chunk.usage.get("output_tokens", 0),
+                            "total_tokens": chunk.usage.get("total_tokens", 0),
+                        }
+                    if chunk.tool_calls:
+                        for tc in chunk.tool_calls:
+                            tool_calls_info.append(str(tc))
+
+                return {
+                    "node_id": node_id,
+                    "node_type": node_data.get("nodeType", "agent_node"),
+                    "label": node_data.get("label", ""),
+                    "result": collected_text,
+                    "logs": f"input: {user_text[:200]}\nresponse: {collected_text[:500]}\ntool_calls: {json.dumps(tool_calls_info)}",
+                    "token_usage": usage_dict,
+                }
+            except AgentRuntimeError:
+                raise
+            except Exception:
+                _log.debug("Streaming failed for agent node %s, falling back to run_agent", node_id)
+
+        # Non-streaming fallback
+        try:
+            output = await svc.run_agent(agent_id, messages)
+        except AgentRuntimeError as exc:
+            _log.warning("Agent node %s failed: %s", node_id, exc)
+            raise
+
+        usage_dict = {
+            "prompt_tokens": output.usage.input_tokens if output.usage else 0,
+            "completion_tokens": output.usage.output_tokens if output.usage else 0,
+            "total_tokens": output.usage.total_tokens if output.usage else 0,
+        }
+        tool_calls_info = []
+        if output.tool_calls:
+            for tc in output.tool_calls:
+                tool_calls_info.append(
+                    {"name": tc.function.name, "arguments": tc.function.arguments}
+                    if hasattr(tc, "function")
+                    else str(tc)
+                )
+
+        return {
+            "node_id": node_id,
+            "node_type": node_data.get("nodeType", "agent_node"),
+            "label": node_data.get("label", ""),
+            "result": output.content or "",
+            "logs": f"input: {user_text[:200]}\nresponse: {(output.content or '')[:500]}\ntool_calls: {json.dumps(tool_calls_info)}",
+            "token_usage": usage_dict,
+        }
+
+    elif is_inline:
+        # --- Inline agent defined in node config ---
+        from orbiter.agent import Agent
+        from orbiter.tool import FunctionTool
+
+        provider_type = node_data.get("inline_model_provider", "")
+        model_name = node_data.get("inline_model_name", "")
+        instructions = node_data.get("inline_instructions", "")
+        inline_tool_ids = node_data.get("inline_tools", [])
+
+        if not provider_type or not model_name:
+            raise AgentRuntimeError(
+                f"Inline agent on node {node_id} has no model configured"
+            )
+
+        # Resolve the user_id from the workflow context (stored in node data
+        # during execution, or fall back to default).
+        user_id = node_data.get("_user_id", "default-user")
+
+        provider = await _resolve_provider(provider_type, model_name, user_id)
+
+        # Resolve inline tools if specified
+        tools: list[FunctionTool] = []
+        if inline_tool_ids:
+            tools_json = json.dumps(inline_tool_ids)
+            project_id = node_data.get("_project_id", "")
+            tools = await _resolve_tools(tools_json, project_id, user_id)
+
+        agent = Agent(
+            name=node_data.get("inline_name", f"inline-agent-{node_id[:8]}"),
+            model=f"{provider_type}:{model_name}",
+            instructions=instructions,
+            tools=tools or None,
+            max_steps=10,
+        )
+
+        output = await agent.run(input=user_text, provider=provider)
+
+        usage_dict = {
+            "prompt_tokens": output.usage.input_tokens,
+            "completion_tokens": output.usage.output_tokens,
+            "total_tokens": output.usage.total_tokens,
+        }
+
+        return {
+            "node_id": node_id,
+            "node_type": node_data.get("nodeType", "agent_node"),
+            "label": node_data.get("label", ""),
+            "result": output.text or "",
+            "logs": f"input: {user_text[:200]}\nmodel: {provider_type}:{model_name}\nresponse: {(output.text or '')[:500]}",
+            "token_usage": usage_dict,
+        }
+
+    else:
+        # No agent_id and not inline — missing configuration
+        return {
+            "node_id": node_id,
+            "node_type": node_data.get("nodeType", "agent_node"),
+            "label": node_data.get("label", ""),
+            "result": "Error: agent node has no agent_id and is not configured inline",
+            "logs": "No agent configuration found on this node",
+        }
+
+
+async def _execute_node(
+    node: dict[str, Any],
+    edges: list[dict[str, Any]] | None = None,
+    variables: dict[str, Any] | None = None,
+    event_callback: Any | None = None,
+) -> dict[str, Any]:
     """Execute a single workflow node and return its output.
 
-    This is a stub implementation that simulates execution for each node type.
-    Real implementations will call LLM APIs, run code, make HTTP requests, etc.
+    For agent nodes (agent_node, sub_agent), delegates to ``_execute_agent_node``
+    which calls the real Orbiter Agent runtime. Other node types use stub logic.
+
+    Args:
+        node: The workflow node dict with ``id``, ``data``, etc.
+        edges: All workflow edges (used to gather upstream inputs).
+        variables: Outputs from already-executed upstream nodes.
+        event_callback: Optional async callable for streaming events.
 
     Returns a dict with keys: node_id, node_type, label, result, and optionally
     logs (str) and token_usage (dict) for inspection support.
     """
     node_type = node.get("data", {}).get("nodeType", node.get("type", "unknown"))
     node_data = node.get("data", {})
+    edges = edges or []
+    variables = variables or {}
 
-    # Simulate a tiny delay so concurrent execution is observable.
+    # --- Agent nodes: real execution via AgentService ---
+    if node_type in _AGENT_NODE_TYPES:
+        upstream_text = _gather_upstream_inputs(node["id"], edges, variables)
+        return await _execute_agent_node(node, upstream_text, event_callback)
+
+    # --- Other node types: stub execution ---
     await asyncio.sleep(0.01)
 
     result: dict[str, Any] = {
@@ -83,7 +291,6 @@ async def _execute_node(node: dict[str, Any]) -> dict[str, Any]:
         "result": f"Executed {node_type} node",
     }
 
-    # Capture type-specific execution details for inspection.
     if node_type == "llm":
         prompt = node_data.get("prompt", "")
         result["result"] = f"LLM response for: {prompt[:100]}"
@@ -136,7 +343,7 @@ async def execute_single_node(
         await db.commit()
 
     try:
-        output = await _execute_node(node_with_input)
+        output = await _execute_node(node_with_input, edges=[], variables={})
         completed_at = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
 
         logs_text = output.pop("logs", None)
@@ -250,6 +457,15 @@ async def execute_workflow(
         return "failed"
 
     node_map = {n["id"]: n for n in nodes}
+
+    # Inject runtime context (_user_id, _workflow_id) into agent nodes so
+    # the agent service can resolve providers and tools.
+    for n in nodes:
+        nt = n.get("data", {}).get("nodeType", "")
+        if nt in _AGENT_NODE_TYPES:
+            n.setdefault("data", {})["_user_id"] = user_id
+            n["data"]["_workflow_id"] = workflow_id
+
     now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
 
     # Mark run as running.
@@ -283,7 +499,9 @@ async def execute_workflow(
                 await db.commit()
 
             await emit({"type": "node_started", "node_id": nid})
-            tasks[nid] = asyncio.create_task(_execute_node(node))
+            tasks[nid] = asyncio.create_task(
+                _execute_node(node, edges=edges, variables=variables, event_callback=emit)
+            )
 
         # Gather results.
         for nid, task in tasks.items():
@@ -440,6 +658,13 @@ async def execute_workflow_debug(
 
     node_map = {n["id"]: n for n in nodes}
 
+    # Inject runtime context into agent nodes.
+    for n in nodes:
+        nt = n.get("data", {}).get("nodeType", "")
+        if nt in _AGENT_NODE_TYPES:
+            n.setdefault("data", {})["_user_id"] = user_id
+            n["data"]["_workflow_id"] = workflow_id
+
     # Flatten layers into a sequential execution order for debug stepping.
     execution_order: list[str] = []
     for layer in layers:
@@ -503,7 +728,7 @@ async def execute_workflow_debug(
         await emit({"type": "node_started", "node_id": nid})
 
         try:
-            output = await _execute_node(node)
+            output = await _execute_node(node, edges=edges, variables=variables, event_callback=emit)
             completed_at = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
 
             logs_text = output.pop("logs", None)

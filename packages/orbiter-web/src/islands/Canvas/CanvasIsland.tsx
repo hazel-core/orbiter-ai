@@ -499,6 +499,8 @@ interface ExecutionState {
   completedCount: number;
   totalNodes: number;
   variables: Record<string, unknown>;
+  /** Accumulated streaming tokens per agent node (node_id -> text so far). */
+  agentTokens: Record<string, string>;
 }
 
 const INITIAL_EXEC_STATE: ExecutionState = {
@@ -509,6 +511,7 @@ const INITIAL_EXEC_STATE: ExecutionState = {
   completedCount: 0,
   totalNodes: 0,
   variables: {},
+  agentTokens: {},
 };
 
 function useWorkflowExecution(workflowId: string | undefined, totalNodes: number) {
@@ -536,6 +539,7 @@ function useWorkflowExecution(workflowId: string | undefined, totalNodes: number
       completedCount: 0,
       totalNodes,
       variables: {},
+      agentTokens: {},
     });
     setElapsed(0);
 
@@ -580,6 +584,14 @@ function useWorkflowExecution(workflowId: string | undefined, totalNodes: number
             ...s,
             nodeStatuses: { ...s.nodeStatuses, [event.node_id]: "failed" },
             completedCount: s.completedCount + 1,
+          }));
+        } else if (event.type === "agent_token") {
+          setExec((s) => ({
+            ...s,
+            agentTokens: {
+              ...s.agentTokens,
+              [event.node_id]: (s.agentTokens[event.node_id] ?? "") + (event.token ?? ""),
+            },
           }));
         } else if (event.type === "execution_completed") {
           setExec((s) => ({
