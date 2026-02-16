@@ -1,15 +1,30 @@
 ---
 import BaseLayout from "./BaseLayout.astro";
+import Breadcrumbs from "../components/Breadcrumbs.astro";
 import { cn } from "../utils/merge";
+
+interface BreadcrumbItem {
+  label: string;
+  href?: string;
+}
 
 interface Props {
   title?: string;
   description?: string;
   activeSection?: string;
+  breadcrumbs?: BreadcrumbItem[];
+  projectName?: string;
   class?: string;
 }
 
-const { title, description, activeSection, class: className } = Astro.props;
+const {
+  title,
+  description,
+  activeSection,
+  breadcrumbs = [],
+  projectName = "Orbiter",
+  class: className,
+} = Astro.props;
 
 const navSections = [
   { id: "projects", label: "Projects", href: "/projects", icon: "folder" },
@@ -23,6 +38,11 @@ const navSections = [
   { id: "plugins", label: "Plugins", href: "/plugins", icon: "puzzle" },
   { id: "settings", label: "Settings", href: "/settings", icon: "gear" },
 ];
+
+/* Key sections shown in the mobile bottom tab bar */
+const mobileTabSections = navSections.filter((s) =>
+  ["projects", "agents", "workflows", "playground", "settings"].includes(s.id)
+);
 
 const icons: Record<string, string> = {
   folder: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>',
@@ -40,14 +60,22 @@ const icons: Record<string, string> = {
 function getIcon(name: string): string {
   return icons[name] || "";
 }
+
+/* Top bar icon SVGs */
+const searchIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>';
+const sunIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>';
+const moonIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+const userIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
+const hamburgerIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>';
+const closeIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
 ---
 
 <BaseLayout title={title} description={description}>
   <div class="flex h-screen overflow-hidden">
-    <!-- Sidebar -->
+    <!-- Desktop sidebar (hidden on < md) -->
     <aside
       id="sidebar"
-      class="group/sidebar flex flex-col border-r border-dark/[0.08] bg-paper transition-all duration-300 lg:w-60 w-16"
+      class="hidden md:flex flex-col border-r border-dark/[0.08] bg-paper transition-all duration-300 lg:w-60 w-16"
       data-collapsed="true"
     >
       <!-- Logo / Brand -->
@@ -102,10 +130,153 @@ function getIcon(name: string): string {
       </div>
     </aside>
 
-    <!-- Main content area -->
-    <main class={cn("flex-1 overflow-y-auto", className)}>
-      <slot />
-    </main>
+    <!-- Right side: top bar + content -->
+    <div class="flex flex-1 flex-col overflow-hidden">
+      <!-- Top bar -->
+      <header class="flex h-14 shrink-0 items-center justify-between border-b border-dark/[0.08] bg-paper px-4 gap-4">
+        <!-- Left: hamburger (mobile) + project name + breadcrumbs -->
+        <div class="flex items-center gap-3 min-w-0">
+          <!-- Hamburger menu (visible on < md) -->
+          <button
+            id="mobile-menu-toggle"
+            class="md:hidden flex items-center justify-center rounded-lg p-1.5 text-muted hover:bg-dark/5 hover:text-dark transition-colors cursor-pointer"
+            title="Open menu"
+          >
+            <span set:html={hamburgerIcon} />
+          </button>
+
+          <span class="text-sm font-semibold text-dark truncate">{projectName}</span>
+
+          {breadcrumbs.length > 0 && (
+            <>
+              <span class="hidden sm:block text-muted/40">|</span>
+              <Breadcrumbs items={breadcrumbs} class="hidden sm:flex" />
+            </>
+          )}
+        </div>
+
+        <!-- Right: search, theme toggle, user menu -->
+        <div class="flex items-center gap-1">
+          <!-- Search trigger (Cmd+K) -->
+          <button
+            id="search-trigger"
+            class="flex items-center gap-2 rounded-lg border border-dark/[0.08] px-3 py-1.5 text-sm text-muted hover:bg-dark/5 hover:text-dark transition-colors cursor-pointer"
+            title="Search (Cmd+K)"
+          >
+            <span set:html={searchIcon} />
+            <span class="hidden sm:inline">Search</span>
+            <kbd class="hidden sm:inline-flex items-center gap-0.5 rounded border border-dark/[0.08] bg-subtle/50 px-1.5 py-0.5 text-[10px] font-medium text-muted">
+              <span class="text-xs">&#8984;</span>K
+            </kbd>
+          </button>
+
+          <!-- Theme toggle -->
+          <button
+            id="theme-toggle"
+            class="flex items-center justify-center rounded-lg p-2 text-muted hover:bg-dark/5 hover:text-dark transition-colors cursor-pointer"
+            title="Toggle theme"
+          >
+            <span id="theme-icon-light" set:html={sunIcon} />
+            <span id="theme-icon-dark" class="hidden" set:html={moonIcon} />
+          </button>
+
+          <!-- User menu -->
+          <button
+            id="user-menu-trigger"
+            class="flex items-center justify-center rounded-lg p-2 text-muted hover:bg-dark/5 hover:text-dark transition-colors cursor-pointer"
+            title="User menu"
+          >
+            <span set:html={userIcon} />
+          </button>
+        </div>
+      </header>
+
+      <!-- Main content area -->
+      <main class={cn("flex-1 overflow-y-auto pb-16 md:pb-0", className)}>
+        <slot />
+      </main>
+    </div>
+  </div>
+
+  <!-- Mobile bottom tab bar (visible on < md) -->
+  <nav
+    id="mobile-tab-bar"
+    class="md:hidden fixed bottom-0 left-0 right-0 z-40 flex items-center justify-around border-t border-dark/[0.08] bg-paper px-2 py-1"
+  >
+    {mobileTabSections.map((section) => {
+      const isActive = activeSection === section.id;
+      return (
+        <a
+          href={section.href}
+          class={cn(
+            "flex flex-col items-center gap-0.5 rounded-lg px-3 py-1.5 text-[10px] font-medium transition-colors duration-150",
+            isActive ? "text-coral" : "text-muted"
+          )}
+        >
+          <span class="w-5 h-5" set:html={getIcon(section.icon)} />
+          <span>{section.label}</span>
+        </a>
+      );
+    })}
+  </nav>
+
+  <!-- Mobile slide-out menu overlay -->
+  <div
+    id="mobile-menu-overlay"
+    class="fixed inset-0 z-50 hidden"
+  >
+    <!-- Backdrop -->
+    <div
+      id="mobile-menu-backdrop"
+      class="absolute inset-0 bg-dark/40 backdrop-blur-sm"
+    ></div>
+
+    <!-- Slide-out panel -->
+    <aside
+      id="mobile-menu-panel"
+      class="absolute top-0 left-0 bottom-0 w-72 bg-paper shadow-xl flex flex-col"
+      style="transform: translateX(-100%); transition: transform 200ms ease-out;"
+    >
+      <!-- Header with close button -->
+      <div class="flex h-14 items-center justify-between border-b border-dark/[0.08] px-4">
+        <div class="flex items-center gap-3">
+          <svg class="h-7 w-7 text-coral" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10" />
+            <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" />
+            <path d="M2 12h20" />
+          </svg>
+          <span class="font-semibold text-dark text-sm">Orbiter</span>
+        </div>
+        <button
+          id="mobile-menu-close"
+          class="flex items-center justify-center rounded-lg p-1.5 text-muted hover:bg-dark/5 hover:text-dark transition-colors cursor-pointer"
+          title="Close menu"
+        >
+          <span set:html={closeIcon} />
+        </button>
+      </div>
+
+      <!-- Full navigation list -->
+      <nav class="flex-1 overflow-y-auto py-3 px-3 space-y-1">
+        {navSections.map((section) => {
+          const isActive = activeSection === section.id;
+          return (
+            <a
+              href={section.href}
+              class={cn(
+                "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors duration-150",
+                isActive
+                  ? "bg-coral/10 text-coral"
+                  : "text-muted hover:bg-dark/5 hover:text-dark"
+              )}
+            >
+              <span class="shrink-0 w-5 h-5" set:html={getIcon(section.icon)} />
+              <span>{section.label}</span>
+            </a>
+          );
+        })}
+      </nav>
+    </aside>
   </div>
 
   <!-- Sidebar collapse/expand script -->
@@ -163,6 +334,89 @@ function getIcon(name: string): string {
         if ((e.metaKey || e.ctrlKey) && e.key === "b") {
           e.preventDefault();
           toggle.click();
+        }
+      });
+    })();
+  </script>
+
+  <!-- Theme toggle script -->
+  <script is:inline>
+    (function () {
+      var themeToggle = document.getElementById("theme-toggle");
+      var lightIcon = document.getElementById("theme-icon-light");
+      var darkIcon = document.getElementById("theme-icon-dark");
+      if (!themeToggle || !lightIcon || !darkIcon) return;
+
+      function updateIcons() {
+        var current = document.documentElement.getAttribute("data-theme");
+        if (current === "dark") {
+          lightIcon.classList.add("hidden");
+          darkIcon.classList.remove("hidden");
+        } else {
+          lightIcon.classList.remove("hidden");
+          darkIcon.classList.add("hidden");
+        }
+      }
+
+      updateIcons();
+
+      themeToggle.addEventListener("click", function () {
+        var current = document.documentElement.getAttribute("data-theme");
+        var next = current === "dark" ? "light" : "dark";
+        document.documentElement.setAttribute("data-theme", next);
+        localStorage.setItem("theme", next);
+        updateIcons();
+      });
+    })();
+  </script>
+
+  <!-- Search shortcut (Cmd+K) -->
+  <script is:inline>
+    (function () {
+      var searchTrigger = document.getElementById("search-trigger");
+      if (!searchTrigger) return;
+
+      document.addEventListener("keydown", function (e) {
+        if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+          e.preventDefault();
+          searchTrigger.click();
+        }
+      });
+    })();
+  </script>
+
+  <!-- Mobile menu script -->
+  <script is:inline>
+    (function () {
+      var overlay = document.getElementById("mobile-menu-overlay");
+      var panel = document.getElementById("mobile-menu-panel");
+      var menuToggle = document.getElementById("mobile-menu-toggle");
+      var menuClose = document.getElementById("mobile-menu-close");
+      var backdrop = document.getElementById("mobile-menu-backdrop");
+      if (!overlay || !panel || !menuToggle) return;
+
+      function openMenu() {
+        overlay.classList.remove("hidden");
+        // Trigger reflow before animating
+        void panel.offsetWidth;
+        panel.style.transform = "translateX(0)";
+      }
+
+      function closeMenu() {
+        panel.style.transform = "translateX(-100%)";
+        setTimeout(function () {
+          overlay.classList.add("hidden");
+        }, 200);
+      }
+
+      menuToggle.addEventListener("click", openMenu);
+      if (menuClose) menuClose.addEventListener("click", closeMenu);
+      if (backdrop) backdrop.addEventListener("click", closeMenu);
+
+      // Close on Escape
+      document.addEventListener("keydown", function (e) {
+        if (e.key === "Escape" && !overlay.classList.contains("hidden")) {
+          closeMenu();
         }
       });
     })();
