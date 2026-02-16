@@ -894,3 +894,19 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Save status color coding: green for saved, muted for saving, coral for unsaved — matches zen design tokens
   - Changed auto-save debounce from 500ms to 2000ms per acceptance criteria
 ---
+
+## 2026-02-16 - US-055
+- What was implemented: Workflow list page at /workflows with card grid, status badges, node counts, last run timestamps; export button on each workflow card (list page) and in canvas toolbar (detail page); import button with file picker, schema validation, and project selector modal; duplicate workflow action via POST /api/workflows/:id/duplicate endpoint
+- Files changed:
+  - packages/orbiter-web/src/pages/workflows/index.astro (new — workflow list page with grid/list views, search, status filter, import modal, duplicate modal, export action)
+  - packages/orbiter-web/src/orbiter_web/routes/workflows.py (added POST /:id/duplicate endpoint with "(Copy)" suffix)
+  - packages/orbiter-web/src/islands/Canvas/CanvasIsland.tsx (added export icon + export button in toolbar, exportWorkflow callback)
+- **Learnings for future iterations:**
+  - Workflow list follows same patterns as applications.astro: `<template>` + `cloneNode(true)`, view toggle persisted in localStorage, project name enrichment via second fetch
+  - Node count parsed client-side from `nodes_json` via `JSON.parse()` — no need for a separate DB column
+  - Export on list page uses POST /api/workflows/:id/export (returns JSON), then constructs Blob + download link client-side
+  - Import flow: file picker → FileReader → validate JSON has nodes_json/edges_json → show preview → select project → POST /api/workflows/import
+  - Duplicate endpoint follows applications pattern: copy all fields except id/timestamps, append "(Copy)" to name
+  - Canvas toolbar export button added alongside save — uses same icons object pattern
+  - Manual browser verification needed (no browser testing tool available)
+---
