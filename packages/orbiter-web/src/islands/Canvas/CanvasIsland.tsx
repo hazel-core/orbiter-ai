@@ -18,6 +18,7 @@ import {
 } from "@xyflow/react";
 
 import NodeSidebar, { NODE_CATEGORIES } from "./NodeSidebar";
+import NodeConfigPanel from "./NodeConfigPanel";
 
 import "@xyflow/react/dist/style.css";
 
@@ -261,6 +262,7 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
   const [loaded, setLoaded] = useState(!workflowId);
   const viewportRef = useRef<Viewport>({ x: 0, y: 0, zoom: 1 });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
   /* History tracking */
   const { past, future, record, canUndo, canRedo, skipRecord } =
@@ -307,6 +309,30 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
     },
     [scheduleSave],
   );
+
+  /* Node selection — open config panel */
+  const onNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
+    setSelectedNodeId(node.id);
+  }, []);
+
+  const onPaneClick = useCallback(() => {
+    setSelectedNodeId(null);
+  }, []);
+
+  /* Update a node's data (used by config panel) */
+  const handleNodeDataUpdate = useCallback(
+    (id: string, data: Record<string, unknown>) => {
+      setNodes((nds) =>
+        nds.map((n) => (n.id === id ? { ...n, data } : n)),
+      );
+    },
+    [setNodes],
+  );
+
+  /* Derive selected node object from current nodes */
+  const selectedNode = selectedNodeId
+    ? nodes.find((n) => n.id === selectedNodeId) ?? null
+    : null;
 
   /* Record state before connection changes */
   const onConnect: OnConnect = useCallback(
@@ -379,6 +405,10 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
     if (selectedNodes.length === 0 && selectedEdges.length === 0) return;
     record();
     const nodeIds = new Set(selectedNodes.map((n) => n.id));
+    /* Close config panel if the selected node is being deleted */
+    if (selectedNodeId && nodeIds.has(selectedNodeId)) {
+      setSelectedNodeId(null);
+    }
     setNodes((nds) => nds.filter((n) => !n.selected));
     setEdges((eds) =>
       eds.filter(
@@ -386,7 +416,7 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
           !e.selected && !nodeIds.has(e.source) && !nodeIds.has(e.target),
       ),
     );
-  }, [nodes, edges, record, setNodes, setEdges]);
+  }, [nodes, edges, record, setNodes, setEdges, selectedNodeId]);
 
   /* Keyboard shortcuts */
   useEffect(() => {
@@ -487,6 +517,8 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
       onMoveEnd={onMoveEnd}
       onDragOver={onDragOver}
       onDrop={onDrop}
+      onNodeClick={onNodeClick}
+      onPaneClick={onPaneClick}
       colorMode={colorMode}
       snapToGrid
       snapGrid={SNAP_GRID}
@@ -557,6 +589,13 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
         pannable
         zoomable
         style={{ width: 160, height: 120 }}
+      />
+
+      {/* Node config panel */}
+      <NodeConfigPanel
+        node={selectedNode}
+        onClose={() => setSelectedNodeId(null)}
+        onNodeUpdate={handleNodeDataUpdate}
       />
     </ReactFlow>
   );
