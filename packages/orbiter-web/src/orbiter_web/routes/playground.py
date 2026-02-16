@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 import uuid
 from typing import Any
 
@@ -61,7 +62,7 @@ async def _load_conversation_messages(conversation_id: str) -> list[dict[str, st
 
 
 class _TokenCollector:
-    """Wraps a WebSocket to collect streamed token content."""
+    """Wraps a WebSocket to collect streamed token content and trace data."""
 
     def __init__(self, websocket: WebSocket) -> None:
         self._ws = websocket
@@ -176,6 +177,7 @@ async def _stream_openai(
         "model": model_name,
         "messages": messages,
         "stream": True,
+        "stream_options": {"include_usage": True},
         "temperature": temperature,
     }
     if max_tokens:
@@ -183,6 +185,9 @@ async def _stream_openai(
 
     prompt_tokens = 0
     completion_tokens = 0
+    finish_reason: str | None = None
+    tool_calls_acc: dict[int, dict[str, Any]] = {}
+    start_time = time.monotonic()
 
     async with (
         httpx.AsyncClient(timeout=120.0) as client,
@@ -221,15 +226,42 @@ async def _stream_openai(
 
             choices = chunk.get("choices", [])
             if choices:
-                delta = choices[0].get("delta", {})
+                choice = choices[0]
+                delta = choice.get("delta", {})
                 content = delta.get("content")
                 if content:
                     await websocket.send_json({"type": "token", "content": content})
+
+                # Accumulate tool call deltas
+                for tc in delta.get("tool_calls", []):
+                    idx = tc.get("index", 0)
+                    if idx not in tool_calls_acc:
+                        tool_calls_acc[idx] = {"name": "", "arguments": ""}
+                    if tc.get("function", {}).get("name"):
+                        tool_calls_acc[idx]["name"] = tc["function"]["name"]
+                    if tc.get("function", {}).get("arguments"):
+                        tool_calls_acc[idx]["arguments"] += tc["function"]["arguments"]
+
+                if choice.get("finish_reason"):
+                    finish_reason = choice["finish_reason"]
+
+    latency_ms = round((time.monotonic() - start_time) * 1000)
+
+    # Send tool call trace events
+    for tc in tool_calls_acc.values():
+        await websocket.send_json({
+            "type": "tool_call",
+            "name": tc["name"],
+            "arguments": tc["arguments"],
+        })
 
     await websocket.send_json(
         {
             "type": "done",
             "usage": {"prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens},
+            "model": model_name,
+            "finish_reason": finish_reason or "stop",
+            "latency_ms": latency_ms,
         }
     )
 
@@ -259,6 +291,13 @@ async def _stream_anthropic(
 
     input_tokens = 0
     output_tokens = 0
+    finish_reason: str | None = None
+    # Track content blocks for tool_use and thinking
+    current_block_type: str | None = None
+    current_tool_name = ""
+    current_tool_input = ""
+    thinking_content = ""
+    start_time = time.monotonic()
 
     async with (
         httpx.AsyncClient(timeout=120.0) as client,
@@ -292,23 +331,58 @@ async def _stream_anthropic(
                 continue
 
             event_type = event.get("type")
-            if event_type == "content_block_delta":
+            if event_type == "content_block_start":
+                block = event.get("content_block", {})
+                current_block_type = block.get("type")
+                if current_block_type == "tool_use":
+                    current_tool_name = block.get("name", "")
+                    current_tool_input = ""
+                elif current_block_type == "thinking":
+                    thinking_content = block.get("thinking", "")
+            elif event_type == "content_block_delta":
                 delta = event.get("delta", {})
                 if delta.get("type") == "text_delta":
                     text = delta.get("text", "")
                     if text:
                         await websocket.send_json({"type": "token", "content": text})
+                elif delta.get("type") == "input_json_delta":
+                    current_tool_input += delta.get("partial_json", "")
+                elif delta.get("type") == "thinking_delta":
+                    thinking_content += delta.get("thinking", "")
+            elif event_type == "content_block_stop":
+                if current_block_type == "tool_use" and current_tool_name:
+                    await websocket.send_json({
+                        "type": "tool_call",
+                        "name": current_tool_name,
+                        "arguments": current_tool_input,
+                    })
+                    current_tool_name = ""
+                    current_tool_input = ""
+                elif current_block_type == "thinking" and thinking_content:
+                    await websocket.send_json({
+                        "type": "reasoning",
+                        "content": thinking_content,
+                    })
+                    thinking_content = ""
+                current_block_type = None
             elif event_type == "message_start":
                 usage = event.get("message", {}).get("usage", {})
                 input_tokens = usage.get("input_tokens", 0)
             elif event_type == "message_delta":
                 usage = event.get("usage", {})
                 output_tokens = usage.get("output_tokens", 0)
+                if event.get("delta", {}).get("stop_reason"):
+                    finish_reason = event["delta"]["stop_reason"]
+
+    latency_ms = round((time.monotonic() - start_time) * 1000)
 
     await websocket.send_json(
         {
             "type": "done",
             "usage": {"prompt_tokens": input_tokens, "completion_tokens": output_tokens},
+            "model": model_name,
+            "finish_reason": finish_reason or "end_turn",
+            "latency_ms": latency_ms,
         }
     )
 
@@ -345,6 +419,8 @@ async def _stream_gemini(
 
     prompt_tokens = 0
     completion_tokens = 0
+    finish_reason: str | None = None
+    start_time = time.monotonic()
 
     async with (
         httpx.AsyncClient(timeout=120.0) as client,
@@ -370,21 +446,36 @@ async def _stream_gemini(
 
             candidates = chunk.get("candidates", [])
             if candidates:
-                parts = candidates[0].get("content", {}).get("parts", [])
+                candidate = candidates[0]
+                parts = candidate.get("content", {}).get("parts", [])
                 for part in parts:
                     text = part.get("text", "")
                     if text:
                         await websocket.send_json({"type": "token", "content": text})
+                    # Gemini function calls
+                    if fc := part.get("functionCall"):
+                        await websocket.send_json({
+                            "type": "tool_call",
+                            "name": fc.get("name", ""),
+                            "arguments": json.dumps(fc.get("args", {})),
+                        })
+                if candidate.get("finishReason"):
+                    finish_reason = candidate["finishReason"]
 
             usage_meta = chunk.get("usageMetadata", {})
             if usage_meta:
                 prompt_tokens = usage_meta.get("promptTokenCount", prompt_tokens)
                 completion_tokens = usage_meta.get("candidatesTokenCount", completion_tokens)
 
+    latency_ms = round((time.monotonic() - start_time) * 1000)
+
     await websocket.send_json(
         {
             "type": "done",
             "usage": {"prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens},
+            "model": model_name,
+            "finish_reason": finish_reason or "STOP",
+            "latency_ms": latency_ms,
         }
     )
 
@@ -410,6 +501,8 @@ async def _stream_ollama(
 
     prompt_tokens = 0
     completion_tokens = 0
+    finish_reason = "stop"
+    start_time = time.monotonic()
 
     async with (
         httpx.AsyncClient(timeout=120.0) as client,
@@ -440,11 +533,18 @@ async def _stream_ollama(
             if chunk.get("done"):
                 prompt_tokens = chunk.get("prompt_eval_count", 0)
                 completion_tokens = chunk.get("eval_count", 0)
+                if chunk.get("done_reason"):
+                    finish_reason = chunk["done_reason"]
+
+    latency_ms = round((time.monotonic() - start_time) * 1000)
 
     await websocket.send_json(
         {
             "type": "done",
             "usage": {"prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens},
+            "model": model_name,
+            "finish_reason": finish_reason,
+            "latency_ms": latency_ms,
         }
     )
 
