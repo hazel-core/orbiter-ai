@@ -17,6 +17,7 @@ Started: Mon Feb 16 2026
 - Ruff B039: `ContextVar` default cannot be mutable — use `default=None` with `T | None` type
 - `@asynccontextmanager` returns single-use CMs — when mocking, use `side_effect=lambda: factory()` not `return_value=cm`
 - Don't use `# noqa: PLW0603` or `# noqa: S101` — those rules aren't enabled in ruff config (ruff RUF100 catches unused noqa)
+- RUF006: `loop.create_task()` must store return value — use `set.add(task)` + `task.add_done_callback(set.discard)`
 - hatchling requires a README.md in each package directory (build fails without it)
 - Ruff UP017: use `datetime.UTC` alias, not `datetime.timezone.utc`
 ---
@@ -158,4 +159,26 @@ Started: Mon Feb 16 2026
   - MemoryUsageCheck uses 80% threshold for DEGRADED status as an early warning
   - `asyncio.get_running_loop()` raises `RuntimeError` when no loop running — handle gracefully
   - Aggregate status pattern: `max(results, key=lambda r: priority[r.status])` is clean for worst-of logic
+---
+
+## 2026-02-16 - US-009
+- Implemented alerting hooks module at `packages/orbiter-observability/src/orbiter/observability/alerts.py` (~170 lines)
+- New module — no existing code to port, designed from scratch
+- `AlertSeverity` enum: INFO, WARNING, CRITICAL
+- `Comparator` enum: GT, LT, GTE, LTE, EQ with corresponding lambda functions in `_COMPARATORS` dict
+- `AlertRule` frozen dataclass: name, metric_name, threshold, comparator, severity, cooldown_seconds (default 300)
+- `Alert` frozen dataclass: rule_name, metric_value, threshold, severity, timestamp (UTC), metadata
+- `AlertManager`: register/unregister rules, register callbacks, evaluate(metric_name, value) with cooldown enforcement
+- Cooldown via `time.monotonic()` per-rule tracking in `_last_fired` dict
+- Both sync and async callback support via `inspect.iscoroutinefunction()` check
+- Async callbacks: scheduled via `loop.create_task()` when event loop running, `asyncio.run()` otherwise
+- Background task reference set prevents GC of fire-and-forget async tasks (RUF006 compliance)
+- Module-level convenience: `get_manager()`, `reset()`
+- 43 tests covering: AlertSeverity values, Comparator values, AlertRule (creation/custom/frozen), Alert (creation/metadata/frozen/utc), rule management (register/unregister/overwrite/clear), all 5 comparators, evaluation (no match/not breached/breached/severity/multiple rules), cooldown (prevents refiring/expiry/zero/per-rule/unregister clears), callbacks (sync/multiple/not invoked/cooldown/async/clear/correct alert), clear all, module functions (singleton/reset/full flow)
+- Files changed: packages/orbiter-observability/src/orbiter/observability/alerts.py, packages/orbiter-observability/tests/test_obs_alerts.py, prd.json
+- **Learnings for future iterations:**
+  - RUF006: `loop.create_task()` return value must be stored — use a `set()` with `add_done_callback(set.discard)` pattern
+  - `_invoke_callback` needs access to task set — make it a method on the manager class, not a standalone function
+  - `time.monotonic()` for cooldown is clean — initial `_last_fired` value of 0.0 means first evaluation always passes cooldown
+  - `cooldown_seconds=0` in tests is essential to allow repeated evaluations without waiting
 ---

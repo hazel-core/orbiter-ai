@@ -179,7 +179,7 @@
         "Pyright passes"
       ],
       "priority": 9,
-      "passes": false,
+      "passes": true,
       "notes": "New module — no existing code to port. Use time.monotonic() for cooldown tracking. Support both sync and async callbacks via inspect.iscoroutinefunction check."
     },
     {
