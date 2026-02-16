@@ -87,6 +87,9 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
 - Agent node execution: `_execute_agent_node()` in engine.py handles both DB-referenced and inline agents; inject `_user_id` into node data for provider resolution
 - Upstream context: `_gather_upstream_inputs(node_id, edges, variables)` collects text from all upstream nodes — use for agent node input
 - `_execute_node()` accepts optional `edges`, `variables`, `event_callback` — agent nodes use these, other node types ignore them
+- Document routes are sub-routes of knowledge_bases router — same file, same APIRouter prefix `/api/knowledge-bases`
+- Document processing: `services/document_processor.py` — extract_text(bytes, file_type) and chunk_text(text, size, overlap)
+- DOCX extraction via stdlib (zipfile + xml.etree.ElementTree) — no external dep; PDF via pypdf with binary fallback
 
 ---
 
@@ -1801,4 +1804,24 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - User identification: prefer session cookie over IP for authenticated users; fall back to IP for unauthenticated
   - Agent execution paths identified by prefix (/api/workflows/) + suffix (/run, /debug)
   - Config: use `int(os.getenv(...))` pattern consistent with session_expiry_hours
+---
+
+## 2026-02-17 - US-099
+- What was implemented: Document processing backend with text extraction, chunking, and three REST endpoints
+  - Migration 029: `documents` table (id, kb_id, filename, file_type, file_size, chunk_count, metadata_json, status, created_at) and `document_chunks` table (id, document_id, kb_id, chunk_index, content, char_count, metadata_json, created_at)
+  - `services/document_processor.py`: extract_text() for TXT, MD, CSV, HTML, PDF (pypdf with fallback), DOCX (zipfile+xml); chunk_text() with configurable size/overlap and smart boundary detection
+  - POST `/api/knowledge-bases/:id/documents` — file upload, text extraction, chunking, DB storage, KB counter update
+  - GET `/api/knowledge-bases/:id/documents` — list all documents for a KB
+  - DELETE `/api/knowledge-bases/:id/documents/:docId` — remove document + chunks (FK cascade), update KB counters
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/migrations/029_create_documents.sql (new)
+  - packages/orbiter-web/src/orbiter_web/services/document_processor.py (new)
+  - packages/orbiter-web/src/orbiter_web/routes/knowledge_bases.py (extended with document endpoints)
+- **Learnings for future iterations:**
+  - Document routes are sub-routes of knowledge_bases router (same APIRouter, `/api/knowledge-bases/{kb_id}/documents/...`)
+  - DOCX extraction uses stdlib zipfile + xml.etree — no external library needed
+  - PDF extraction: try pypdf first, fall back to regex-based text extraction from binary
+  - KB counters (doc_count, chunk_count) are updated transactionally on upload and delete
+  - `_verify_kb_access()` helper validates KB ownership before any document operation
+  - FastAPI UploadFile for file uploads — content read with `await file.read()`
 ---
