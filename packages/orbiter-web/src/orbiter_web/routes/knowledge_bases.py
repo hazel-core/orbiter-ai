@@ -352,6 +352,25 @@ async def list_documents(
         return [_row_to_dict(r) for r in rows]
 
 
+@router.get("/{kb_id}/documents/{doc_id}/chunks")
+async def list_document_chunks(
+    kb_id: str,
+    doc_id: str,
+    limit: int = Query(3, ge=1, le=50),
+    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+) -> list[dict[str, Any]]:
+    """Return the first N chunks of a document (for preview)."""
+    await _verify_kb_access(kb_id, user["id"])
+
+    async with get_db() as db:
+        cursor = await db.execute(
+            "SELECT id, chunk_index, content, char_count FROM document_chunks WHERE document_id = ? AND kb_id = ? ORDER BY chunk_index LIMIT ?",
+            (doc_id, kb_id, limit),
+        )
+        rows = await cursor.fetchall()
+        return [_row_to_dict(r) for r in rows]
+
+
 @router.delete("/{kb_id}/documents/{doc_id}", status_code=204)
 async def delete_document(
     kb_id: str,
