@@ -6,6 +6,7 @@ and verifying each step's output before proceeding.
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from typing import Any
 
@@ -84,6 +85,21 @@ class StepExecuteRequest(BaseModel):
 class StepVerifyRequest(BaseModel):
     verifier_result: str = Field(..., min_length=1)
     verifier_passed: bool
+
+
+class StepAddRequest(BaseModel):
+    description: str = Field(..., min_length=1)
+    dependencies: list[int] = []
+    after_step_number: int | None = None  # Insert after this step; None = append
+
+
+class StepUpdateRequest(BaseModel):
+    description: str | None = None
+    dependencies: list[int] | None = None
+
+
+class StepReorderRequest(BaseModel):
+    step_ids: list[str] = Field(..., min_length=1)
 
 
 class ExecuteStepResponse(BaseModel):
@@ -327,6 +343,176 @@ async def verify_plan_step(
     plan = await get_plan(plan_id)
     updated_step = next((s for s in plan["steps"] if s["id"] == step_id), plan["steps"][0])
     return {"step": updated_step, "plan_status": plan["status"]}
+
+
+# ---------------------------------------------------------------------------
+# Step modification endpoints (add / update / delete / reorder)
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/{agent_id}/plans/{plan_id}/steps",
+    response_model=PlanResponse,
+    status_code=201,
+)
+async def add_plan_step(
+    agent_id: str,
+    plan_id: str,
+    body: StepAddRequest,
+    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+) -> dict[str, Any]:
+    """Add a new step to an existing plan."""
+    await _verify_agent_ownership(agent_id, user["id"])
+    now_str = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
+
+    async with get_db() as db:
+        # Determine step_number
+        cursor = await db.execute(
+            "SELECT MAX(step_number) as mx FROM agent_plan_steps WHERE plan_id = ?",
+            (plan_id,),
+        )
+        row = await cursor.fetchone()
+        max_num = row["mx"] if row and row["mx"] else 0
+
+        if body.after_step_number is not None:
+            new_num = body.after_step_number + 1
+            # Shift all steps after insertion point
+            await db.execute(
+                "UPDATE agent_plan_steps SET step_number = step_number + 1, updated_at = ? WHERE plan_id = ? AND step_number >= ?",
+                (now_str, plan_id, new_num),
+            )
+        else:
+            new_num = max_num + 1
+
+        step_id = str(__import__("uuid").uuid4())
+        await db.execute(
+            """
+            INSERT INTO agent_plan_steps
+                (id, plan_id, step_number, description, dependencies_json, status, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)
+            """,
+            (step_id, plan_id, new_num, body.description, json.dumps(body.dependencies), now_str, now_str),
+        )
+        await db.execute(
+            "UPDATE agent_plans SET updated_at = ? WHERE id = ?", (now_str, plan_id)
+        )
+        await db.commit()
+
+    return await get_plan(plan_id)
+
+
+@router.put(
+    "/{agent_id}/plans/{plan_id}/steps/{step_id}",
+    response_model=PlanResponse,
+)
+async def update_plan_step(
+    agent_id: str,
+    plan_id: str,
+    step_id: str,
+    body: StepUpdateRequest,
+    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+) -> dict[str, Any]:
+    """Update a pending step's description or dependencies."""
+    await _verify_agent_ownership(agent_id, user["id"])
+    now_str = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
+
+    async with get_db() as db:
+        cursor = await db.execute(
+            "SELECT * FROM agent_plan_steps WHERE id = ? AND plan_id = ?",
+            (step_id, plan_id),
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Step not found")
+        if row["status"] not in ("pending",):
+            raise HTTPException(status_code=422, detail="Only pending steps can be edited")
+
+        sets: list[str] = ["updated_at = ?"]
+        params: list[Any] = [now_str]
+        if body.description is not None:
+            sets.append("description = ?")
+            params.append(body.description)
+        if body.dependencies is not None:
+            sets.append("dependencies_json = ?")
+            params.append(json.dumps(body.dependencies))
+        params.append(step_id)
+
+        await db.execute(
+            f"UPDATE agent_plan_steps SET {', '.join(sets)} WHERE id = ?",
+            params,
+        )
+        await db.execute(
+            "UPDATE agent_plans SET updated_at = ? WHERE id = ?", (now_str, plan_id)
+        )
+        await db.commit()
+
+    return await get_plan(plan_id)
+
+
+@router.delete(
+    "/{agent_id}/plans/{plan_id}/steps/{step_id}",
+    status_code=204,
+)
+async def delete_plan_step(
+    agent_id: str,
+    plan_id: str,
+    step_id: str,
+    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+) -> None:
+    """Remove a pending step from a plan."""
+    await _verify_agent_ownership(agent_id, user["id"])
+    now_str = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
+
+    async with get_db() as db:
+        cursor = await db.execute(
+            "SELECT * FROM agent_plan_steps WHERE id = ? AND plan_id = ?",
+            (step_id, plan_id),
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Step not found")
+        if row["status"] not in ("pending",):
+            raise HTTPException(status_code=422, detail="Only pending steps can be removed")
+
+        deleted_num = row["step_number"]
+        await db.execute("DELETE FROM agent_plan_steps WHERE id = ?", (step_id,))
+        # Renumber subsequent steps
+        await db.execute(
+            "UPDATE agent_plan_steps SET step_number = step_number - 1, updated_at = ? WHERE plan_id = ? AND step_number > ?",
+            (now_str, plan_id, deleted_num),
+        )
+        await db.execute(
+            "UPDATE agent_plans SET updated_at = ? WHERE id = ?", (now_str, plan_id)
+        )
+        await db.commit()
+
+
+@router.put(
+    "/{agent_id}/plans/{plan_id}/reorder",
+    response_model=PlanResponse,
+)
+async def reorder_plan_steps(
+    agent_id: str,
+    plan_id: str,
+    body: StepReorderRequest,
+    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+) -> dict[str, Any]:
+    """Reorder plan steps. Only pending steps can be reordered."""
+    await _verify_agent_ownership(agent_id, user["id"])
+    now_str = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
+
+    async with get_db() as db:
+        for i, sid in enumerate(body.step_ids, start=1):
+            await db.execute(
+                "UPDATE agent_plan_steps SET step_number = ?, updated_at = ? WHERE id = ? AND plan_id = ?",
+                (i, now_str, sid, plan_id),
+            )
+        await db.execute(
+            "UPDATE agent_plans SET updated_at = ? WHERE id = ?", (now_str, plan_id)
+        )
+        await db.commit()
+
+    return await get_plan(plan_id)
 
 
 # ---------------------------------------------------------------------------
