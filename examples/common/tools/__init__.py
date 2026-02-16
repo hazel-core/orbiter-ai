@@ -1,10 +1,25 @@
-# coding: utf-8
-# Copyright (c) 2025 inclusionAI.
+"""Reusable tool implementations for Orbiter examples.
 
-from aworld.core.tool.base import Tool, AsyncTool
-from aworld.core.tool.action import ExecutableAction
-from aworld.utils.common import scan_packages
+Provides ready-made tools for common tasks: web browsing, search APIs,
+and document processing. Import individual tools or the ``ALL_TOOLS``
+list for quick agent setup.
 
-scan_packages("examples.common.tools", [Tool, AsyncTool, ExecutableAction])
-from examples.common.tools.browsers.action.actions import *
-from examples.common.tools.apis.search_api import SearchTool
+Usage:
+    from examples.common.tools import web_search, browse_url, read_document
+    agent = Agent(name="assistant", tools=[web_search, browse_url, read_document])
+"""
+
+from examples.common.tools.browser import browse_url, screenshot
+from examples.common.tools.document import read_document, summarize_document
+from examples.common.tools.search import web_search
+
+ALL_TOOLS = [web_search, browse_url, screenshot, read_document, summarize_document]
+
+__all__ = [
+    "ALL_TOOLS",
+    "browse_url",
+    "read_document",
+    "screenshot",
+    "summarize_document",
+    "web_search",
+]

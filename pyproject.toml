@@ -1,0 +1,81 @@
+[project]
+name = "orbiter-workspace"
+version = "0.1.0"
+description = "Orbiter: A modern multi-agent framework"
+requires-python = ">=3.11"
+
+[tool.uv.workspace]
+members = [
+    "packages/orbiter-core",
+    "packages/orbiter-models",
+    "packages/orbiter-context",
+    "packages/orbiter-memory",
+    "packages/orbiter-mcp",
+    "packages/orbiter-sandbox",
+    "packages/orbiter-trace",
+    "packages/orbiter-eval",
+    "packages/orbiter-a2a",
+    "packages/orbiter-cli",
+    "packages/orbiter-server",
+    "packages/orbiter-train",
+    "packages/orbiter",
+]
+
+[dependency-groups]
+dev = [
+    "orbiter-core",
+    "orbiter-models",
+    "orbiter-context",
+    "orbiter-memory",
+    "orbiter-mcp",
+    "orbiter-sandbox",
+    "orbiter-trace",
+    "orbiter-eval",
+    "orbiter-a2a",
+    "orbiter-cli",
+    "orbiter-server",
+    "orbiter-train",
+    "orbiter",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.8",
+    "pyright>=1.1",
+]
+
+[tool.uv.sources]
+orbiter-core = { workspace = true }
+orbiter-models = { workspace = true }
+orbiter-context = { workspace = true }
+orbiter-memory = { workspace = true }
+orbiter-mcp = { workspace = true }
+orbiter-sandbox = { workspace = true }
+orbiter-trace = { workspace = true }
+orbiter-eval = { workspace = true }
+orbiter-a2a = { workspace = true }
+orbiter-cli = { workspace = true }
+orbiter-server = { workspace = true }
+orbiter-train = { workspace = true }
+orbiter = { workspace = true }
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP", "B", "SIM", "RUF"]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["orbiter", "orbiter_cli", "orbiter_server"]
+
+[tool.pyright]
+pythonVersion = "3.11"
+typeCheckingMode = "basic"
+reportMissingImports = true
+reportMissingTypeStubs = false
+
+[tool.pytest.ini_options]
+testpaths = ["packages/*/tests"]
+asyncio_mode = "auto"
+addopts = "--import-mode=importlib"
+

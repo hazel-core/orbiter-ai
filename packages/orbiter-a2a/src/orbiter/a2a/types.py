@@ -1,0 +1,184 @@
+"""A2A protocol types — agent cards, configs, and task events."""
+
+from __future__ import annotations
+
+from enum import StrEnum
+from typing import Any
+
+from pydantic import BaseModel, Field, model_validator
+
+# ---------------------------------------------------------------------------
+# Transport & capabilities
+# ---------------------------------------------------------------------------
+
+
+class TransportMode(StrEnum):
+    """Supported A2A transport protocols."""
+
+    JSONRPC = "jsonrpc"
+    GRPC = "grpc"
+    WEBSOCKET = "websocket"
+
+
+class TaskState(StrEnum):
+    """Lifecycle states for a remote A2A task."""
+
+    SUBMITTED = "submitted"
+    WORKING = "working"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELED = "canceled"
+
+
+# ---------------------------------------------------------------------------
+# Agent card & skills
+# ---------------------------------------------------------------------------
+
+
+class AgentSkill(BaseModel, frozen=True):
+    """A single capability advertised by an agent."""
+
+    id: str = Field(description="Unique skill identifier")
+    name: str = Field(description="Human-readable name")
+    description: str = Field(default="", description="What the skill does")
+    tags: tuple[str, ...] = Field(default=(), description="Classification tags")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_tags(cls, data: Any) -> Any:
+        if isinstance(data, dict) and isinstance(data.get("tags"), list):
+            data = {**data, "tags": tuple(data["tags"])}
+        return data
+
+
+class AgentCapabilities(BaseModel, frozen=True):
+    """Runtime capabilities of an A2A agent."""
+
+    streaming: bool = Field(default=False, description="Supports streaming responses")
+    push_notifications: bool = Field(default=False, description="Supports push notifications")
+    state_transition_history: bool = Field(default=False, description="Tracks state transitions")
+
+
+class AgentCard(BaseModel, frozen=True):
+    """Complete metadata descriptor for a remote A2A agent.
+
+    Published at ``/.well-known/agent-card`` for discovery.
+    """
+
+    name: str = Field(description="Agent identifier")
+    description: str = Field(default="", description="Agent purpose")
+    version: str = Field(default="0.0.1", description="Agent version")
+    url: str = Field(default="", description="Agent endpoint URL")
+    capabilities: AgentCapabilities = Field(default_factory=AgentCapabilities)
+    skills: tuple[AgentSkill, ...] = Field(default=(), description="Advertised skills")
+    default_input_modes: tuple[str, ...] = Field(
+        default=("text",), description="Accepted input formats"
+    )
+    default_output_modes: tuple[str, ...] = Field(
+        default=("text",), description="Produced output formats"
+    )
+    supported_transports: tuple[TransportMode, ...] = Field(
+        default=(TransportMode.JSONRPC,), description="Transport protocols"
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_sequences(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            for key in (
+                "skills",
+                "default_input_modes",
+                "default_output_modes",
+                "supported_transports",
+            ):
+                val = data.get(key)
+                if isinstance(val, list):
+                    data = {**data, key: tuple(val)}
+        return data
+
+
+# ---------------------------------------------------------------------------
+# Configs
+# ---------------------------------------------------------------------------
+
+
+class ServingConfig(BaseModel, frozen=True):
+    """Server-side configuration for publishing an agent via A2A."""
+
+    host: str = Field(default="localhost", description="Bind host")
+    port: int = Field(default=0, description="Bind port (0 = auto)")
+    endpoint: str = Field(default="/", description="Base URL path")
+    streaming: bool = Field(default=False, description="Enable streaming")
+    version: str = Field(default="0.0.1", description="Advertised version")
+    skills: tuple[AgentSkill, ...] = Field(default=(), description="Skills to advertise")
+    input_modes: tuple[str, ...] = Field(default=("text",), description="Accepted input formats")
+    output_modes: tuple[str, ...] = Field(default=("text",), description="Produced output formats")
+    transports: tuple[TransportMode, ...] = Field(
+        default=(TransportMode.JSONRPC,), description="Enabled transports"
+    )
+    extra: dict[str, Any] = Field(
+        default_factory=dict, description="Extension point for custom config"
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_sequences(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            for key in ("skills", "input_modes", "output_modes", "transports"):
+                val = data.get(key)
+                if isinstance(val, list):
+                    data = {**data, key: tuple(val)}
+        return data
+
+
+class ClientConfig(BaseModel, frozen=True):
+    """Client-side configuration for connecting to a remote A2A agent."""
+
+    streaming: bool = Field(default=False, description="Request streaming")
+    timeout: float = Field(default=600.0, gt=0, description="Request timeout (sec)")
+    transports: tuple[TransportMode, ...] = Field(
+        default=(TransportMode.JSONRPC,), description="Preferred transports"
+    )
+    accepted_output_modes: tuple[str, ...] = Field(
+        default=(), description="Accepted output formats (empty = any)"
+    )
+    extra: dict[str, Any] = Field(
+        default_factory=dict, description="Extension point for custom config"
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_sequences(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            for key in ("transports", "accepted_output_modes"):
+                val = data.get(key)
+                if isinstance(val, list):
+                    data = {**data, key: tuple(val)}
+        return data
+
+
+# ---------------------------------------------------------------------------
+# Task events
+# ---------------------------------------------------------------------------
+
+
+class TaskStatus(BaseModel, frozen=True):
+    """Current status of a remote A2A task."""
+
+    state: TaskState = Field(description="Task lifecycle state")
+    reason: str = Field(default="", description="Reason / error message")
+
+
+class TaskStatusUpdateEvent(BaseModel, frozen=True):
+    """Emitted when a remote task changes state."""
+
+    task_id: str = Field(description="Task being updated")
+    status: TaskStatus = Field(description="New status")
+
+
+class TaskArtifactUpdateEvent(BaseModel, frozen=True):
+    """Emitted when a remote task produces output."""
+
+    task_id: str = Field(description="Task being updated")
+    text: str = Field(default="", description="Artifact text content")
+    last_chunk: bool = Field(default=False, description="Whether this is the final chunk")

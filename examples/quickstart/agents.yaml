@@ -1,0 +1,31 @@
+# Example YAML agent/swarm configuration for Orbiter.
+#
+# Variable substitution:
+#   ${ENV_VAR}  — resolved from environment variables
+#   ${vars.KEY} — resolved from the ``vars`` section below
+
+vars:
+  default_model: "openai:gpt-4o-mini"
+
+agents:
+  researcher:
+    model: "${vars.default_model}"
+    instructions: "You research a topic and return 3 concise bullet points."
+    temperature: 0.3
+
+  writer:
+    model: "${vars.default_model}"
+    instructions: "You take bullet-point research and write a clear, short paragraph."
+    temperature: 0.7
+
+  reviewer:
+    model: "${vars.default_model}"
+    instructions: "You review text for clarity, grammar, and accuracy. Return the polished version."
+
+swarm:
+  type: workflow
+  flow: "researcher >> writer >> reviewer"
+  order:
+    - researcher
+    - writer
+    - reviewer
