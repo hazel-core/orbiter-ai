@@ -38,6 +38,14 @@ const speakerOffIcon = '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none"
       </div>
       <div class="ml-auto flex items-center gap-1">
         <button
+          id="thread-toggle-btn"
+          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-muted hover:text-dark transition-colors rounded-lg hover:bg-subtle"
+          title="Toggle thread sidebar"
+        >
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <span class="hidden sm:inline">Threads</span>
+        </button>
+        <button
           id="compare-toggle-btn"
           class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-muted hover:text-dark transition-colors rounded-lg hover:bg-subtle"
           title="Toggle compare mode"
@@ -120,10 +128,53 @@ const speakerOffIcon = '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none"
       </div>
     </div>
 
-    <!-- Main content: chat + trace panel side by side -->
+    <!-- Main content: thread sidebar + chat + trace panel -->
     <div id="normal-chat-container" class="flex flex-1 min-h-0">
+      <!-- Thread sidebar (left) -->
+      <div
+        id="thread-sidebar"
+        class="hidden flex-shrink-0 w-72 border-r border-dark/[0.08] bg-paper flex flex-col"
+      >
+        <!-- Sidebar header -->
+        <div class="flex items-center justify-between px-3 py-2.5 border-b border-dark/[0.08]">
+          <h3 class="text-sm font-medium text-dark">Threads</h3>
+          <button
+            id="thread-new-btn"
+            class="p-1.5 rounded-lg text-coral hover:bg-coral/10 transition-colors"
+            title="New thread"
+          >
+            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+        </div>
+        <!-- Search input -->
+        <div class="px-3 py-2 border-b border-dark/[0.08]">
+          <input
+            id="thread-search"
+            type="text"
+            placeholder="Search threads..."
+            class="w-full px-3 py-1.5 text-xs border border-dark/[0.08] rounded-lg bg-paper text-dark placeholder:text-muted/60 focus:outline-none focus:ring-2 focus:ring-coral/20 focus:border-coral transition-colors"
+          />
+        </div>
+        <!-- Thread list -->
+        <div id="thread-list" class="flex-1 overflow-y-auto">
+          <div id="thread-empty" class="flex flex-col items-center justify-center h-full text-center px-4">
+            <p class="text-xs text-muted">No threads yet. Select an agent and start chatting.</p>
+          </div>
+        </div>
+      </div>
+
       <!-- Chat column -->
       <div class="flex flex-col flex-1 min-w-0">
+        <!-- Thread metadata bar (hidden by default) -->
+        <div id="thread-meta-bar" class="hidden px-4 py-2 border-b border-dark/[0.08] bg-subtle/30 flex-shrink-0">
+          <div class="flex items-center gap-4 text-xs">
+            <span class="text-muted">Agent: <span id="thread-meta-agent" class="text-dark font-medium"></span></span>
+            <span class="text-muted">Tokens: <span id="thread-meta-tokens" class="text-dark font-medium tabular-nums">0</span></span>
+            <span class="text-muted">Cost: <span id="thread-meta-cost" class="text-dark font-medium tabular-nums">$0.00</span></span>
+            <span class="text-muted">Messages: <span id="thread-meta-count" class="text-dark font-medium tabular-nums">0</span></span>
+          </div>
+        </div>
+
         <!-- Messages area (relative for scroll-to-bottom button) -->
         <div class="relative flex-1">
           <div id="messages" class="absolute inset-0 overflow-y-auto px-4 py-6 space-y-4">
@@ -222,6 +273,27 @@ const speakerOffIcon = '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none"
       </div>
     </div>
   </div>
+
+  <!-- Delete thread confirmation dialog -->
+  <dialog
+    id="thread-delete-dialog"
+    class="rounded-xl border border-dark/[0.08] shadow-xl p-0 backdrop:bg-dark/40 max-w-sm w-full"
+  >
+    <div class="p-6">
+      <h3 class="text-base font-medium text-dark mb-2">Delete thread?</h3>
+      <p class="text-sm text-muted mb-6">This will permanently delete this thread and all its messages. This action cannot be undone.</p>
+      <div class="flex justify-end gap-3">
+        <button
+          id="thread-delete-cancel"
+          class="px-4 py-2 text-sm text-muted hover:text-dark border border-dark/[0.08] rounded-lg hover:bg-subtle transition-colors"
+        >Cancel</button>
+        <button
+          id="thread-delete-confirm"
+          class="px-4 py-2 text-sm text-white bg-coral hover:bg-coral/90 rounded-lg transition-colors"
+        >Delete</button>
+      </div>
+    </div>
+  </dialog>
 </PageLayout>
 
 <script>
@@ -1169,6 +1241,12 @@ agentSelect.addEventListener("change", function() {
   }
   clearMessages();
   connectWebSocket(val);
+  /* Load threads for this agent if sidebar is open */
+  if (threadSidebarOpen) {
+    currentThreadId = null;
+    threadMetaBar.classList.add("hidden");
+    loadThreads(val);
+  }
 });
 
 messageInput.addEventListener("keydown", function(e) {
@@ -1762,6 +1840,273 @@ ttsToggleBtn.addEventListener("click", function() {
     ttsIconEl.innerHTML = SPEAKER_OFF_SVG;
     window.speechSynthesis.cancel();
   }
+});
+
+/* ---- Thread sidebar ---- */
+const threadSidebar = document.getElementById("thread-sidebar")!;
+const threadToggleBtn = document.getElementById("thread-toggle-btn")!;
+const threadNewBtn = document.getElementById("thread-new-btn")!;
+const threadSearch = document.getElementById("thread-search") as HTMLInputElement;
+const threadList = document.getElementById("thread-list")!;
+const threadEmptyEl = document.getElementById("thread-empty")!;
+const threadMetaBar = document.getElementById("thread-meta-bar")!;
+const threadMetaAgent = document.getElementById("thread-meta-agent")!;
+const threadMetaTokens = document.getElementById("thread-meta-tokens")!;
+const threadMetaCost = document.getElementById("thread-meta-cost")!;
+const threadMetaCount = document.getElementById("thread-meta-count")!;
+const threadDeleteDialog = document.getElementById("thread-delete-dialog") as HTMLDialogElement;
+const threadDeleteCancel = document.getElementById("thread-delete-cancel")!;
+const threadDeleteConfirm = document.getElementById("thread-delete-confirm")!;
+
+let threadSidebarOpen = false;
+let currentThreadId: string | null = null;
+let threadDeleteTarget: string | null = null;
+let threadSearchDebounce: ReturnType<typeof setTimeout> | null = null;
+
+interface ThreadItem {
+  id: string;
+  agent_id: string;
+  first_message_preview: string;
+  message_count: number;
+  total_tokens: number;
+  total_cost: number;
+  created_at: string;
+  updated_at: string;
+}
+
+let threads: ThreadItem[] = [];
+
+function toggleThreadSidebar() {
+  threadSidebarOpen = !threadSidebarOpen;
+  if (threadSidebarOpen) {
+    threadSidebar.classList.remove("hidden");
+    threadToggleBtn.classList.add("text-coral");
+    threadToggleBtn.classList.remove("text-muted");
+    if (currentAgentId) loadThreads(currentAgentId);
+  } else {
+    threadSidebar.classList.add("hidden");
+    threadToggleBtn.classList.remove("text-coral");
+    threadToggleBtn.classList.add("text-muted");
+  }
+}
+
+threadToggleBtn.addEventListener("click", toggleThreadSidebar);
+
+function formatRelativeTime(dateStr: string): string {
+  const date = new Date(dateStr + "Z"); /* UTC from server */
+  const now = Date.now();
+  const diff = now - date.getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "Just now";
+  if (mins < 60) return mins + "m ago";
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return hrs + "h ago";
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return days + "d ago";
+  return date.toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
+async function loadThreads(agentId: string) {
+  try {
+    const res = await fetch("/api/threads?agent_id=" + encodeURIComponent(agentId), { credentials: "same-origin" });
+    if (!res.ok) return;
+    threads = await res.json();
+    renderThreadList();
+  } catch (_e) { /* non-critical */ }
+}
+
+async function searchThreads(query: string) {
+  try {
+    const res = await fetch("/api/threads/search?q=" + encodeURIComponent(query), { credentials: "same-origin" });
+    if (!res.ok) return;
+    threads = await res.json();
+    renderThreadList();
+  } catch (_e) { /* non-critical */ }
+}
+
+function renderThreadList() {
+  /* Remove all children except empty state */
+  const children = Array.from(threadList.children);
+  children.forEach(function(c) {
+    if (c.id !== "thread-empty") threadList.removeChild(c);
+  });
+
+  if (threads.length === 0) {
+    threadEmptyEl.classList.remove("hidden");
+    return;
+  }
+  threadEmptyEl.classList.add("hidden");
+
+  threads.forEach(function(t) {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "w-full text-left px-3 py-2.5 border-b border-dark/[0.04] hover:bg-subtle/50 transition-colors group relative"
+      + (t.id === currentThreadId ? " bg-subtle/60" : "");
+    item.dataset.threadId = t.id;
+
+    const preview = document.createElement("div");
+    preview.className = "text-xs text-dark truncate pr-6";
+    preview.textContent = t.first_message_preview || "New thread";
+
+    const meta = document.createElement("div");
+    meta.className = "flex items-center gap-2 mt-1";
+
+    const time = document.createElement("span");
+    time.className = "text-[10px] text-muted tabular-nums";
+    time.textContent = formatRelativeTime(t.updated_at);
+
+    const count = document.createElement("span");
+    count.className = "text-[10px] text-muted tabular-nums";
+    count.textContent = t.message_count + " msg" + (t.message_count !== 1 ? "s" : "");
+
+    meta.appendChild(time);
+    meta.appendChild(count);
+
+    /* Delete button (appears on hover) */
+    const delBtn = document.createElement("button");
+    delBtn.type = "button";
+    delBtn.className = "absolute top-2 right-2 p-1 rounded text-muted/40 hover:text-coral opacity-0 group-hover:opacity-100 transition-opacity";
+    delBtn.title = "Delete thread";
+    delBtn.innerHTML = '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
+    delBtn.addEventListener("click", function(e) {
+      e.stopPropagation();
+      threadDeleteTarget = t.id;
+      threadDeleteDialog.showModal();
+    });
+
+    item.appendChild(preview);
+    item.appendChild(meta);
+    item.appendChild(delBtn);
+
+    item.addEventListener("click", function() { switchToThread(t); });
+    threadList.appendChild(item);
+  });
+}
+
+async function switchToThread(t: ThreadItem) {
+  currentThreadId = t.id;
+  renderThreadList(); /* highlight active */
+
+  /* Show metadata bar */
+  const agent = agents.find(function(a) { return a.id === t.agent_id; });
+  threadMetaAgent.textContent = agent ? agent.name : t.agent_id;
+  threadMetaTokens.textContent = t.total_tokens.toLocaleString();
+  threadMetaCost.textContent = formatCost(t.total_cost);
+  threadMetaCount.textContent = String(t.message_count);
+  threadMetaBar.classList.remove("hidden");
+
+  /* Clear current messages */
+  const msgChildren = Array.from(messagesEl.children);
+  msgChildren.forEach(function(c) {
+    if (c.id !== "empty-state") messagesEl.removeChild(c);
+  });
+
+  /* Load thread messages */
+  try {
+    const res = await fetch("/api/threads/" + t.id + "/messages", { credentials: "same-origin" });
+    if (!res.ok) return;
+    const messages = await res.json();
+    if (messages.length === 0) {
+      showEmptyState();
+    } else {
+      hideEmptyState();
+      messages.forEach(function(m: { role: string; content: string }) {
+        if (m.role === "user") {
+          addUserMessage(m.content);
+        } else if (m.role === "assistant") {
+          addRestoredAgentMessage(m.content);
+        }
+      });
+    }
+  } catch (_e) { /* non-critical */ }
+
+  /* Set agent selector to match thread's agent */
+  if (t.agent_id !== agentSelect.value) {
+    agentSelect.value = t.agent_id;
+    const agent2 = agents.find(function(a) { return a.id === t.agent_id; });
+    if (agent2 && agent2.model_provider) {
+      agentModel.textContent = agent2.model_provider + (agent2.model_name ? ":" + agent2.model_name : "");
+      agentInfo.classList.remove("hidden");
+    }
+  }
+
+  /* Connect WS for this agent (new conversation for interactive use) */
+  if (currentAgentId !== t.agent_id) {
+    connectWebSocket(t.agent_id);
+  }
+}
+
+async function createThread() {
+  if (!currentAgentId) return;
+  try {
+    const res = await fetch("/api/threads", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ agent_id: currentAgentId }),
+    });
+    if (!res.ok) return;
+    const thread = await res.json();
+    currentThreadId = thread.id;
+    /* Clear chat for fresh thread */
+    clearMessages();
+    /* Reload thread list */
+    loadThreads(currentAgentId);
+  } catch (_e) { /* non-critical */ }
+}
+
+async function deleteThread(threadId: string) {
+  try {
+    const res = await fetch("/api/threads/" + threadId, {
+      method: "DELETE",
+      credentials: "same-origin",
+    });
+    if (!res.ok) return;
+    /* If we deleted the active thread, clear chat */
+    if (threadId === currentThreadId) {
+      currentThreadId = null;
+      threadMetaBar.classList.add("hidden");
+      clearMessages();
+    }
+    /* Reload thread list */
+    if (currentAgentId) loadThreads(currentAgentId);
+  } catch (_e) { /* non-critical */ }
+}
+
+threadNewBtn.addEventListener("click", createThread);
+
+threadDeleteCancel.addEventListener("click", function() {
+  threadDeleteTarget = null;
+  threadDeleteDialog.close();
+});
+
+threadDeleteConfirm.addEventListener("click", function() {
+  if (threadDeleteTarget) {
+    deleteThread(threadDeleteTarget);
+    threadDeleteTarget = null;
+  }
+  threadDeleteDialog.close();
+});
+
+/* Close dialog on click outside */
+threadDeleteDialog.addEventListener("click", function(e) {
+  if (e.target === threadDeleteDialog) {
+    threadDeleteTarget = null;
+    threadDeleteDialog.close();
+  }
+});
+
+/* Search input with debounce */
+threadSearch.addEventListener("input", function() {
+  if (threadSearchDebounce) clearTimeout(threadSearchDebounce);
+  const q = threadSearch.value.trim();
+  threadSearchDebounce = setTimeout(function() {
+    if (q.length > 0) {
+      searchThreads(q);
+    } else if (currentAgentId) {
+      loadThreads(currentAgentId);
+    }
+  }, 300);
 });
 
 /* ---- Init ---- */
