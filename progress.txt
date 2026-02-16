@@ -635,3 +635,20 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Auto-expand persona section on load if agent has any persona data (persona_role/goal/backstory non-empty)
   - Manual browser verification needed (no browser testing tool available)
 ---
+
+## 2026-02-17 12:00 - US-039
+- What was implemented: AI-assisted agent builder backend — POST /api/agents/ai-generate endpoint that accepts a natural language description and generates agent configuration(s) using a configured LLM provider
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/routes/agents.py (major update — added AIGenerateRequest, GeneratedAgentConfig, AIGenerateResponse Pydantic models, _SYSTEM_PROMPT for agent generation, _call_model_for_generation helper with multi-provider support, _parse_generated_config JSON parser with markdown fence stripping and tool validation, POST /ai-generate endpoint with auto-provider discovery and per-type default models)
+- **Learnings for future iterations:**
+  - AI-generate endpoint placed BEFORE `/{agent_id}` catch-all routes in FastAPI — order matters for path parameter matching; "ai-generate" would be captured as an agent_id otherwise
+  - `_call_model_for_generation` follows same pattern as `_send_prompt_to_model` in prompt_templates.py but uses system+user messages (not single user message) for structured output
+  - Anthropic API uses separate `system` field (not in messages array) — different from OpenAI's system message format
+  - Gemini and Ollama don't support system messages natively — concatenate system + user prompt as single user content
+  - `_parse_generated_config` handles three JSON formats: `{"agents": [...]}`, `[...]`, and `{...}` (single agent) — covers common LLM output variations
+  - Markdown code fence stripping: check for ``` prefix and strip to first newline (handles ```json), then strip trailing ```
+  - Tool validation: filter suggested_tools against known BUILTIN_TOOLS IDs — prevents hallucinated tool names from passing through
+  - Auto-provider discovery: query providers with encrypted_api_key or active provider_keys; per-type default models (gpt-4o for openai, claude-sonnet-4-5-20250514 for anthropic, etc.)
+  - `model` field in request uses "provider_id:model_name" format for explicit selection, or just model_name for auto-provider resolution
+  - Manual browser verification needed (no browser testing tool available)
+---
