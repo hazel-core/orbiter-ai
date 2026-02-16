@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@astrojs/react": "^4.4.2",
+    "@dagrejs/dagre": "^2.0.4",
     "@fontsource/bricolage-grotesque": "^5.2.10",
     "@tailwindcss/vite": "^4.1.18",
     "@xyflow/react": "^12.10.0",
