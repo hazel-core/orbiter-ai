@@ -1485,3 +1485,16 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Delegation connections can be inferred from `_delegates_to` array in `hooks_json`
   - Custom edge types: use `getBezierPath` + foreignObject for labels; strokeDasharray for dashed edges
 ---
+
+## 2026-02-17 - US-089
+- What was implemented: Supervisor pattern backend — agent_relationships table + sub-agent delegation API
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/migrations/022_create_agent_relationships.sql (new — agent_relationships table with supervisor_id, sub_agent_id, relationship_type, routing_rule_json)
+  - packages/orbiter-web/src/orbiter_web/routes/agents.py (updated — added SubAgentAdd/SubAgentRelationshipResponse models, _get_sub_agents/_build_sub_agent_tools/_build_sub_agent_prompt_section helpers, POST/GET/DELETE sub-agent endpoints, GET effective-config endpoint)
+- **Learnings for future iterations:**
+  - agent_relationships table uses UNIQUE(supervisor_id, sub_agent_id) to prevent duplicate delegation pairs
+  - Sub-agent routes are nested under the agents router: `/api/agents/:id/sub-agents` — no separate router needed
+  - Sub-agent tools are auto-generated with `type: "sub_agent"` and `delegate_to_{name}` naming convention
+  - `effective-config` endpoint merges agent's own tools_json with generated sub-agent tool entries and appends sub-agent descriptions to instructions
+  - Routing rules stored as JSON text, parsed on-demand — flexible schema for future expansion
+---
