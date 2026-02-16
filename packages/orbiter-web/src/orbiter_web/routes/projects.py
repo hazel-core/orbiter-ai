@@ -6,20 +6,17 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from orbiter_web.database import get_db
+from orbiter_web.routes.auth import get_current_user
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
 # ---------------------------------------------------------------------------
 # Pydantic models
 # ---------------------------------------------------------------------------
-
-# Placeholder user ID until authentication (US-018) is implemented.
-_DEFAULT_USER_ID = "default-user"
-
 
 class ProjectCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
@@ -60,19 +57,24 @@ def _row_to_dict(row: Any) -> dict[str, Any]:
 
 
 @router.get("", response_model=list[ProjectResponse])
-async def list_projects() -> list[dict[str, Any]]:
+async def list_projects(
+    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+) -> list[dict[str, Any]]:
     """Return all projects for the current user."""
     async with get_db() as db:
         cursor = await db.execute(
             "SELECT * FROM projects WHERE user_id = ? ORDER BY created_at DESC",
-            (_DEFAULT_USER_ID,),
+            (user["id"],),
         )
         rows = await cursor.fetchall()
         return [_row_to_dict(r) for r in rows]
 
 
 @router.post("", response_model=ProjectResponse, status_code=201)
-async def create_project(body: ProjectCreate) -> dict[str, Any]:
+async def create_project(
+    body: ProjectCreate,
+    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+) -> dict[str, Any]:
     """Create a new project."""
     project_id = str(uuid.uuid4())
     now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
@@ -83,7 +85,7 @@ async def create_project(body: ProjectCreate) -> dict[str, Any]:
             INSERT INTO projects (id, name, description, user_id, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (project_id, body.name, body.description, _DEFAULT_USER_ID, now, now),
+            (project_id, body.name, body.description, user["id"], now, now),
         )
         await db.commit()
 
@@ -93,12 +95,15 @@ async def create_project(body: ProjectCreate) -> dict[str, Any]:
 
 
 @router.get("/{project_id}", response_model=ProjectResponse)
-async def get_project(project_id: str) -> dict[str, Any]:
+async def get_project(
+    project_id: str,
+    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+) -> dict[str, Any]:
     """Return a single project by ID."""
     async with get_db() as db:
         cursor = await db.execute(
             "SELECT * FROM projects WHERE id = ? AND user_id = ?",
-            (project_id, _DEFAULT_USER_ID),
+            (project_id, user["id"]),
         )
         row = await cursor.fetchone()
         if row is None:
@@ -107,7 +112,11 @@ async def get_project(project_id: str) -> dict[str, Any]:
 
 
 @router.put("/{project_id}", response_model=ProjectResponse)
-async def update_project(project_id: str, body: ProjectUpdate) -> dict[str, Any]:
+async def update_project(
+    project_id: str,
+    body: ProjectUpdate,
+    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+) -> dict[str, Any]:
     """Update a project's editable fields."""
     updates = body.model_dump(exclude_none=True)
     if not updates:
@@ -117,7 +126,7 @@ async def update_project(project_id: str, body: ProjectUpdate) -> dict[str, Any]
         # Verify the project exists and belongs to the user.
         cursor = await db.execute(
             "SELECT id FROM projects WHERE id = ? AND user_id = ?",
-            (project_id, _DEFAULT_USER_ID),
+            (project_id, user["id"]),
         )
         if await cursor.fetchone() is None:
             raise HTTPException(status_code=404, detail="Project not found")
@@ -139,12 +148,15 @@ async def update_project(project_id: str, body: ProjectUpdate) -> dict[str, Any]
 
 
 @router.delete("/{project_id}", status_code=204)
-async def delete_project(project_id: str) -> None:
+async def delete_project(
+    project_id: str,
+    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+) -> None:
     """Delete a project and all cascading data."""
     async with get_db() as db:
         cursor = await db.execute(
             "SELECT id FROM projects WHERE id = ? AND user_id = ?",
-            (project_id, _DEFAULT_USER_ID),
+            (project_id, user["id"]),
         )
         if await cursor.fetchone() is None:
             raise HTTPException(status_code=404, detail="Project not found")
