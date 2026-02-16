@@ -12,7 +12,13 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 
 from orbiter_web.database import get_db
-from orbiter_web.engine import cancel_run, execute_workflow
+from orbiter_web.engine import (
+    cancel_run,
+    execute_workflow,
+    execute_workflow_debug,
+    register_debug_session,
+    send_debug_command,
+)
 from orbiter_web.routes.auth import get_current_user
 
 router = APIRouter(prefix="/api/workflows", tags=["workflow-runs"])
@@ -276,6 +282,158 @@ async def stream_workflow_run(
                 break
     except WebSocketDisconnect:
         pass
+    finally:
+        with contextlib.suppress(Exception):
+            await websocket.close()
+
+
+# ---------------------------------------------------------------------------
+# POST /api/workflows/:id/debug — start debug execution
+# ---------------------------------------------------------------------------
+
+
+@router.post("/{workflow_id}/debug")
+async def start_debug_run(
+    workflow_id: str,
+    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+) -> dict[str, Any]:
+    """Start a debug execution of a workflow. Returns run_id immediately.
+
+    Connect to the debug WebSocket to control stepping.
+    """
+    async with get_db() as db:
+        wf = await _verify_workflow_ownership(db, workflow_id, user["id"])
+
+        nodes = json.loads(wf["nodes_json"] or "[]")
+
+        if not nodes:
+            raise HTTPException(status_code=422, detail="Workflow has no nodes")
+
+        run_id = str(uuid.uuid4())
+        now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
+
+        await db.execute(
+            "INSERT INTO workflow_runs (id, workflow_id, status, user_id, created_at) VALUES (?, ?, 'pending', ?, ?)",
+            (run_id, workflow_id, user["id"], now),
+        )
+        await db.commit()
+
+    # Register the debug session command queue but don't start execution yet.
+    # The debug WebSocket will start execution when it connects.
+    register_debug_session(run_id)
+
+    return {"run_id": run_id, "status": "pending", "mode": "debug"}
+
+
+# ---------------------------------------------------------------------------
+# WebSocket /api/workflows/:id/runs/:runId/debug — debug step-through control
+# ---------------------------------------------------------------------------
+
+
+@router.websocket("/{workflow_id}/runs/{run_id}/debug")
+async def debug_workflow_run(
+    websocket: WebSocket,
+    workflow_id: str,
+    run_id: str,
+) -> None:
+    """WebSocket for debug step-through execution.
+
+    Receives commands: {action: 'continue'|'skip'|'stop'|'set_breakpoint'|'set_variable', ...}
+    Sends events: debug_paused, node_started, node_completed, node_failed, node_skipped, execution_completed
+    """
+    user = await _get_user_from_cookie(websocket)
+    if user is None:
+        await websocket.close(code=4001, reason="Unauthorized")
+        return
+
+    async with get_db() as db:
+        cursor = await db.execute(
+            "SELECT id FROM workflows WHERE id = ? AND user_id = ?",
+            (workflow_id, user["id"]),
+        )
+        if await cursor.fetchone() is None:
+            await websocket.close(code=4004, reason="Workflow not found")
+            return
+
+        cursor = await db.execute(
+            "SELECT status FROM workflow_runs WHERE id = ? AND workflow_id = ?",
+            (run_id, workflow_id),
+        )
+        run_row = await cursor.fetchone()
+        if run_row is None:
+            await websocket.close(code=4004, reason="Run not found")
+            return
+
+    await websocket.accept()
+
+    if run_row["status"] in ("completed", "failed", "cancelled"):
+        await websocket.send_json(
+            {"type": "execution_completed", "status": run_row["status"]}
+        )
+        await websocket.close()
+        return
+
+    # Event queue for engine -> client communication.
+    event_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+
+    async def event_callback(event: dict[str, Any]) -> None:
+        await event_queue.put(event)
+
+    # Ensure the debug session command queue exists (created by POST /debug).
+    command_queue = register_debug_session(run_id)
+
+    # Load workflow and start debug execution.
+    async with get_db() as db:
+        cursor = await db.execute(
+            "SELECT nodes_json, edges_json FROM workflows WHERE id = ?",
+            (workflow_id,),
+        )
+        wf = await cursor.fetchone()
+
+    if not wf:
+        await websocket.send_json(
+            {"type": "execution_completed", "status": "failed", "error": "Workflow not found"}
+        )
+        await websocket.close()
+        return
+
+    nodes = json.loads(wf["nodes_json"] or "[]")
+    edges = json.loads(wf["edges_json"] or "[]")
+
+    engine_task = asyncio.create_task(
+        execute_workflow_debug(
+            run_id, workflow_id, user["id"], nodes, edges, command_queue, event_callback
+        )
+    )
+    _background_tasks.add(engine_task)
+    engine_task.add_done_callback(_background_tasks.discard)
+
+    # Run two concurrent loops: send events to client, receive commands from client.
+    async def _send_events() -> None:
+        while True:
+            event = await event_queue.get()
+            await websocket.send_json(event)
+            if event.get("type") == "execution_completed":
+                return
+
+    async def _receive_commands() -> None:
+        while True:
+            data = await websocket.receive_json()
+            send_debug_command(run_id, data)
+
+    try:
+        # Run both loops; when either finishes or raises, cancel the other.
+        _done, pending = await asyncio.wait(
+            [asyncio.create_task(_send_events()), asyncio.create_task(_receive_commands())],
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        for t in pending:
+            t.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await t
+    except WebSocketDisconnect:
+        # Client disconnected — stop the debug run.
+        send_debug_command(run_id, {"action": "stop"})
     finally:
         with contextlib.suppress(Exception):
             await websocket.close()

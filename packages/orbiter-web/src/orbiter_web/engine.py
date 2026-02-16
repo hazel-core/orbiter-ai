@@ -270,6 +270,239 @@ async def execute_workflow(
 
 
 # ---------------------------------------------------------------------------
+# Debug execution — step-through mode
+# ---------------------------------------------------------------------------
+
+# Tracks active debug sessions: run_id -> command queue
+_debug_sessions: dict[str, asyncio.Queue[dict[str, Any]]] = {}
+
+
+def register_debug_session(run_id: str) -> asyncio.Queue[dict[str, Any]]:
+    """Register a debug session and return its command queue."""
+    q: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+    _debug_sessions[run_id] = q
+    return q
+
+
+def unregister_debug_session(run_id: str) -> None:
+    _debug_sessions.pop(run_id, None)
+
+
+def send_debug_command(run_id: str, command: dict[str, Any]) -> bool:
+    """Send a command to a debug session. Returns True if session found."""
+    q = _debug_sessions.get(run_id)
+    if q is None:
+        return False
+    q.put_nowait(command)
+    return True
+
+
+async def execute_workflow_debug(
+    run_id: str,
+    workflow_id: str,
+    user_id: str,
+    nodes: list[dict[str, Any]],
+    edges: list[dict[str, Any]],
+    command_queue: asyncio.Queue[dict[str, Any]],
+    event_callback: Any | None = None,
+) -> str:
+    """Execute a workflow in debug mode — pauses before each node.
+
+    The ``command_queue`` receives debug commands from the client:
+    - ``{action: 'continue'}`` — execute the current node and advance
+    - ``{action: 'skip'}`` — skip the current node and advance
+    - ``{action: 'stop'}`` — abort execution
+    - ``{action: 'set_breakpoint', node_id: str}`` — toggle breakpoint on a node
+    - ``{action: 'set_variable', name: str, value: Any}`` — modify a variable
+
+    Returns the final status: 'completed', 'failed', or 'cancelled'.
+    """
+
+    cancel_event = _register_run(run_id)
+    breakpoints: set[str] = set()
+    variables: dict[str, Any] = {}
+
+    async def emit(event: dict[str, Any]) -> None:
+        if event_callback is not None:
+            with contextlib.suppress(Exception):
+                await event_callback(event)
+
+    try:
+        layers = topological_sort(nodes, edges)
+    except ValueError as exc:
+        await _update_run_status(run_id, "failed", error=str(exc))
+        await emit({"type": "execution_completed", "status": "failed", "error": str(exc)})
+        _unregister_run(run_id)
+        return "failed"
+
+    node_map = {n["id"]: n for n in nodes}
+
+    # Flatten layers into a sequential execution order for debug stepping.
+    execution_order: list[str] = []
+    for layer in layers:
+        execution_order.extend(layer)
+
+    now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
+    await _update_run_status(run_id, "running", started_at=now)
+
+    final_status = "completed"
+
+    for nid in execution_order:
+        if cancel_event.is_set():
+            final_status = "cancelled"
+            break
+
+        node = node_map.get(nid)
+        if node is None:
+            continue
+
+        # Emit paused event — client should display controls.
+        await emit({
+            "type": "debug_paused",
+            "node_id": nid,
+            "variables": variables,
+            "breakpoints": list(breakpoints),
+        })
+
+        # Wait for a command from the client.
+        action = await _wait_for_debug_command(
+            command_queue, cancel_event, breakpoints, variables
+        )
+
+        if action == "stop" or cancel_event.is_set():
+            final_status = "cancelled"
+            break
+
+        if action == "skip":
+            # Log the node as skipped.
+            log_id = str(uuid.uuid4())
+            started = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
+            async with get_db() as db:
+                await db.execute(
+                    "INSERT INTO workflow_run_logs (id, run_id, node_id, status, started_at, completed_at) VALUES (?, ?, ?, 'skipped', ?, ?)",
+                    (log_id, run_id, nid, started, started),
+                )
+                await db.commit()
+            await emit({"type": "node_skipped", "node_id": nid})
+            continue
+
+        # action == "continue" — execute the node.
+        log_id = str(uuid.uuid4())
+        started = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
+        input_snapshot = json.dumps(node.get("data", {}))
+        async with get_db() as db:
+            await db.execute(
+                "INSERT INTO workflow_run_logs (id, run_id, node_id, status, started_at, input_json) VALUES (?, ?, ?, 'running', ?, ?)",
+                (log_id, run_id, nid, started, input_snapshot),
+            )
+            await db.commit()
+
+        await emit({"type": "node_started", "node_id": nid})
+
+        try:
+            output = await _execute_node(node)
+            completed_at = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
+
+            logs_text = output.pop("logs", None)
+            token_usage = output.pop("token_usage", None)
+            token_usage_json = json.dumps(token_usage) if token_usage else None
+
+            async with get_db() as db:
+                await db.execute(
+                    "UPDATE workflow_run_logs SET status = 'completed', output_json = ?, logs_text = ?, token_usage_json = ?, completed_at = ? WHERE run_id = ? AND node_id = ?",
+                    (json.dumps(output), logs_text, token_usage_json, completed_at, run_id, nid),
+                )
+                await db.commit()
+
+            # Store node output in variables for downstream inspection.
+            variables[nid] = output.get("result", "")
+
+            await emit({
+                "type": "node_completed",
+                "node_id": nid,
+                "output": output,
+                "variables": variables,
+            })
+
+        except Exception as exc:
+            error_msg = str(exc)
+            completed_at = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
+
+            async with get_db() as db:
+                await db.execute(
+                    "UPDATE workflow_run_logs SET status = 'failed', error = ?, completed_at = ? WHERE run_id = ? AND node_id = ?",
+                    (error_msg, completed_at, run_id, nid),
+                )
+                await db.commit()
+
+            await emit({"type": "node_failed", "node_id": nid, "error": error_msg})
+            final_status = "failed"
+            break
+
+    # Finalize.
+    completed_at = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
+    error_msg = None if final_status == "completed" else f"Workflow {final_status}"
+    await _update_run_status(run_id, final_status, completed_at=completed_at, error=error_msg)
+
+    async with get_db() as db:
+        await db.execute(
+            "UPDATE workflows SET last_run_at = ? WHERE id = ?",
+            (completed_at, workflow_id),
+        )
+        await db.commit()
+
+    await emit({"type": "execution_completed", "status": final_status, "variables": variables})
+    _unregister_run(run_id)
+    unregister_debug_session(run_id)
+    return final_status
+
+
+async def _wait_for_debug_command(
+    command_queue: asyncio.Queue[dict[str, Any]],
+    cancel_event: asyncio.Event,
+    breakpoints: set[str],
+    variables: dict[str, Any],
+) -> str:
+    """Wait for a continue/skip/stop command, processing side-effect commands inline.
+
+    Side-effect commands (set_breakpoint, set_variable) are handled immediately
+    and we keep waiting for a flow-control command.
+
+    Returns: 'continue', 'skip', or 'stop'.
+    """
+    while True:
+        if cancel_event.is_set():
+            return "stop"
+
+        try:
+            cmd = await asyncio.wait_for(command_queue.get(), timeout=0.5)
+        except TimeoutError:
+            continue
+
+        action = cmd.get("action", "")
+
+        if action == "set_breakpoint":
+            node_id = cmd.get("node_id", "")
+            if node_id in breakpoints:
+                breakpoints.discard(node_id)
+            else:
+                breakpoints.add(node_id)
+            continue
+
+        if action == "set_variable":
+            name = cmd.get("name", "")
+            value = cmd.get("value")
+            if name:
+                variables[name] = value
+            continue
+
+        if action in ("continue", "skip", "stop"):
+            return action
+
+        # Unknown action — ignore and keep waiting.
+
+
+# ---------------------------------------------------------------------------
 # DB helpers
 # ---------------------------------------------------------------------------
 
