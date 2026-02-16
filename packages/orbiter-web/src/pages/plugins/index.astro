@@ -1,0 +1,264 @@
+---
+import PageLayout from "../../layouts/PageLayout.astro";
+const breadcrumbs = [{ label: "Plugins" }];
+
+const categoryOptions = [
+  { value: "", label: "All categories" },
+  { value: "Models", label: "Models" },
+  { value: "Tools", label: "Tools" },
+  { value: "Agent Strategies", label: "Agent Strategies" },
+  { value: "Extensions", label: "Extensions" },
+  { value: "Bundles", label: "Bundles" },
+];
+
+/* Icons */
+const searchIcon = '<svg class="h-4 w-4 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>';
+const pluginIcon = '<svg class="h-12 w-12 text-muted/40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v6m0 0a3 3 0 1 0 0 6m0-6a3 3 0 1 1 0 6m0 0v4m-5-7H2m20 0h-5"/></svg>';
+---
+
+<PageLayout
+  title="Plugins"
+  description="Browse and install plugins"
+  activeSection="plugins"
+  breadcrumbs={breadcrumbs}
+>
+  <div class="p-6 max-w-6xl mx-auto">
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-6 flex-wrap gap-3">
+      <div>
+        <h1 class="text-2xl font-semibold text-dark">Plugin Marketplace</h1>
+        <p class="text-sm text-muted mt-1">Browse and install community plugins</p>
+      </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="flex items-center gap-3 mb-6 flex-wrap">
+      <!-- Search -->
+      <div class="relative flex-1 min-w-[200px] max-w-sm">
+        <span class="absolute left-3 top-1/2 -translate-y-1/2" set:html={searchIcon} />
+        <input
+          type="text"
+          id="plugin-search"
+          placeholder="Search plugins..."
+          class="w-full bg-paper border border-dark/[0.08] rounded-lg pl-9 pr-3 py-2 text-sm text-dark placeholder:text-muted/60 transition-all duration-200 outline-none focus:border-coral focus:ring-2 focus:ring-coral/20"
+        />
+      </div>
+
+      <!-- Category filter -->
+      <select
+        id="filter-category"
+        class="bg-paper border border-dark/[0.08] rounded-lg px-3 py-2 text-sm text-dark outline-none focus:border-coral focus:ring-2 focus:ring-coral/20 appearance-none pr-8 cursor-pointer"
+      >
+        {categoryOptions.map(opt => (
+          <option value={opt.value}>{opt.label}</option>
+        ))}
+      </select>
+    </div>
+
+    <!-- Plugin grid -->
+    <div id="plugins-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+    </div>
+
+    <!-- Empty state -->
+    <div id="empty-state" class="hidden flex flex-col items-center justify-center py-20 text-center">
+      <div class="mb-4" set:html={pluginIcon} />
+      <h2 class="text-lg font-semibold text-dark mb-2">No plugins available</h2>
+      <p class="text-sm text-muted mb-6 max-w-sm">
+        The plugin marketplace is empty. Check back later for new plugins.
+      </p>
+    </div>
+
+    <!-- No results state -->
+    <div id="no-results" class="hidden flex flex-col items-center justify-center py-16 text-center">
+      <p class="text-sm text-muted">No plugins match your filters. Try adjusting the search or category.</p>
+    </div>
+
+    <!-- Loading state -->
+    <div id="loading-state" class="flex items-center justify-center py-20">
+      <p class="text-sm text-muted">Loading marketplace...</p>
+    </div>
+  </div>
+</PageLayout>
+
+<!-- Plugin card template -->
+<template id="plugin-card-template">
+  <a class="block rounded-xl bg-subtle/80 border border-dark/[0.08] transition-all duration-300 hover:-translate-y-0.5 hover:border-dark/20 hover:shadow-lg p-5 no-underline" data-field="card-link">
+    <div class="flex items-start justify-between mb-2">
+      <div class="flex items-center gap-2.5 min-w-0">
+        <span class="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-sm" data-field="category-icon"></span>
+        <div class="min-w-0">
+          <h3 class="font-semibold text-dark text-sm truncate" data-field="plugin-name"></h3>
+          <p class="text-xs text-muted truncate" data-field="plugin-author"></p>
+        </div>
+      </div>
+      <span class="flex-shrink-0 text-xs px-2 py-0.5 rounded-full font-medium" data-field="category-badge"></span>
+    </div>
+    <p class="text-xs text-muted line-clamp-2 mb-3 min-h-[2rem]" data-field="plugin-description"></p>
+    <div class="flex items-center justify-between text-xs text-muted">
+      <div class="flex items-center gap-3">
+        <span data-field="install-count"></span>
+        <span data-field="rating"></span>
+      </div>
+      <span class="text-xs px-1.5 py-0.5 rounded bg-muted/10 text-muted" data-field="plugin-version"></span>
+    </div>
+  </a>
+</template>
+
+<script is:inline>
+  (function () {
+    /* ---------------------------------------------------------------
+       DOM refs
+    --------------------------------------------------------------- */
+    var gridContainer = document.getElementById("plugins-grid");
+    var emptyState = document.getElementById("empty-state");
+    var noResults = document.getElementById("no-results");
+    var loadingState = document.getElementById("loading-state");
+    var searchInput = document.getElementById("plugin-search");
+    var filterCategory = document.getElementById("filter-category");
+    var cardTemplate = document.getElementById("plugin-card-template");
+
+    var allPlugins = [];
+
+    /* ---------------------------------------------------------------
+       Category metadata
+    --------------------------------------------------------------- */
+    var categoryMeta = {
+      "Models": { icon: "🧠", bg: "bg-zen-blue/10", text: "text-zen-blue", label: "Models" },
+      "Tools": { icon: "🔧", bg: "bg-[#f59e0b]/10", text: "text-[#f59e0b]", label: "Tools" },
+      "Agent Strategies": { icon: "🎯", bg: "bg-zen-green/10", text: "text-zen-green", label: "Strategy" },
+      "Extensions": { icon: "🔌", bg: "bg-[#a855f7]/10", text: "text-[#a855f7]", label: "Extension" },
+      "Bundles": { icon: "📦", bg: "bg-coral/10", text: "text-coral", label: "Bundle" },
+    };
+
+    function getCategoryInfo(cat) {
+      return categoryMeta[cat] || { icon: "🔌", bg: "bg-muted/10", text: "text-muted", label: cat };
+    }
+
+    /* ---------------------------------------------------------------
+       Helpers
+    --------------------------------------------------------------- */
+    function formatCount(n) {
+      if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, "") + "k";
+      return String(n);
+    }
+
+    function renderStars(rating) {
+      var full = Math.floor(rating);
+      var half = rating - full >= 0.5;
+      var stars = "";
+      for (var i = 0; i < full; i++) stars += "★";
+      if (half) stars += "½";
+      return stars + " " + rating.toFixed(1);
+    }
+
+    /* ---------------------------------------------------------------
+       Filtering
+    --------------------------------------------------------------- */
+    function getFilteredPlugins() {
+      var search = (searchInput.value || "").toLowerCase().trim();
+      var cat = filterCategory.value;
+
+      return allPlugins.filter(function (p) {
+        if (search) {
+          var nameMatch = p.name.toLowerCase().indexOf(search) !== -1;
+          var descMatch = p.description.toLowerCase().indexOf(search) !== -1;
+          var authorMatch = p.author.toLowerCase().indexOf(search) !== -1;
+          if (!nameMatch && !descMatch && !authorMatch) return false;
+        }
+        if (cat && p.category !== cat) return false;
+        return true;
+      });
+    }
+
+    /* ---------------------------------------------------------------
+       Render plugins
+    --------------------------------------------------------------- */
+    function renderPlugins() {
+      if (loadingState) loadingState.classList.add("hidden");
+
+      if (allPlugins.length === 0) {
+        gridContainer.classList.add("hidden");
+        noResults.classList.add("hidden");
+        emptyState.classList.remove("hidden");
+        return;
+      }
+
+      var filtered = getFilteredPlugins();
+
+      if (filtered.length === 0) {
+        gridContainer.classList.add("hidden");
+        emptyState.classList.add("hidden");
+        noResults.classList.remove("hidden");
+        return;
+      }
+
+      noResults.classList.add("hidden");
+      emptyState.classList.add("hidden");
+      gridContainer.classList.remove("hidden");
+      gridContainer.innerHTML = "";
+      filtered.forEach(function (plugin) { renderGridCard(plugin); });
+    }
+
+    function renderGridCard(plugin) {
+      var card = cardTemplate.content.cloneNode(true);
+      var catInfo = getCategoryInfo(plugin.category);
+
+      card.querySelector('[data-field="card-link"]').href = "/plugins/" + plugin.id;
+
+      var iconEl = card.querySelector('[data-field="category-icon"]');
+      iconEl.className = "flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-sm " + catInfo.bg;
+      iconEl.textContent = catInfo.icon;
+
+      card.querySelector('[data-field="plugin-name"]').textContent = plugin.name;
+      card.querySelector('[data-field="plugin-author"]').textContent = "by " + plugin.author;
+
+      var badge = card.querySelector('[data-field="category-badge"]');
+      badge.className = "flex-shrink-0 text-xs px-2 py-0.5 rounded-full font-medium " + catInfo.bg + " " + catInfo.text;
+      badge.textContent = catInfo.label;
+
+      card.querySelector('[data-field="plugin-description"]').textContent = plugin.description || "No description";
+
+      card.querySelector('[data-field="install-count"]').textContent = formatCount(plugin.install_count) + " installs";
+      card.querySelector('[data-field="rating"]').textContent = renderStars(plugin.rating);
+      card.querySelector('[data-field="plugin-version"]').textContent = "v" + plugin.version;
+
+      gridContainer.appendChild(card);
+    }
+
+    /* ---------------------------------------------------------------
+       Data fetching
+    --------------------------------------------------------------- */
+    function fetchPlugins() {
+      fetch("/api/plugins/marketplace")
+        .then(function (res) {
+          if (!res.ok) throw new Error("Failed to load marketplace");
+          return res.json();
+        })
+        .then(function (plugins) {
+          allPlugins = plugins;
+          renderPlugins();
+        })
+        .catch(function () {
+          if (loadingState) loadingState.classList.add("hidden");
+          gridContainer.innerHTML = '<p class="text-sm text-coral col-span-full text-center py-10">Failed to load marketplace. Is the API server running?</p>';
+          gridContainer.classList.remove("hidden");
+        });
+    }
+
+    /* ---------------------------------------------------------------
+       Event listeners
+    --------------------------------------------------------------- */
+    var filterTimeout;
+    function onFilterChange() {
+      clearTimeout(filterTimeout);
+      filterTimeout = setTimeout(renderPlugins, 150);
+    }
+    searchInput.addEventListener("input", onFilterChange);
+    filterCategory.addEventListener("change", onFilterChange);
+
+    /* ---------------------------------------------------------------
+       Initial load
+    --------------------------------------------------------------- */
+    fetchPlugins();
+  })();
+</script>

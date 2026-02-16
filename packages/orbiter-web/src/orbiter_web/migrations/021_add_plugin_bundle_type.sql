@@ -1,4 +1,6 @@
-CREATE TABLE IF NOT EXISTS plugins (
+-- Add 'bundle' to plugins type CHECK constraint.
+-- SQLite doesn't support ALTER CHECK, so recreate the table.
+CREATE TABLE IF NOT EXISTS plugins_new (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     version TEXT NOT NULL DEFAULT '0.1.0',
@@ -15,6 +17,10 @@ CREATE TABLE IF NOT EXISTS plugins (
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     installed_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+INSERT OR IGNORE INTO plugins_new SELECT * FROM plugins;
+DROP TABLE IF EXISTS plugins;
+ALTER TABLE plugins_new RENAME TO plugins;
 
 CREATE INDEX IF NOT EXISTS idx_plugins_user_id ON plugins(user_id);
 CREATE INDEX IF NOT EXISTS idx_plugins_type ON plugins(type);
