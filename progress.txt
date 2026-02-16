@@ -76,6 +76,7 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
 - Canvas panels: use `variablePanelOpen` state + Cmd+J shortcut for toggling; panel shows in both exec and debug modes
 - Server-side handle type map in `tools.py` (`_NODE_HANDLE_MAP`) mirrors `handleTypes.ts` — keep both in sync when adding new node types
 - Tool Mode on nodes: stored as `tool_mode: boolean` in node.data; exposed via `GET /api/tools/workflow-nodes`; wrench badge in WorkflowNode.tsx
+- Marketplace catalog: static `MARKETPLACE_CATALOG` list in plugins.py; marketplace endpoints before /{id} routes; categories: Models, Tools, Agent Strategies, Extensions, Bundles
 
 ---
 
@@ -1428,4 +1429,21 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Duplicate check pattern: SELECT before INSERT with name+version+user_id to prevent reinstalling same plugin
   - Load-from-directory reads plugin.json from the directory and delegates to install_plugin — reuses validation logic
   - Status endpoint uses query param for status value (PUT /api/plugins/:id/status?status=enabled)
+---
+
+## 2026-02-17 08:25 - US-086
+- What was implemented: Plugin marketplace UI — marketplace grid page at /plugins, plugin detail page at /plugins/[id], marketplace API endpoints, bundle type support
+- Files changed:
+  - packages/orbiter-web/src/pages/plugins/index.astro (new — marketplace grid with search, category filter, plugin cards showing name/author/description/installs/rating/category badge)
+  - packages/orbiter-web/src/pages/plugins/[id].astro (new — plugin detail page with full description, screenshots placeholder, changelog, permissions required, one-click install button)
+  - packages/orbiter-web/src/orbiter_web/routes/plugins.py (updated — added MARKETPLACE_CATALOG static catalog, GET /api/plugins/marketplace and GET /api/plugins/marketplace/:id endpoints, added 'bundle' to VALID_PLUGIN_TYPES)
+  - packages/orbiter-web/src/orbiter_web/migrations/020_create_plugins.sql (updated — added 'bundle' to type CHECK constraint)
+  - packages/orbiter-web/src/orbiter_web/migrations/021_add_plugin_bundle_type.sql (new — migration to add 'bundle' type for existing databases by recreating table)
+- **Learnings for future iterations:**
+  - Marketplace endpoints must be defined BEFORE /{plugin_id} routes in FastAPI (route ordering pattern) to prevent "marketplace" being matched as a plugin_id
+  - Static marketplace catalog in MARKETPLACE_CATALOG constant — will be replaced with remote registry later
+  - Plugin categories (Models, Tools, Agent Strategies, Extensions, Bundles) differ from DB types (model, tool, strategy, extension, bundle) — frontend uses human-readable category names
+  - SQLite doesn't support ALTER TABLE to change CHECK constraints — must recreate table via INSERT INTO new, DROP old, ALTER RENAME
+  - When moving a page from pages/foo.astro to pages/foo/index.astro (to support sub-routes like /foo/[id]), update import paths from `../` to `../../`
+  - Install button calls POST /api/plugins/install with manifest from marketplace data — handles 409 (already installed) gracefully
 ---
