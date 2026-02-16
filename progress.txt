@@ -63,6 +63,8 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
 - Provider streaming: OpenAI/Anthropic use SSE (`data: ` prefix), Ollama uses NDJSON; use httpx `client.stream()` + `resp.aiter_lines()`
 - Vite proxy needs `ws: true` for WebSocket forwarding — `/api` proxy only forwards HTTP by default
 - WebSocket chat pattern: connect on agent select, send `{content: "..."}`, receive `{type: "token"|"done"|"error", ...}`; reconnect on clear to reset server-side history
+- Conversation persistence: conversations + messages tables; WebSocket creates conversation lazily on first message; _TokenCollector wraps WS to capture streamed content for DB storage
+- REST API for conversations at `/api/conversations` — list (with optional agent_id filter), get, delete, and `/api/conversations/:id/messages` for message history
 
 ---
 
@@ -998,5 +1000,23 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Scroll-to-bottom button: track `userScrolledUp` boolean, show button when not near bottom (80px threshold), reset on send/clear
   - Messages area wrapped in `relative flex-1` container with `absolute inset-0` inner div to properly contain overflow — fixes scroll area sizing
   - `marked` library is ~7KB gzipped, lightweight enough for playground use; configured with `breaks: true` and `gfm: true`
+  - Manual browser verification needed (no browser testing tool available)
+---
+
+## 2026-02-17 00:30 - US-061
+- What was implemented: Conversation persistence — messages saved to DB after each exchange, conversations can be loaded to restore full chat history
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/migrations/014_create_conversations.sql (new — conversations + messages tables with indexes)
+  - packages/orbiter-web/src/orbiter_web/routes/conversations.py (new — REST API for listing, getting, deleting conversations and listing messages)
+  - packages/orbiter-web/src/orbiter_web/routes/playground.py (updated — persistence helpers, _TokenCollector wrapper, save messages during chat)
+  - packages/orbiter-web/src/orbiter_web/app.py (updated — register conversations_router)
+  - packages/orbiter-web/src/pages/playground.astro (updated — handle conversation_created/loaded events, restoreMessages, addRestoredAgentMessage)
+- **Learnings for future iterations:**
+  - _TokenCollector pattern: wraps WebSocket to intercept send_json calls and collect streamed tokens without modifying all 4 provider streaming functions
+  - Conversation is created lazily on first real message (not on WebSocket connect) to avoid empty conversations
+  - System prompt is saved as first message in conversation to ensure full history reconstruction
+  - `load_conversation` is sent as a special message type after WebSocket open, before regular chat messages
+  - `conversation_loaded` response includes full messages array for client-side rendering
+  - ruff format reformats `async with` statements to use parenthesized context managers
   - Manual browser verification needed (no browser testing tool available)
 ---
