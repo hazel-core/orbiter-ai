@@ -1825,3 +1825,24 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - `_verify_kb_access()` helper validates KB ownership before any document operation
   - FastAPI UploadFile for file uploads — content read with `await file.read()`
 ---
+
+## 2026-02-17 - US-100
+- What was implemented: Document upload UI on the knowledge base detail page with:
+  - Drag-and-drop zone with visual feedback (border highlight on dragover) + file picker button
+  - Upload progress bar per file: uploading -> processing -> chunking -> complete (color transitions)
+  - Chunking preview: shows first 2-3 chunks after processing (inline during upload + modal for existing docs)
+  - Per-document settings: custom chunk size override, metadata tags input (expandable settings panel per file)
+  - Bulk upload: multiple files at once via file picker or drag-and-drop
+  - Document list: filename, type icon (color-coded per file type), chunk count, file size, upload date, status badge
+  - Delete document button with confirmation modal
+  - New backend endpoint: GET /api/knowledge-bases/:kb_id/documents/:doc_id/chunks for chunk preview
+- Files changed:
+  - packages/orbiter-web/src/pages/knowledge/[id].astro (major rewrite — upload zone, progress, doc list, modals)
+  - packages/orbiter-web/src/orbiter_web/routes/knowledge_bases.py (added list_document_chunks endpoint)
+- **Learnings for future iterations:**
+  - The [id].astro page uses `is:inline` script with `define:vars={{ kbId: id, typeIcons }}` to pass Astro variables to client-side JS
+  - Drag-and-drop uses `dragover`/`dragleave`/`drop` events with `e.preventDefault()` — must prevent default on dragover for drop to work
+  - FormData append for file upload — CSRF is auto-included by PageLayout's fetch monkey-patch
+  - Sequential file upload via promise chain (`Promise.resolve().then(...)`) for ordered progress display
+  - Document chunks endpoint uses `limit` query param for preview — keeps responses small
+---
