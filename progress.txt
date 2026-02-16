@@ -74,6 +74,8 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
 - Debug execution pattern: asyncio.Queue bridges WebSocket commands to engine; _wait_for_debug_command handles side-effect commands inline while waiting for flow-control
 - Variable tracking: both normal and debug execution emit `variables` dict in WebSocket events (node_completed, execution_completed); keyed by node_id
 - Canvas panels: use `variablePanelOpen` state + Cmd+J shortcut for toggling; panel shows in both exec and debug modes
+- Server-side handle type map in `tools.py` (`_NODE_HANDLE_MAP`) mirrors `handleTypes.ts` — keep both in sync when adding new node types
+- Tool Mode on nodes: stored as `tool_mode: boolean` in node.data; exposed via `GET /api/tools/workflow-nodes`; wrench badge in WorkflowNode.tsx
 
 ---
 
@@ -1396,5 +1398,20 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - `<template>` + `cloneNode(true)` pattern works well for dynamic form elements (parameter cards, header rows, nested params)
   - OpenAPI $ref resolution: walk `#/components/schemas/Name` path segments to resolve references
   - The existing `POST /api/tools` generic endpoint already handles `tool_type: "schema"`, but a dedicated `/schema/save` is cleaner for visual editor payloads
+  - Manual browser verification needed (no dev-browser skill configured)
+---
+
+## 2026-02-17 - US-084
+- What was implemented: Tool Mode toggle on workflow nodes — users can expose any node as an agent-callable tool
+- Files changed:
+  - packages/orbiter-web/src/islands/Canvas/WorkflowNode.tsx (added `tool_mode` to data interface, wrench icon badge)
+  - packages/orbiter-web/src/islands/Canvas/NodeConfigPanel.tsx (added Tool Mode toggle switch between Node ID and config divider)
+  - packages/orbiter-web/src/orbiter_web/routes/tools.py (added `GET /api/tools/workflow-nodes` endpoint, WorkflowNodeToolResponse model, _schema_from_node helper, server-side handle type map)
+- **Learnings for future iterations:**
+  - Tool Mode stored as `tool_mode: boolean` in node.data — no DB schema change needed since nodes_json is flexible JSON
+  - Server-side handle type map (_NODE_HANDLE_MAP) mirrors handleTypes.ts — keep in sync when adding new node types
+  - Toggle switch pattern: 36×20px button with absolutely-positioned circle, animate `left` for smooth sliding
+  - Wrench badge positioned top-left, offset downward when breakpoint is present to avoid overlap
+  - Workflow-node tools have composite IDs: `wfn_{workflow_id}_{node_id}` to ensure uniqueness
   - Manual browser verification needed (no dev-browser skill configured)
 ---
