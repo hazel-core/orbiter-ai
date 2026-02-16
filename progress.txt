@@ -439,3 +439,20 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Discover button shows inline success/error feedback with auto-reset after 3-4 seconds
   - Manual browser verification needed (no browser testing tool available)
 ---
+
+## 2026-02-17 03:45 - US-027
+- What was implemented: Model comparison view with checkbox selection (2-3 models), floating compare bar, side-by-side comparison modal with difference highlighting; default model dropdown in workspace settings (localStorage) and project detail page (server-side via PUT /api/projects/:id)
+- Files changed:
+  - packages/orbiter-web/src/pages/models.astro (major update — added compare checkboxes on model cards, floating compare bar, comparison modal with table layout, difference highlighting, max 3 selection with card ring highlight)
+  - packages/orbiter-web/src/pages/settings.astro (updated — added "Default Model" dropdown to workspace tab, fetches from /api/models, saved to localStorage as `orbiter_default_model`)
+  - packages/orbiter-web/src/pages/projects/[id].astro (updated — replaced static "Default Model" text with dynamic select dropdown populated from /api/models, "Save" button calls PUT /api/projects/:id with default_model)
+- **Learnings for future iterations:**
+  - Comparison checkbox state must be synced during renderModels() since the grid is rebuilt on filter changes — track selectedForCompare by model ID separately from DOM
+  - Max selection enforcement: disable unchecked checkboxes when 3 are already selected, re-enable when one is deselected
+  - `data-model-card-id` attribute on card div enables ring highlight for selected cards without re-rendering
+  - Difference highlighting in comparison table: collect formatted values, check if all same, apply `bg-coral/5` highlight when values differ
+  - Projects table already has `default_model` and `default_provider` columns — no migration needed
+  - ProjectUpdate Pydantic model already accepts `default_model` — no backend changes needed
+  - Workspace default model uses localStorage (`orbiter_default_model`), project default model uses server-side storage via the projects API
+  - Manual browser verification needed (no browser testing tool available)
+---
