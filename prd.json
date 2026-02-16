@@ -1373,7 +1373,7 @@
         "Typecheck passes"
       ],
       "priority": 79,
-      "passes": false,
+      "passes": true,
       "notes": "From PRD US-031"
     },
     {

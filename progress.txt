@@ -1308,3 +1308,15 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - History overlay: a blue bottom-center panel indicates when viewing a past run, with dismiss button
   - Cmd+H keyboard shortcut toggles history panel visibility
 ---
+
+## 2026-02-17 - US-079
+- Implemented tools schema and REST API
+- Created `019_create_tools.sql` migration: tools table with id, name, description, category (search/code/file/data/communication/custom), schema_json, code, tool_type (function/http/schema/mcp), usage_count, project_id, user_id, created_at
+- Rewrote `routes/tools.py` from static built-in catalog to full DB-backed CRUD
+- Endpoints: GET /api/tools (with category + project_id filters), POST /api/tools, GET /api/tools/:id, PUT /api/tools/:id, DELETE /api/tools/:id
+- Files changed: `orbiter_web/migrations/019_create_tools.sql`, `orbiter_web/routes/tools.py`
+- **Learnings for future iterations:**
+  - The old tools.py was a static built-in catalog — now replaced with DB-backed CRUD following the same patterns as agents.py
+  - Agent edit page and AgentNodeConfig.tsx both fetch /api/tools — they'll now get user-defined tools (empty initially); built-in tools were just placeholders
+  - CHECK constraints in SQLite enforce category and tool_type enums at the DB level
+---
