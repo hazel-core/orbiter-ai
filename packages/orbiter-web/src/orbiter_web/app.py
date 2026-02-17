@@ -15,6 +15,7 @@ from orbiter_web.middleware.rate_limit import RateLimitMiddleware
 from orbiter_web.routes.agents import router as agents_router
 from orbiter_web.routes.applications import router as applications_router
 from orbiter_web.routes.auth import router as auth_router
+from orbiter_web.routes.context_state import router as context_state_router
 from orbiter_web.routes.conversations import router as conversations_router
 from orbiter_web.routes.costs import router as costs_router
 from orbiter_web.routes.crews import router as crews_router
@@ -67,6 +68,7 @@ app.include_router(agents_router)
 app.include_router(neuron_pipelines_router)
 app.include_router(plans_router)
 app.include_router(applications_router)
+app.include_router(context_state_router)
 app.include_router(conversations_router)
 app.include_router(costs_router)
 app.include_router(crews_router)

@@ -238,9 +238,20 @@ const speakerOffIcon = '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none"
         id="trace-panel"
         class="hidden flex-shrink-0 w-80 lg:w-96 border-l border-dark/[0.08] bg-paper flex flex-col transition-all duration-200"
       >
-        <!-- Trace panel header -->
-        <div class="flex items-center justify-between px-4 py-3 border-b border-dark/[0.08]">
-          <h3 class="text-sm font-medium text-dark">Execution Trace</h3>
+        <!-- Trace panel header with tabs -->
+        <div class="flex items-center justify-between px-4 py-2 border-b border-dark/[0.08]">
+          <div class="flex items-center gap-1">
+            <button
+              id="trace-tab-btn"
+              class="px-2.5 py-1 text-xs font-medium rounded-md transition-colors text-dark bg-subtle"
+              data-tab="trace"
+            >Trace</button>
+            <button
+              id="context-tab-btn"
+              class="px-2.5 py-1 text-xs font-medium rounded-md transition-colors text-muted hover:text-dark"
+              data-tab="context"
+            >Context</button>
+          </div>
           <button
             id="trace-close-btn"
             class="p-1 rounded text-muted hover:text-dark hover:bg-subtle transition-colors"
@@ -249,25 +260,51 @@ const speakerOffIcon = '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none"
             <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
-        <!-- Cumulative usage summary -->
-        <div id="trace-summary" class="hidden px-4 py-2 border-b border-dark/[0.08] bg-subtle/30">
-          <div class="grid grid-cols-2 gap-x-4 gap-y-1">
-            <div class="text-[10px] text-muted">Total Tokens</div>
-            <div id="trace-total-tokens" class="text-[10px] text-dark font-medium text-right tabular-nums">0</div>
-            <div class="text-[10px] text-muted">Input / Output</div>
-            <div id="trace-io-tokens" class="text-[10px] text-dark text-right tabular-nums">0 / 0</div>
-            <div class="text-[10px] text-muted">Est. Cost</div>
-            <div id="trace-total-cost" class="text-[10px] text-dark font-medium text-right tabular-nums">$0.0000</div>
+        <!-- Trace tab content -->
+        <div id="trace-tab-content" class="flex flex-col flex-1 min-h-0">
+          <!-- Cumulative usage summary -->
+          <div id="trace-summary" class="hidden px-4 py-2 border-b border-dark/[0.08] bg-subtle/30">
+            <div class="grid grid-cols-2 gap-x-4 gap-y-1">
+              <div class="text-[10px] text-muted">Total Tokens</div>
+              <div id="trace-total-tokens" class="text-[10px] text-dark font-medium text-right tabular-nums">0</div>
+              <div class="text-[10px] text-muted">Input / Output</div>
+              <div id="trace-io-tokens" class="text-[10px] text-dark text-right tabular-nums">0 / 0</div>
+              <div class="text-[10px] text-muted">Est. Cost</div>
+              <div id="trace-total-cost" class="text-[10px] text-dark font-medium text-right tabular-nums">$0.0000</div>
+            </div>
+          </div>
+          <!-- Trace entries list -->
+          <div id="trace-entries" class="flex-1 overflow-y-auto px-3 py-3 space-y-2">
+            <div id="trace-empty" class="flex flex-col items-center justify-center h-full text-center px-4">
+              <div class="w-10 h-10 rounded-full bg-subtle flex items-center justify-center mb-3">
+                <span class="text-muted" set:html={traceIcon} />
+              </div>
+              <p class="text-xs text-muted">Execution traces will appear here as the agent responds.</p>
+              <p class="text-[10px] text-muted/60 mt-1">Toggle with <kbd class="px-1 py-0.5 bg-subtle rounded text-[10px]">Cmd+I</kbd></p>
+            </div>
           </div>
         </div>
-        <!-- Trace entries list -->
-        <div id="trace-entries" class="flex-1 overflow-y-auto px-3 py-3 space-y-2">
-          <div id="trace-empty" class="flex flex-col items-center justify-center h-full text-center px-4">
-            <div class="w-10 h-10 rounded-full bg-subtle flex items-center justify-center mb-3">
-              <span class="text-muted" set:html={traceIcon} />
+        <!-- Context tab content -->
+        <div id="context-tab-content" class="hidden flex flex-col flex-1 min-h-0">
+          <!-- Step navigator -->
+          <div id="context-step-nav" class="flex items-center gap-2 px-4 py-2 border-b border-dark/[0.08] bg-subtle/30">
+            <button id="context-step-prev" class="p-0.5 rounded text-muted hover:text-dark disabled:opacity-30 transition-colors" disabled>
+              <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+            </button>
+            <span id="context-step-label" class="text-[10px] text-muted flex-1 text-center tabular-nums">Step 0 / 0</span>
+            <button id="context-step-next" class="p-0.5 rounded text-muted hover:text-dark disabled:opacity-30 transition-colors" disabled>
+              <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+          </div>
+          <!-- Context tree view -->
+          <div id="context-tree" class="flex-1 overflow-y-auto px-3 py-3">
+            <div id="context-empty" class="flex flex-col items-center justify-center h-full text-center px-4">
+              <div class="w-10 h-10 rounded-full bg-subtle flex items-center justify-center mb-3">
+                <svg class="h-5 w-5 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 6v10"/><path d="M5.6 5.6l4.25 4.25m4.3 4.3L18.4 18.4"/><path d="M1 12h6m6 0h10"/><path d="M5.6 18.4l4.25-4.25m4.3-4.3L18.4 5.6"/></svg>
+              </div>
+              <p class="text-xs text-muted">Context state will appear here as the agent runs.</p>
+              <p class="text-[10px] text-muted/60 mt-1">Shows hierarchical state, tokens & changes per step</p>
             </div>
-            <p class="text-xs text-muted">Execution traces will appear here as the agent responds.</p>
-            <p class="text-[10px] text-muted/60 mt-1">Toggle with <kbd class="px-1 py-0.5 bg-subtle rounded text-[10px]">Cmd+I</kbd></p>
           </div>
         </div>
       </div>
@@ -320,6 +357,17 @@ const traceToggleBtn = document.getElementById("trace-toggle-btn")!;
 const traceCloseBtn = document.getElementById("trace-close-btn")!;
 const traceEntries = document.getElementById("trace-entries")!;
 const traceEmpty = document.getElementById("trace-empty")!;
+
+/* Tab & context inspector elements */
+const traceTabBtn = document.getElementById("trace-tab-btn")!;
+const contextTabBtn = document.getElementById("context-tab-btn")!;
+const traceTabContent = document.getElementById("trace-tab-content")!;
+const contextTabContent = document.getElementById("context-tab-content")!;
+const contextTree = document.getElementById("context-tree")!;
+const contextEmpty = document.getElementById("context-empty")!;
+const contextStepLabel = document.getElementById("context-step-label")!;
+const contextStepPrev = document.getElementById("context-step-prev") as HTMLButtonElement;
+const contextStepNext = document.getElementById("context-step-next") as HTMLButtonElement;
 
 let ws: WebSocket | null = null;
 let currentAgentId: string | null = null;
@@ -491,6 +539,9 @@ function addTraceEntry(data: TraceFinishData, contentPreview: string) {
 
   traceEmpty.classList.add("hidden");
   renderTraceEntry(entry);
+
+  /* Build a context state snapshot from accumulated trace data */
+  buildContextSnapshotFromTrace(entry);
 }
 
 /* Finish reason badge colors */
@@ -806,10 +857,429 @@ function clearTraceEntries() {
     if (c.id !== "trace-empty") traceEntries.removeChild(c);
   });
   traceEmpty.classList.remove("hidden");
+  clearContextSnapshots();
 }
 
 traceToggleBtn.addEventListener("click", toggleTracePanel);
 traceCloseBtn.addEventListener("click", toggleTracePanel);
+
+/* ---- Tab switching ---- */
+let activeTab: "trace" | "context" = "trace";
+
+function switchTab(tab: "trace" | "context") {
+  activeTab = tab;
+  if (tab === "trace") {
+    traceTabBtn.classList.add("text-dark", "bg-subtle");
+    traceTabBtn.classList.remove("text-muted");
+    contextTabBtn.classList.remove("text-dark", "bg-subtle");
+    contextTabBtn.classList.add("text-muted");
+    traceTabContent.classList.remove("hidden");
+    contextTabContent.classList.add("hidden");
+  } else {
+    contextTabBtn.classList.add("text-dark", "bg-subtle");
+    contextTabBtn.classList.remove("text-muted");
+    traceTabBtn.classList.remove("text-dark", "bg-subtle");
+    traceTabBtn.classList.add("text-muted");
+    contextTabContent.classList.remove("hidden");
+    traceTabContent.classList.add("hidden");
+  }
+}
+
+traceTabBtn.addEventListener("click", function() { switchTab("trace"); });
+contextTabBtn.addEventListener("click", function() { switchTab("context"); });
+
+/* ---- Context State Inspector ---- */
+
+interface ContextStateEntry {
+  value: unknown;
+  type: string;
+  status?: "new" | "modified" | "removed" | "unchanged";
+  previous_value?: unknown;
+}
+
+interface ContextStateNode {
+  task_id: string;
+  parent_task_id: string | null;
+  local_entries: Record<string, ContextStateEntry>;
+  token_usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+  token_delta: { prompt_delta: number; output_delta: number; total_delta: number } | null;
+  fork_event: { timestamp: string; parent_task_id: string } | null;
+  merge_event: { timestamp: string; net_tokens: number } | null;
+  children: ContextStateNode[];
+}
+
+interface ContextSnapshot {
+  step: number;
+  tree: ContextStateNode;
+}
+
+const contextSnapshots: ContextSnapshot[] = [];
+let currentContextStep = 0;
+
+const FORK_ICON = '<svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9v1a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V9"/><line x1="12" y1="12" x2="12" y2="15"/></svg>';
+const MERGE_ICON = '<svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="18" r="3"/><path d="M6 15v-1a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"/><line x1="12" y1="9" x2="12" y2="12"/></svg>';
+const STATE_ICON = '<svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="3" y1="9" x2="21" y2="9"/></svg>';
+
+function buildContextSnapshotFromTrace(entry: TraceEntry) {
+  /* Synthesize a context state snapshot from the trace entry.
+     In production, the agent runtime sends real context_state events.
+     Here we build a representative tree from the trace data so the
+     inspector is exercisable during normal playground usage. */
+  const promptTok = entry.usage?.prompt_tokens || 0;
+  const completionTok = entry.usage?.completion_tokens || 0;
+  const totalTok = promptTok + completionTok;
+
+  const rootEntries: Record<string, ContextStateEntry> = {};
+
+  // Add current model info
+  if (entry.model) {
+    rootEntries["model"] = { value: entry.model, type: "string" };
+  }
+  rootEntries["step"] = { value: entry.id, type: "number" };
+  rootEntries["finish_reason"] = { value: entry.finish_reason || "stop", type: "string" };
+
+  // Build tool call children
+  const toolChildren: ContextStateNode[] = entry.tool_calls.map(function(tc, idx) {
+    const toolEntries: Record<string, ContextStateEntry> = {
+      "function": { value: tc.name, type: "string" },
+    };
+    if (tc.arguments) {
+      toolEntries["arguments"] = { value: tc.arguments, type: "object" };
+    }
+    if (tc.result) {
+      toolEntries["result"] = { value: tc.result.slice(0, 200), type: "string" };
+    }
+    if (tc.error) {
+      toolEntries["error"] = { value: tc.error, type: "string" };
+    }
+    return {
+      task_id: "tool_call_" + entry.id + "_" + idx,
+      parent_task_id: "step_" + entry.id,
+      local_entries: toolEntries,
+      token_usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+      token_delta: null,
+      fork_event: { timestamp: new Date(entry.timestamp).toISOString(), parent_task_id: "step_" + entry.id },
+      merge_event: null,
+      children: [],
+    };
+  });
+
+  const stepNode: ContextStateNode = {
+    task_id: "step_" + entry.id,
+    parent_task_id: "root",
+    local_entries: rootEntries,
+    token_usage: { prompt_tokens: promptTok, completion_tokens: completionTok, total_tokens: totalTok },
+    token_delta: null,
+    fork_event: null,
+    merge_event: null,
+    children: toolChildren,
+  };
+
+  // Accumulate into the root tree
+  const prevSnapshot = contextSnapshots.length > 0 ? contextSnapshots[contextSnapshots.length - 1] : null;
+  const prevChildren = prevSnapshot ? [...prevSnapshot.tree.children] : [];
+
+  // Compute running totals
+  let runningPrompt = promptTok;
+  let runningCompletion = completionTok;
+  prevChildren.forEach(function(c) {
+    runningPrompt += c.token_usage.prompt_tokens;
+    runningCompletion += c.token_usage.completion_tokens;
+  });
+
+  const rootTree: ContextStateNode = {
+    task_id: "root",
+    parent_task_id: null,
+    local_entries: {
+      "total_steps": { value: entry.id, type: "number" },
+      "cumulative_tokens": { value: runningPrompt + runningCompletion, type: "number" },
+      "cumulative_cost": { value: cumulativeCost, type: "number" },
+    },
+    token_usage: { prompt_tokens: runningPrompt, completion_tokens: runningCompletion, total_tokens: runningPrompt + runningCompletion },
+    token_delta: null,
+    fork_event: null,
+    merge_event: null,
+    children: [...prevChildren, stepNode],
+  };
+
+  addContextSnapshot(rootTree);
+}
+
+function addContextSnapshot(tree: ContextStateNode) {
+  const prevTree = contextSnapshots.length > 0 ? contextSnapshots[contextSnapshots.length - 1].tree : null;
+  // Compute change status by diffing against previous snapshot
+  if (prevTree) {
+    diffContextTrees(tree, prevTree);
+  }
+  const step = contextSnapshots.length + 1;
+  contextSnapshots.push({ step, tree });
+  currentContextStep = contextSnapshots.length - 1;
+  updateContextStepNav();
+  renderContextTree();
+  contextEmpty.classList.add("hidden");
+}
+
+function diffContextTrees(current: ContextStateNode, previous: ContextStateNode | null) {
+  if (!previous) {
+    // All entries are new
+    for (const key of Object.keys(current.local_entries)) {
+      current.local_entries[key].status = "new";
+    }
+  } else {
+    const prevEntries = previous.local_entries;
+    const curEntries = current.local_entries;
+
+    for (const key of Object.keys(curEntries)) {
+      if (!(key in prevEntries)) {
+        curEntries[key].status = "new";
+      } else if (JSON.stringify(curEntries[key].value) !== JSON.stringify(prevEntries[key].value)) {
+        curEntries[key].status = "modified";
+        curEntries[key].previous_value = prevEntries[key].value;
+      } else {
+        curEntries[key].status = "unchanged";
+      }
+    }
+    // Detect removed keys — add them as removed entries
+    for (const key of Object.keys(prevEntries)) {
+      if (!(key in curEntries)) {
+        curEntries[key] = {
+          value: prevEntries[key].value,
+          type: prevEntries[key].type,
+          status: "removed",
+        };
+      }
+    }
+  }
+
+  // Diff children by matching task_id
+  for (const child of current.children) {
+    const prevChild = previous?.children.find(function(c) { return c.task_id === child.task_id; }) || null;
+    diffContextTrees(child, prevChild);
+  }
+}
+
+function updateContextStepNav() {
+  const total = contextSnapshots.length;
+  const current = currentContextStep + 1;
+  contextStepLabel.textContent = total > 0 ? "Step " + current + " / " + total : "Step 0 / 0";
+  contextStepPrev.disabled = currentContextStep <= 0;
+  contextStepNext.disabled = currentContextStep >= total - 1;
+}
+
+contextStepPrev.addEventListener("click", function() {
+  if (currentContextStep > 0) {
+    currentContextStep--;
+    updateContextStepNav();
+    renderContextTree();
+  }
+});
+
+contextStepNext.addEventListener("click", function() {
+  if (currentContextStep < contextSnapshots.length - 1) {
+    currentContextStep++;
+    updateContextStepNav();
+    renderContextTree();
+  }
+});
+
+function renderContextTree() {
+  if (contextSnapshots.length === 0) return;
+  const snapshot = contextSnapshots[currentContextStep];
+  // Clear existing tree (keep empty placeholder)
+  const children = Array.from(contextTree.children);
+  children.forEach(function(c) {
+    if (c.id !== "context-empty") contextTree.removeChild(c);
+  });
+  const treeEl = renderContextNode(snapshot.tree, 0);
+  contextTree.appendChild(treeEl);
+}
+
+function renderContextNode(node: ContextStateNode, depth: number): HTMLElement {
+  const container = document.createElement("div");
+  if (depth > 0) {
+    container.style.marginLeft = (depth * 16) + "px";
+    container.style.borderLeft = "2px solid var(--zen-subtle, #e8e6d9)";
+    container.style.paddingLeft = "8px";
+  }
+
+  // Node header
+  const header = document.createElement("button");
+  header.type = "button";
+  header.className = "w-full flex items-center gap-1.5 px-2 py-1.5 text-left rounded-md hover:bg-subtle/50 transition-colors group";
+
+  const chevron = document.createElement("span");
+  chevron.className = "flex-shrink-0 text-muted transition-transform";
+  chevron.innerHTML = CHEVRON_DOWN;
+
+  const taskLabel = document.createElement("span");
+  taskLabel.className = "text-xs font-medium text-dark truncate";
+  taskLabel.textContent = node.task_id;
+
+  const tokenBadge = document.createElement("span");
+  tokenBadge.className = "ml-auto flex-shrink-0 text-[9px] px-1.5 py-0.5 rounded-full bg-subtle text-muted tabular-nums";
+  tokenBadge.textContent = node.token_usage.total_tokens.toLocaleString() + " tok";
+
+  header.appendChild(chevron);
+
+  // Fork/merge event badges
+  if (node.fork_event) {
+    const forkBadge = document.createElement("span");
+    forkBadge.className = "flex-shrink-0 text-zen-blue";
+    forkBadge.innerHTML = FORK_ICON;
+    forkBadge.title = "Forked from " + node.fork_event.parent_task_id;
+    header.appendChild(forkBadge);
+  }
+  if (node.merge_event) {
+    const mergeBadge = document.createElement("span");
+    mergeBadge.className = "flex-shrink-0 text-zen-green";
+    mergeBadge.innerHTML = MERGE_ICON;
+    mergeBadge.title = "Merged (" + (node.merge_event.net_tokens >= 0 ? "+" : "") + node.merge_event.net_tokens + " tokens)";
+    header.appendChild(mergeBadge);
+  }
+
+  header.appendChild(taskLabel);
+  header.appendChild(tokenBadge);
+
+  container.appendChild(header);
+
+  // Body: key-value entries + token details
+  const body = document.createElement("div");
+  body.className = "ml-5 mt-1 mb-2 space-y-0.5";
+
+  // Token usage detail
+  if (node.token_usage.total_tokens > 0) {
+    const tokenRow = document.createElement("div");
+    tokenRow.className = "flex items-center gap-2 text-[10px] text-muted px-1 py-0.5";
+    let tokenText = "In: " + node.token_usage.prompt_tokens.toLocaleString() + " · Out: " + node.token_usage.completion_tokens.toLocaleString();
+    if (node.token_delta) {
+      const delta = node.token_delta.total_delta;
+      const sign = delta >= 0 ? "+" : "";
+      tokenText += " · Delta: " + sign + delta.toLocaleString();
+    }
+    tokenRow.textContent = tokenText;
+    body.appendChild(tokenRow);
+  }
+
+  // Merge event info
+  if (node.merge_event) {
+    const mergeRow = document.createElement("div");
+    mergeRow.className = "flex items-center gap-1 text-[10px] px-1 py-0.5 rounded bg-zen-green/10 text-zen-green";
+    mergeRow.innerHTML = '<span class="flex-shrink-0">' + MERGE_ICON + '</span>';
+    const mergeText = document.createElement("span");
+    const netSign = node.merge_event.net_tokens >= 0 ? "+" : "";
+    mergeText.textContent = "Merged · " + netSign + node.merge_event.net_tokens.toLocaleString() + " net tokens";
+    mergeRow.appendChild(mergeText);
+    body.appendChild(mergeRow);
+  }
+
+  // Key-value entries
+  const entryKeys = Object.keys(node.local_entries);
+  if (entryKeys.length > 0) {
+    const tableEl = document.createElement("div");
+    tableEl.className = "border border-dark/[0.06] rounded-md overflow-hidden mt-1";
+
+    const tableHeader = document.createElement("div");
+    tableHeader.className = "grid grid-cols-[1fr_1fr_auto] gap-1 px-2 py-1 bg-subtle/50 text-[9px] text-muted font-medium uppercase tracking-wide";
+    tableHeader.innerHTML = "<span>Key</span><span>Value</span><span>Type</span>";
+    tableEl.appendChild(tableHeader);
+
+    entryKeys.forEach(function(key) {
+      const entry = node.local_entries[key];
+      const row = document.createElement("div");
+      row.className = "grid grid-cols-[1fr_1fr_auto] gap-1 px-2 py-1 border-t border-dark/[0.04] text-[11px] items-start";
+
+      // Status-based styling
+      if (entry.status === "new") {
+        row.classList.add("bg-zen-green/5");
+      } else if (entry.status === "modified") {
+        row.classList.add("bg-yellow-500/5");
+      } else if (entry.status === "removed") {
+        row.classList.add("bg-coral/5", "line-through", "opacity-60");
+      }
+
+      const keyEl = document.createElement("span");
+      keyEl.className = "font-medium text-dark truncate";
+      keyEl.textContent = key;
+      keyEl.title = key;
+
+      // Status indicator dot
+      if (entry.status === "new") {
+        const dot = document.createElement("span");
+        dot.className = "inline-block w-1.5 h-1.5 rounded-full bg-zen-green ml-1 align-middle";
+        dot.title = "New";
+        keyEl.appendChild(dot);
+      } else if (entry.status === "modified") {
+        const dot = document.createElement("span");
+        dot.className = "inline-block w-1.5 h-1.5 rounded-full bg-yellow-500 ml-1 align-middle";
+        dot.title = "Modified";
+        keyEl.appendChild(dot);
+      } else if (entry.status === "removed") {
+        const dot = document.createElement("span");
+        dot.className = "inline-block w-1.5 h-1.5 rounded-full bg-coral ml-1 align-middle";
+        dot.title = "Removed";
+        keyEl.appendChild(dot);
+      }
+
+      const valueEl = document.createElement("span");
+      valueEl.className = "text-dark/70 truncate font-mono text-[10px]";
+      const valStr = typeof entry.value === "object" ? JSON.stringify(entry.value) : String(entry.value);
+      valueEl.textContent = valStr;
+      valueEl.title = valStr;
+
+      // Show previous value on hover for modified entries
+      if (entry.status === "modified" && entry.previous_value !== undefined) {
+        const prevStr = typeof entry.previous_value === "object" ? JSON.stringify(entry.previous_value) : String(entry.previous_value);
+        valueEl.title = "Current: " + valStr + "\nPrevious: " + prevStr;
+      }
+
+      const typeEl = document.createElement("span");
+      typeEl.className = "text-[9px] px-1 py-0.5 rounded bg-subtle text-muted whitespace-nowrap";
+      typeEl.textContent = entry.type;
+
+      row.appendChild(keyEl);
+      row.appendChild(valueEl);
+      row.appendChild(typeEl);
+      tableEl.appendChild(row);
+    });
+
+    body.appendChild(tableEl);
+  } else if (!node.merge_event && node.token_usage.total_tokens === 0) {
+    const emptyRow = document.createElement("div");
+    emptyRow.className = "text-[10px] text-muted/60 px-1 py-0.5 italic";
+    emptyRow.textContent = "No local state entries";
+    body.appendChild(emptyRow);
+  }
+
+  container.appendChild(body);
+
+  // Toggle expand/collapse
+  let nodeExpanded = true;
+  header.addEventListener("click", function() {
+    nodeExpanded = !nodeExpanded;
+    body.classList.toggle("hidden", !nodeExpanded);
+    chevron.innerHTML = nodeExpanded ? CHEVRON_DOWN : CHEVRON_RIGHT;
+  });
+
+  // Render children recursively
+  if (node.children.length > 0) {
+    node.children.forEach(function(child) {
+      container.appendChild(renderContextNode(child, depth + 1));
+    });
+  }
+
+  return container;
+}
+
+function clearContextSnapshots() {
+  contextSnapshots.length = 0;
+  currentContextStep = 0;
+  updateContextStepNav();
+  const children = Array.from(contextTree.children);
+  children.forEach(function(c) {
+    if (c.id !== "context-empty") contextTree.removeChild(c);
+  });
+  contextEmpty.classList.remove("hidden");
+}
 
 /* ---- Load agents ---- */
 async function loadAgents() {
@@ -911,6 +1381,11 @@ function connectWebSocket(agentId: string, conversationId?: string) {
     } else if (data.type === "conversation_loaded") {
       currentConversationId = data.conversation_id;
       restoreMessages(data.messages);
+    } else if (data.type === "context_state") {
+      /* Context state snapshot from agent runtime */
+      if (data.tree) {
+        addContextSnapshot(data.tree);
+      }
     }
   };
 }
