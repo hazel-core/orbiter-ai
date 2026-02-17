@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from orbiter_web.database import get_db
@@ -288,10 +288,176 @@ async def delete_deployment(
 
 
 # ---------------------------------------------------------------------------
+# Widget configuration endpoints
+# ---------------------------------------------------------------------------
+
+
+class WidgetConfig(BaseModel):
+    primary_color: str = Field("#F76F53", max_length=50)
+    position: str = Field("bottom-right", pattern="^(bottom-right|bottom-left)$")
+    welcome_message: str = Field("Hi! How can I help you?", max_length=500)
+    avatar_url: str = Field("", max_length=2000)
+
+
+class WidgetConfigUpdate(WidgetConfig):
+    cors_origins: str = Field("", max_length=5000)
+
+
+class WidgetConfigResponse(WidgetConfig):
+    cors_origins: str = ""
+
+
+class EmbedCodeResponse(BaseModel):
+    embed_code: str
+
+
+@router.get("/{deployment_id}/widget")
+async def get_widget_config(
+    deployment_id: str,
+    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+) -> WidgetConfigResponse:
+    """Get widget configuration for a deployment."""
+    async with get_db() as db:
+        cur = await db.execute(
+            "SELECT widget_config_json, cors_origins FROM deployments WHERE id = ? AND user_id = ?",
+            (deployment_id, user["id"]),
+        )
+        row = await cur.fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Deployment not found")
+
+        config = json.loads(row["widget_config_json"] or "{}")
+        return WidgetConfigResponse(
+            primary_color=config.get("primary_color", "#F76F53"),
+            position=config.get("position", "bottom-right"),
+            welcome_message=config.get("welcome_message", "Hi! How can I help you?"),
+            avatar_url=config.get("avatar_url", ""),
+            cors_origins=row["cors_origins"] or "",
+        )
+
+
+@router.put("/{deployment_id}/widget")
+async def update_widget_config(
+    deployment_id: str,
+    body: WidgetConfigUpdate,
+    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+) -> WidgetConfigResponse:
+    """Update widget configuration for a deployment."""
+    async with get_db() as db:
+        cur = await db.execute(
+            "SELECT id FROM deployments WHERE id = ? AND user_id = ?",
+            (deployment_id, user["id"]),
+        )
+        if await cur.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Deployment not found")
+
+        config_json = json.dumps(
+            {
+                "primary_color": body.primary_color,
+                "position": body.position,
+                "welcome_message": sanitize_html(body.welcome_message),
+                "avatar_url": sanitize_html(body.avatar_url),
+            }
+        )
+        now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
+
+        await db.execute(
+            "UPDATE deployments SET widget_config_json = ?, cors_origins = ?, updated_at = ? WHERE id = ?",
+            (config_json, body.cors_origins.strip(), now, deployment_id),
+        )
+        await db.commit()
+
+        return WidgetConfigResponse(
+            primary_color=body.primary_color,
+            position=body.position,
+            welcome_message=body.welcome_message,
+            avatar_url=body.avatar_url,
+            cors_origins=body.cors_origins.strip(),
+        )
+
+
+@router.get("/{deployment_id}/embed-code")
+async def get_embed_code(
+    deployment_id: str,
+    request: Request,
+    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+) -> EmbedCodeResponse:
+    """Generate the embed code snippet for a deployment widget."""
+    async with get_db() as db:
+        cur = await db.execute(
+            "SELECT id, widget_config_json FROM deployments WHERE id = ? AND user_id = ?",
+            (deployment_id, user["id"]),
+        )
+        row = await cur.fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Deployment not found")
+
+    base_url = str(request.base_url).rstrip("/")
+    config = json.loads(row["widget_config_json"] or "{}")
+    primary_color = config.get("primary_color", "#F76F53")
+    position = config.get("position", "bottom-right")
+    welcome_message = config.get("welcome_message", "Hi! How can I help you?")
+    avatar_url = config.get("avatar_url", "")
+
+    embed_code = (
+        f'<script src="{base_url}/widget.js" '
+        f'data-deployment-id="{deployment_id}" '
+        f'data-base-url="{base_url}" '
+        f'data-primary-color="{_escape_attr(primary_color)}" '
+        f'data-position="{_escape_attr(position)}" '
+        f'data-welcome-message="{_escape_attr(welcome_message)}" '
+        + (f'data-avatar-url="{_escape_attr(avatar_url)}" ' if avatar_url else "")
+        + "defer></script>"
+    )
+
+    return EmbedCodeResponse(embed_code=embed_code)
+
+
+def _escape_attr(value: str) -> str:
+    """Escape a value for use in an HTML attribute."""
+    return (
+        value.replace("&", "&amp;").replace('"', "&quot;").replace("<", "&lt;").replace(">", "&gt;")
+    )
+
+
+# ---------------------------------------------------------------------------
 # Runtime endpoint — POST /api/deployed/:id/run
 # ---------------------------------------------------------------------------
 
 deployed_router = APIRouter(prefix="/api/deployed", tags=["deployed"])
+
+
+async def _check_cors(deployment_id: str, origin: str | None) -> str | None:
+    """Return the origin if it's allowed by the deployment's cors_origins, else None."""
+    if not origin:
+        return None
+    async with get_db() as db:
+        cur = await db.execute(
+            "SELECT cors_origins FROM deployments WHERE id = ?",
+            (deployment_id,),
+        )
+        row = await cur.fetchone()
+        if row is None:
+            return None
+        allowed_raw = row["cors_origins"] or ""
+        allowed = [o.strip() for o in allowed_raw.split(",") if o.strip()]
+        if "*" in allowed or origin in allowed:
+            return origin
+    return None
+
+
+@deployed_router.options("/{deployment_id}/run")
+async def preflight_run(deployment_id: str, request: Request) -> JSONResponse:
+    """Handle CORS preflight for widget embed requests."""
+    origin = request.headers.get("origin")
+    allowed_origin = await _check_cors(deployment_id, origin)
+    headers: dict[str, str] = {}
+    if allowed_origin:
+        headers["Access-Control-Allow-Origin"] = allowed_origin
+        headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+        headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+        headers["Access-Control-Max-Age"] = "3600"
+    return JSONResponse(content=None, status_code=204, headers=headers)
 
 
 async def _authenticate_deployment(deployment_id: str, request: Request) -> dict[str, Any]:
@@ -343,11 +509,24 @@ async def run_deployed(
     """
     deployment = await _authenticate_deployment(deployment_id, request)
 
-    if deployment["entity_type"] == "agent":
-        return await _run_agent_deployment(deployment, body)
+    origin = request.headers.get("origin")
+    allowed_origin = await _check_cors(deployment_id, origin)
+    cors_headers: dict[str, str] = {}
+    if allowed_origin:
+        cors_headers["Access-Control-Allow-Origin"] = allowed_origin
 
-    # workflow
-    return await _run_workflow_deployment(deployment, body)
+    if deployment["entity_type"] == "agent":
+        result = await _run_agent_deployment(deployment, body)
+    else:
+        result = await _run_workflow_deployment(deployment, body)
+
+    # Attach CORS headers for cross-origin widget requests.
+    if cors_headers and isinstance(result, StreamingResponse):
+        result.headers.update(cors_headers)
+    elif cors_headers and isinstance(result, dict):
+        return JSONResponse(content=result, headers=cors_headers)
+
+    return result
 
 
 async def _run_agent_deployment(deployment: dict[str, Any], body: DeployedRunRequest) -> Any:
