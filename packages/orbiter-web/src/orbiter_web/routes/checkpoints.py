@@ -49,6 +49,15 @@ class RestoreOut(BaseModel):
     message: str = "Run status reset to 'pending' for resume"
 
 
+class CheckpointDiffOut(BaseModel):
+    checkpoint_a: CheckpointOut
+    checkpoint_b: CheckpointOut
+    added_keys: list[str]
+    removed_keys: list[str]
+    changed_keys: list[str]
+    unchanged_keys: list[str]
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -199,6 +208,103 @@ async def restore_checkpoint(
             state_blob=blob,
             created_at=cp["created_at"],
         ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# DELETE /api/runs/:runId/checkpoints/:cpId — delete a checkpoint
+# ---------------------------------------------------------------------------
+
+
+@router.delete("/{run_id}/checkpoints/{cp_id}", status_code=204)
+async def delete_checkpoint(
+    run_id: str,
+    cp_id: str,
+    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+) -> None:
+    async with get_db() as db:
+        await _verify_run_ownership(db, run_id, user["id"])
+
+        cursor = await db.execute(
+            "SELECT id FROM checkpoints WHERE id = ? AND run_id = ?",
+            (cp_id, run_id),
+        )
+        if await cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Checkpoint not found")
+
+        await db.execute("DELETE FROM checkpoints WHERE id = ?", (cp_id,))
+        await db.commit()
+
+
+# ---------------------------------------------------------------------------
+# GET /api/runs/:runId/checkpoints/diff?a=...&b=... — compare two checkpoints
+# ---------------------------------------------------------------------------
+
+
+@router.get("/{run_id}/checkpoints/diff")
+async def diff_checkpoints(
+    run_id: str,
+    a: str = Query(..., description="First checkpoint ID"),
+    b: str = Query(..., description="Second checkpoint ID"),
+    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+) -> CheckpointDiffOut:
+    async with get_db() as db:
+        await _verify_run_ownership(db, run_id, user["id"])
+
+        rows = {}
+        for cp_id in (a, b):
+            cursor = await db.execute(
+                "SELECT * FROM checkpoints WHERE id = ? AND run_id = ?",
+                (cp_id, run_id),
+            )
+            row = await cursor.fetchone()
+            if row is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Checkpoint {cp_id} not found",
+                )
+            rows[cp_id] = dict(row)
+
+    def _parse_blob(raw: str | dict[str, Any]) -> dict[str, Any]:
+        if isinstance(raw, dict):
+            return raw
+        with contextlib.suppress(json.JSONDecodeError, TypeError):
+            parsed = json.loads(raw)
+            if isinstance(parsed, dict):
+                return parsed
+        return {"_raw": raw}
+
+    blob_a = _parse_blob(rows[a]["state_blob"])
+    blob_b = _parse_blob(rows[b]["state_blob"])
+    keys_a = set(blob_a.keys())
+    keys_b = set(blob_b.keys())
+
+    added = sorted(keys_b - keys_a)
+    removed = sorted(keys_a - keys_b)
+    common = keys_a & keys_b
+    changed = sorted(k for k in common if blob_a[k] != blob_b[k])
+    unchanged = sorted(common - set(changed))
+
+    def _make_out(cp_dict: dict[str, Any]) -> CheckpointOut:
+        blob = cp_dict["state_blob"]
+        with contextlib.suppress(json.JSONDecodeError, TypeError):
+            blob = json.loads(blob)
+        return CheckpointOut(
+            id=cp_dict["id"],
+            run_id=cp_dict["run_id"],
+            name=cp_dict["name"],
+            step_number=cp_dict["step_number"],
+            state_blob=blob,
+            created_at=cp_dict["created_at"],
+        )
+
+    return CheckpointDiffOut(
+        checkpoint_a=_make_out(rows[a]),
+        checkpoint_b=_make_out(rows[b]),
+        added_keys=added,
+        removed_keys=removed,
+        changed_keys=changed,
+        unchanged_keys=unchanged,
     )
 
 

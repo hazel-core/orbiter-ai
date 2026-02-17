@@ -49,6 +49,24 @@ interface RunDetail extends RunSummary {
   node_executions: NodeExecution[];
 }
 
+interface Checkpoint {
+  id: string;
+  run_id: string;
+  name: string;
+  step_number: number;
+  state_blob: unknown;
+  created_at: string;
+}
+
+interface CheckpointDiff {
+  checkpoint_a: Checkpoint;
+  checkpoint_b: Checkpoint;
+  added_keys: string[];
+  removed_keys: string[];
+  changed_keys: string[];
+  unchanged_keys: string[];
+}
+
 type NodeExecStatus = "running" | "completed" | "failed";
 
 interface RunHistoryPanelProps {
@@ -123,6 +141,16 @@ export default function RunHistoryPanel({
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [runDetail, setRunDetail] = useState<RunDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+
+  // Checkpoints for selected run
+  const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([]);
+  const [checkpointsTotal, setCheckpointsTotal] = useState(0);
+  const [checkpointsLoading, setCheckpointsLoading] = useState(false);
+  const [savingCheckpoint, setSavingCheckpoint] = useState(false);
+  const [checkpointDiff, setCheckpointDiff] = useState<CheckpointDiff | null>(null);
+  const [diffLoading, setDiffLoading] = useState(false);
+  const [diffIds, setDiffIds] = useState<[string | null, string | null]>([null, null]);
+  const [autoCheckpointInterval, setAutoCheckpointInterval] = useState(5);
 
   // Replay with modifications
   const [replayOpen, setReplayOpen] = useState(false);
@@ -267,6 +295,103 @@ export default function RunHistoryPanel({
       setCompareLoading(false);
     });
   }, [compareMode, compareRunIds, workflowId]);
+
+  // Fetch checkpoints when a run is selected
+  const fetchCheckpoints = useCallback(async (runId: string) => {
+    setCheckpointsLoading(true);
+    try {
+      const res = await fetch(`/api/runs/${runId}/checkpoints?limit=50`);
+      if (res.ok) {
+        const data = await res.json();
+        setCheckpoints(data.checkpoints);
+        setCheckpointsTotal(data.total);
+      }
+    } finally {
+      setCheckpointsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (selectedRunId) {
+      fetchCheckpoints(selectedRunId);
+      setCheckpointDiff(null);
+      setDiffIds([null, null]);
+    } else {
+      setCheckpoints([]);
+      setCheckpointsTotal(0);
+    }
+  }, [selectedRunId, fetchCheckpoints]);
+
+  const handleSaveCheckpoint = useCallback(async () => {
+    if (!selectedRunId || !runDetail) return;
+    setSavingCheckpoint(true);
+    try {
+      const res = await fetch(`/api/runs/${selectedRunId}/checkpoints`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: `Manual checkpoint @ step ${runDetail.step_count ?? 0}`,
+          step_number: runDetail.step_count ?? 0,
+          state_blob: { status: runDetail.status, step_count: runDetail.step_count, total_tokens: runDetail.total_tokens },
+        }),
+      });
+      if (res.ok) {
+        fetchCheckpoints(selectedRunId);
+      }
+    } finally {
+      setSavingCheckpoint(false);
+    }
+  }, [selectedRunId, runDetail, fetchCheckpoints]);
+
+  const handleRestoreCheckpoint = useCallback(async (cpId: string) => {
+    if (!selectedRunId) return;
+    const res = await fetch(`/api/runs/${selectedRunId}/checkpoints/${cpId}/restore`, { method: "POST" });
+    if (res.ok) {
+      fetchRunDetail(selectedRunId);
+    }
+  }, [selectedRunId, fetchRunDetail]);
+
+  const handleDeleteCheckpoint = useCallback(async (cpId: string) => {
+    if (!selectedRunId) return;
+    const res = await fetch(`/api/runs/${selectedRunId}/checkpoints/${cpId}`, { method: "DELETE" });
+    if (res.ok || res.status === 204) {
+      fetchCheckpoints(selectedRunId);
+    }
+  }, [selectedRunId, fetchCheckpoints]);
+
+  const handleDiffCheckpoints = useCallback(async (idA: string, idB: string) => {
+    if (!selectedRunId) return;
+    setDiffLoading(true);
+    try {
+      const res = await fetch(`/api/runs/${selectedRunId}/checkpoints/diff?a=${idA}&b=${idB}`);
+      if (res.ok) {
+        const data: CheckpointDiff = await res.json();
+        setCheckpointDiff(data);
+      }
+    } finally {
+      setDiffLoading(false);
+    }
+  }, [selectedRunId]);
+
+  const toggleDiffSelection = useCallback((cpId: string) => {
+    setDiffIds(([a, b]) => {
+      if (a === cpId) return [b, null];
+      if (b === cpId) return [a, null];
+      if (a === null) return [cpId, b];
+      if (b === null) return [a, cpId];
+      return [cpId, b];
+    });
+  }, []);
+
+  // Trigger diff when both IDs are selected
+  useEffect(() => {
+    const [a, b] = diffIds;
+    if (a && b) {
+      handleDiffCheckpoints(a, b);
+    } else {
+      setCheckpointDiff(null);
+    }
+  }, [diffIds, handleDiffCheckpoints]);
 
   // Pagination
   const totalPages = Math.ceil(total / limit);
@@ -447,6 +572,20 @@ export default function RunHistoryPanel({
           onLoadRun={() => handleLoadRun(runDetail)}
           onReplaySame={handleReplaySame}
           onReplayModified={openReplayEditor}
+          checkpoints={checkpoints}
+          checkpointsTotal={checkpointsTotal}
+          checkpointsLoading={checkpointsLoading}
+          savingCheckpoint={savingCheckpoint}
+          onSaveCheckpoint={handleSaveCheckpoint}
+          onRestoreCheckpoint={handleRestoreCheckpoint}
+          onDeleteCheckpoint={handleDeleteCheckpoint}
+          diffIds={diffIds}
+          onToggleDiffSelection={toggleDiffSelection}
+          checkpointDiff={checkpointDiff}
+          diffLoading={diffLoading}
+          onClearDiff={() => { setDiffIds([null, null]); setCheckpointDiff(null); }}
+          autoCheckpointInterval={autoCheckpointInterval}
+          onAutoCheckpointIntervalChange={setAutoCheckpointInterval}
         />
       ) : (
         <div style={{ flex: 1, overflow: "auto" }}>
@@ -555,6 +694,18 @@ const filterInputStyle: React.CSSProperties = {
   color: "var(--zen-dark, #2e2e2e)",
   outline: "none",
   width: 110,
+};
+
+const cpActionBtnStyle: React.CSSProperties = {
+  fontSize: 10,
+  fontWeight: 500,
+  fontFamily: "'Bricolage Grotesque', sans-serif",
+  padding: "3px 8px",
+  borderRadius: 5,
+  border: "1px solid var(--zen-subtle, #e0ddd0)",
+  background: "transparent",
+  color: "var(--zen-dark, #2e2e2e)",
+  cursor: "pointer",
 };
 
 const paginationBtnStyle: React.CSSProperties = {
@@ -701,6 +852,20 @@ function RunDetailView({
   onLoadRun,
   onReplaySame,
   onReplayModified,
+  checkpoints,
+  checkpointsTotal,
+  checkpointsLoading,
+  savingCheckpoint,
+  onSaveCheckpoint,
+  onRestoreCheckpoint,
+  onDeleteCheckpoint,
+  diffIds,
+  onToggleDiffSelection,
+  checkpointDiff,
+  diffLoading,
+  onClearDiff,
+  autoCheckpointInterval,
+  onAutoCheckpointIntervalChange,
 }: {
   run: RunDetail;
   loading: boolean;
@@ -708,6 +873,20 @@ function RunDetailView({
   onLoadRun: () => void;
   onReplaySame: () => void;
   onReplayModified: () => void;
+  checkpoints: Checkpoint[];
+  checkpointsTotal: number;
+  checkpointsLoading: boolean;
+  savingCheckpoint: boolean;
+  onSaveCheckpoint: () => void;
+  onRestoreCheckpoint: (cpId: string) => void;
+  onDeleteCheckpoint: (cpId: string) => void;
+  diffIds: [string | null, string | null];
+  onToggleDiffSelection: (cpId: string) => void;
+  checkpointDiff: CheckpointDiff | null;
+  diffLoading: boolean;
+  onClearDiff: () => void;
+  autoCheckpointInterval: number;
+  onAutoCheckpointIntervalChange: (val: number) => void;
 }) {
   if (loading) {
     return (
@@ -780,6 +959,95 @@ function RunDetailView({
         <ActionButton label="Load on Canvas" onClick={onLoadRun} icon={loadIcon} />
         <ActionButton label="Replay" onClick={onReplaySame} icon={replayIcon} />
         <ActionButton label="Replay Modified" onClick={onReplayModified} icon={editIcon} />
+      </div>
+
+      {/* Checkpoints section */}
+      <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--zen-subtle, #e0ddd0)" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: "var(--zen-muted, #999)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            Checkpoints ({checkpointsTotal})
+          </div>
+          <div style={{ display: "flex", gap: 4 }}>
+            {diffIds[0] || diffIds[1] ? (
+              <button
+                onClick={onClearDiff}
+                style={{ ...cpActionBtnStyle, color: "var(--zen-coral, #F76F53)", borderColor: "var(--zen-coral, #F76F53)" }}
+              >
+                Clear Diff
+              </button>
+            ) : null}
+            <button
+              onClick={onSaveCheckpoint}
+              disabled={savingCheckpoint || run.status !== "running"}
+              title={run.status !== "running" ? "Can only save checkpoints during active execution" : "Save checkpoint"}
+              style={{
+                ...cpActionBtnStyle,
+                opacity: run.status !== "running" ? 0.4 : 1,
+                cursor: run.status !== "running" ? "not-allowed" : "pointer",
+              }}
+            >
+              {savingCheckpoint ? "Saving..." : "Save Checkpoint"}
+            </button>
+          </div>
+        </div>
+
+        {/* Auto-checkpoint interval */}
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+          <span style={{ fontSize: 10, color: "var(--zen-muted, #999)" }}>Auto-checkpoint every</span>
+          <input
+            type="number"
+            min={0}
+            max={100}
+            value={autoCheckpointInterval}
+            onChange={(e) => onAutoCheckpointIntervalChange(Math.max(0, parseInt(e.target.value) || 0))}
+            style={{
+              width: 42,
+              fontSize: 11,
+              fontFamily: "'Bricolage Grotesque', sans-serif",
+              padding: "2px 4px",
+              borderRadius: 4,
+              border: "1px solid var(--zen-subtle, #e0ddd0)",
+              background: "var(--zen-paper, #f2f0e3)",
+              color: "var(--zen-dark, #2e2e2e)",
+              textAlign: "center",
+              outline: "none",
+            }}
+          />
+          <span style={{ fontSize: 10, color: "var(--zen-muted, #999)" }}>steps</span>
+          {autoCheckpointInterval === 0 && (
+            <span style={{ fontSize: 9, color: "var(--zen-coral, #F76F53)" }}>(disabled)</span>
+          )}
+        </div>
+
+        {checkpointsLoading ? (
+          <div style={{ fontSize: 11, color: "var(--zen-muted, #999)", padding: "8px 0" }}>Loading checkpoints...</div>
+        ) : checkpoints.length === 0 ? (
+          <div style={{ fontSize: 11, color: "var(--zen-muted, #999)", padding: "8px 0", fontStyle: "italic" }}>No checkpoints saved</div>
+        ) : (
+          <>
+            <div style={{ fontSize: 9, color: "var(--zen-muted, #999)", marginBottom: 4 }}>
+              Click two checkpoints to compare state
+            </div>
+            {checkpoints.map((cp) => (
+              <CheckpointRow
+                key={cp.id}
+                cp={cp}
+                isSelected={diffIds.includes(cp.id)}
+                onToggleDiff={() => onToggleDiffSelection(cp.id)}
+                onRestore={() => onRestoreCheckpoint(cp.id)}
+                onDelete={() => onDeleteCheckpoint(cp.id)}
+              />
+            ))}
+          </>
+        )}
+
+        {/* Checkpoint diff result */}
+        {diffLoading && (
+          <div style={{ fontSize: 11, color: "var(--zen-muted, #999)", padding: "8px 0" }}>Computing diff...</div>
+        )}
+        {checkpointDiff && !diffLoading && (
+          <CheckpointDiffView diff={checkpointDiff} />
+        )}
       </div>
 
       {/* Node executions */}
@@ -978,6 +1246,203 @@ function JsonSection({ label, data }: { label: string; data: Record<string, unkn
       >
         {JSON.stringify(data, null, 2)}
       </pre>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* CheckpointRow                                                       */
+/* ------------------------------------------------------------------ */
+
+function CheckpointRow({
+  cp,
+  isSelected,
+  onToggleDiff,
+  onRestore,
+  onDelete,
+}: {
+  cp: Checkpoint;
+  isSelected: boolean;
+  onToggleDiff: () => void;
+  onRestore: () => void;
+  onDelete: () => void;
+}) {
+  const [hovered, setHovered] = useState(false);
+  const blobSize = useMemo(() => {
+    const str = typeof cp.state_blob === "string" ? cp.state_blob : JSON.stringify(cp.state_blob);
+    const bytes = new Blob([str]).size;
+    if (bytes < 1024) return `${bytes} B`;
+    return `${(bytes / 1024).toFixed(1)} KB`;
+  }, [cp.state_blob]);
+
+  return (
+    <div
+      onClick={onToggleDiff}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "7px 8px",
+        marginBottom: 3,
+        borderRadius: 6,
+        border: isSelected ? "1px solid var(--zen-blue, #6287f5)" : "1px solid var(--zen-subtle, #e0ddd0)",
+        background: isSelected
+          ? "rgba(98, 135, 245, 0.06)"
+          : hovered
+            ? "rgba(0,0,0,0.02)"
+            : "transparent",
+        cursor: "pointer",
+        transition: "background 100ms, border-color 100ms",
+      }}
+    >
+      {/* Diff selection indicator */}
+      <div
+        style={{
+          width: 14,
+          height: 14,
+          borderRadius: 3,
+          border: isSelected ? "2px solid var(--zen-blue, #6287f5)" : "2px solid var(--zen-muted, #ccc)",
+          background: isSelected ? "var(--zen-blue, #6287f5)" : "transparent",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flexShrink: 0,
+        }}
+      >
+        {isSelected && (
+          <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+        )}
+      </div>
+
+      {/* Checkpoint info */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 11, fontWeight: 500, color: "var(--zen-dark, #2e2e2e)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {cp.name}
+        </div>
+        <div style={{ display: "flex", gap: 8, marginTop: 1 }}>
+          <span style={{ fontSize: 9, color: "var(--zen-muted, #999)" }}>
+            Step {cp.step_number}
+          </span>
+          <span style={{ fontSize: 9, color: "var(--zen-muted, #999)" }}>
+            {blobSize}
+          </span>
+          <span style={{ fontSize: 9, color: "var(--zen-muted, #999)" }}>
+            {formatTimestamp(cp.created_at)}
+          </span>
+        </div>
+      </div>
+
+      {/* Action buttons */}
+      {hovered && (
+        <div style={{ display: "flex", gap: 2, flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
+          <button
+            onClick={onRestore}
+            title="Restore from this checkpoint"
+            style={{ ...cpSmallBtnStyle, color: "var(--zen-green, #63f78b)" }}
+          >
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="1 4 1 10 7 10" /><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+            </svg>
+          </button>
+          <button
+            onClick={onDelete}
+            title="Delete this checkpoint"
+            style={{ ...cpSmallBtnStyle, color: "#ef4444" }}
+          >
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+            </svg>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const cpSmallBtnStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  width: 22,
+  height: 22,
+  border: "none",
+  borderRadius: 4,
+  background: "transparent",
+  cursor: "pointer",
+};
+
+/* ------------------------------------------------------------------ */
+/* CheckpointDiffView                                                  */
+/* ------------------------------------------------------------------ */
+
+function CheckpointDiffView({ diff }: { diff: CheckpointDiff }) {
+  const hasChanges = diff.added_keys.length > 0 || diff.removed_keys.length > 0 || diff.changed_keys.length > 0;
+
+  return (
+    <div
+      style={{
+        marginTop: 8,
+        padding: "8px 10px",
+        borderRadius: 6,
+        border: "1px solid var(--zen-blue, #6287f5)",
+        background: "rgba(98, 135, 245, 0.04)",
+      }}
+    >
+      <div style={{ fontSize: 10, fontWeight: 600, color: "var(--zen-blue, #6287f5)", marginBottom: 6 }}>
+        Diff: {diff.checkpoint_a.name} vs {diff.checkpoint_b.name}
+      </div>
+
+      {!hasChanges ? (
+        <div style={{ fontSize: 10, color: "var(--zen-muted, #999)", fontStyle: "italic" }}>
+          No state differences
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          {diff.added_keys.length > 0 && (
+            <DiffKeyList label="Added" keys={diff.added_keys} color="var(--zen-green, #63f78b)" />
+          )}
+          {diff.removed_keys.length > 0 && (
+            <DiffKeyList label="Removed" keys={diff.removed_keys} color="#ef4444" />
+          )}
+          {diff.changed_keys.length > 0 && (
+            <DiffKeyList label="Changed" keys={diff.changed_keys} color="var(--zen-coral, #F76F53)" />
+          )}
+          <div style={{ fontSize: 9, color: "var(--zen-muted, #999)" }}>
+            {diff.unchanged_keys.length} unchanged key{diff.unchanged_keys.length !== 1 ? "s" : ""}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DiffKeyList({ label, keys, color }: { label: string; keys: string[]; color: string }) {
+  return (
+    <div>
+      <span style={{ fontSize: 9, fontWeight: 600, color, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+        {label} ({keys.length})
+      </span>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 3, marginTop: 2 }}>
+        {keys.map((k) => (
+          <span
+            key={k}
+            style={{
+              fontSize: 9,
+              fontFamily: "monospace",
+              padding: "1px 5px",
+              borderRadius: 3,
+              background: "var(--zen-subtle, #e0ddd0)",
+              color: "var(--zen-dark, #2e2e2e)",
+            }}
+          >
+            {k}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }
