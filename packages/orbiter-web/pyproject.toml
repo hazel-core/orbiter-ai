@@ -9,6 +9,7 @@ dependencies = [
     "aiosqlite>=0.20",
     "bcrypt>=4.0",
     "cryptography>=42.0",
+    "croniter>=2.0",
     "httpx>=0.27",
     "orbiter-core",
     "orbiter-models",

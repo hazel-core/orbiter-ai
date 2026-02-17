@@ -44,6 +44,7 @@ from orbiter_web.routes.provider_keys import router as provider_keys_router
 from orbiter_web.routes.providers import router as providers_router
 from orbiter_web.routes.runs import router as runs_router
 from orbiter_web.routes.sandbox import router as sandbox_router
+from orbiter_web.routes.schedules import router as schedules_router
 from orbiter_web.routes.search import router as search_router
 from orbiter_web.routes.threads import router as threads_router
 from orbiter_web.routes.tools import router as tools_router
@@ -89,9 +90,13 @@ def _validate_startup() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Validate config and run migrations on startup."""
+    from orbiter_web.services.scheduler import start_scheduler, stop_scheduler
+
     _validate_startup()
     await run_migrations()
+    await start_scheduler()
     yield
+    await stop_scheduler()
 
 
 app = FastAPI(
@@ -139,6 +144,7 @@ app.include_router(plugins_router)
 app.include_router(projects_router)
 app.include_router(runs_router)
 app.include_router(sandbox_router)
+app.include_router(schedules_router)
 app.include_router(search_router)
 app.include_router(prompt_templates_router)
 app.include_router(provider_keys_router)
