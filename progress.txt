@@ -42,6 +42,9 @@ Started: Mon Feb 17 2026
 - `HealthCheck` protocol from `orbiter.observability.health` requires sync `check()` method — use sync `redis.from_url()` (not async) inside implementations
 - Tests checking in-memory metrics collector must `patch("module.HAS_OTEL", False)` since OTel is installed in dev — use autouse fixture with `yield` for module-wide patching
 - Distributed metric constants live in `orbiter.observability.semconv` (prefixed `METRIC_DIST_*` and `DIST_*`), recording helpers live in `orbiter.distributed.metrics`
+- Streaming event metric constants also in `semconv.py` (prefixed `METRIC_STREAM_*` and `STREAM_*`), recording in `events.py` and `runner.py`
+- `time.monotonic()` for measuring durations (not `time.time()`) — monotonic clock can't go backwards
+- Event counting in `_stream()` is integrated into `_passes_filter()` — avoids modifying every yield point
 
 ---
 
@@ -449,4 +452,50 @@ Started: Mon Feb 17 2026
   - The `aspan` context manager yields a real OTel span or `NullSpan` — both support `record_exception()` and `set_attribute()` safely
   - Import `aspan` and propagation classes with `# pyright: ignore[reportMissingImports]` — same pattern as all cross-namespace imports
   - Total tests: 1227 (80 CLI + 174 distributed + 786 orbiter-core + others)
+---
+
+## 2026-02-17 - US-022
+- Added streaming event metric constants to `orbiter/observability/semconv.py`: `METRIC_STREAM_EVENTS_EMITTED`, `METRIC_STREAM_EVENT_PUBLISH_DURATION`, `STREAM_EVENT_TYPE`
+- Added `_record_event_published()` helper function to `orbiter/distributed/events.py` — records event count (counter) and publish duration (histogram) with event type attribute
+- Updated `EventPublisher.publish()` to record metrics on each publish (event count by type, publish duration via `time.monotonic()`)
+- Updated `run.stream()` in `runner.py` to count total events emitted per run when `detailed=True` — counts tracked via `events_emitted` dict, recorded at stream completion or error via `_record_stream_metrics()` helper
+- Event counting integrated into `_passes_filter()` — only events that pass the filter are counted (consistent with what the consumer actually receives)
+- Added `_SEMCONV_NAMES` entries for new constants in `orbiter.observability.__init__` for lazy loading
+- Added 11 new tests across 4 test classes:
+  - `test_event_metrics.py`: `TestRecordEventPublished` (4), `TestEventPublisherMetrics` (4)
+  - `test_runner.py`: `TestRunStreamEventMetrics` (3)
+- Files changed: `packages/orbiter-observability/src/orbiter/observability/semconv.py`, `packages/orbiter-observability/src/orbiter/observability/__init__.py`, `packages/orbiter-distributed/src/orbiter/distributed/events.py`, `packages/orbiter-distributed/tests/test_event_metrics.py` (new), `packages/orbiter-core/src/orbiter/runner.py`, `packages/orbiter-core/tests/test_runner.py`
+- **Learnings for future iterations:**
+  - `_record_event_published()` follows the same dual-path pattern (HAS_OTEL vs in-memory) as `record_task_submitted` and friends in `orbiter.distributed.metrics`
+  - `time.monotonic()` is better than `time.time()` for measuring durations — monotonic clock can't go backwards
+  - Event counting in `_stream()` is integrated into `_passes_filter()` to avoid modifying every yield point — the filter already gates all yields
+  - Swarm delegation path in `_stream()` doesn't record metrics — each inner `run.stream()` call records its own metrics to avoid double-counting
+  - `_record_stream_metrics()` batches per-type counts into single counter.add() calls — more efficient than per-event recording
+  - Tests must patch `HAS_OTEL` at the module path where it's used (e.g., `orbiter.distributed.events.HAS_OTEL` for events, `orbiter.runner.HAS_OTEL` for runner)
+  - Total tests: 1695 (all passing)
+---
+
+## 2026-02-17 - US-023
+- Created `register_distributed_alerts()` function in `orbiter/distributed/alerts.py`
+- Pre-defined alert rules:
+  - Queue depth > 100: WARNING (`dist_queue_depth_warning`)
+  - Queue depth > 500: CRITICAL (`dist_queue_depth_critical`)
+  - Task failure rate > 10%: WARNING (`dist_failure_rate_warning`)
+  - Worker count = 0: CRITICAL (`dist_worker_count_critical`)
+  - Task wait time > 60s: WARNING (`dist_wait_time_warning`)
+- Uses `AlertManager`, `AlertRule`, `AlertSeverity`, `Comparator` from `orbiter.observability.alerts`
+- Rules reference metric constants from `orbiter.observability.semconv` (METRIC_DIST_QUEUE_DEPTH, METRIC_DIST_TASKS_FAILED, METRIC_DIST_TASK_WAIT_TIME)
+- Worker count uses a custom `METRIC_WORKER_COUNT` constant (evaluated externally, not a recorded metric)
+- Exported `register_distributed_alerts` from `orbiter.distributed.__init__`
+- Rule name constants exported for external reference and testing
+- Added 19 tests across 7 test classes: `TestRegisterDistributedAlerts` (5), `TestQueueDepthRules` (4), `TestFailureRateRule` (3), `TestWorkerCountRule` (2), `TestWaitTimeRule` (3), `TestAlertCallbacks` (2)
+- Files changed: `packages/orbiter-distributed/src/orbiter/distributed/alerts.py` (new), `packages/orbiter-distributed/src/orbiter/distributed/__init__.py`, `packages/orbiter-distributed/tests/test_alerts.py` (new)
+- **Learnings for future iterations:**
+  - `AlertRule` uses `Comparator.GT` for "greater than" thresholds — boundary value exactly at threshold does NOT fire (strict comparison)
+  - `Comparator.EQ` used for "worker count = 0" — fires when metric_value equals threshold exactly
+  - `get_manager()` returns a global singleton `AlertManager` — rules persist across calls, so `register_distributed_alerts()` is idempotent (rules overwrite by name)
+  - `reset()` clears the global manager — use in test fixtures for isolation
+  - Worker count is not a recorded metric — it needs to be evaluated externally (e.g., by counting active workers via `get_worker_fleet_status()`)
+  - Alert rules use default `cooldown_seconds=300.0` — tests in the alert module use `cooldown_seconds=0` to avoid timing issues, but distributed alert registration uses the default
+  - Total tests: 3463 (all passing)
 ---

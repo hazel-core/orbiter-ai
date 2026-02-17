@@ -361,7 +361,7 @@
         "Pyright passes"
       ],
       "priority": 21,
-      "passes": false,
+      "passes": true,
       "notes": "Add constants to semconv.py. Update EventPublisher in events.py to record metrics via orbiter.observability.metrics. Update runner.py _stream() to count and record total events."
     },
     {
@@ -377,7 +377,7 @@
         "Pyright passes"
       ],
       "priority": 22,
-      "passes": false,
+      "passes": true,
       "notes": "Create packages/orbiter-distributed/src/orbiter/distributed/alerts.py. Uses AlertManager, AlertRule, AlertSeverity, Comparator from orbiter.observability.alerts. Register rules for distributed metric names from US-020."
     },
     {
