@@ -3471,7 +3471,7 @@
         "Code examples: JavaScript client connecting and subscribing to chat channel"
       ],
       "priority": 159,
-      "passes": false,
+      "passes": true,
       "notes": "Documentation: WebSocket protocol reference for frontend and integration developers"
     },
     {

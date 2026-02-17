@@ -3354,3 +3354,16 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - sanitize_html() is applied in 20+ route files — any new route that writes user text must also call it
   - Middleware execution order matters: SecurityHeaders (outermost) → RateLimit → CSRF (innermost)
 ---
+
+## 2026-02-17 - US-198
+- What was implemented: WebSocket protocol documentation covering all endpoints, message formats, channels, heartbeat, reconnection, and error handling
+- Files changed:
+  - docs/reference/websocket-protocol.md (new — comprehensive WebSocket protocol reference with 8 endpoints, 6 channels, message envelope format, heartbeat timing, reconnection strategy, error codes, server-side API, and JavaScript client examples)
+- **Learnings for future iterations:**
+  - orbiter-web has 8 WebSocket endpoints total: 1 multiplexed (/api/v1/ws) and 7 dedicated (chat, compare chat, logs stream, workflow run stream/debug, crew run stream, agent run stream)
+  - The multiplexed endpoint uses `{channel, type, payload}` envelope format; dedicated endpoints have their own message formats
+  - Heartbeat uses application-level ping/pong (JSON messages), not WebSocket-level ping frames
+  - Pong messages are bare `{"type": "pong"}` without the channel envelope — exception to the normal envelope format
+  - Chat WebSocket has a takeover protocol for human-in-the-loop: takeover → inject/stop/resume flow
+  - `get_ws_user()` in websocket.py is the shared auth helper for all WS endpoints
+---
