@@ -554,3 +554,60 @@ Started: Mon Feb 17 2026
   - Pre-existing pyright errors (9 `reportMissingImports` in test_temporal.py) are unrelated to README changes
   - All 231 distributed tests continue to pass
 ---
+
+## 2026-02-17 - US-025
+- Created `docs/distributed/architecture.md` with comprehensive architecture documentation
+- System architecture Mermaid diagram showing Client → Redis → Worker data flow with all Redis data structures
+- Component descriptions for all modules: TaskBroker, Worker, EventPublisher/EventSubscriber, TaskStore, TaskHandle/distributed(), CancellationToken, Models, Health, Metrics, Alerts, Tracing
+- Worker lifecycle state diagram (Mermaid)
+- Task submission sequence diagram (Mermaid)
+- Cancellation flow sequence diagram (Mermaid)
+- Event publishing flow diagram (Mermaid)
+- Tables documenting Redis commands per component, metrics, alert rules, Redis data structures
+- Data flow diagrams for both Redis-only and Redis+Temporal modes
+- Redis data structures summary with key patterns, types, purposes, and TTLs
+- Covers both Redis-only and Redis+Temporal execution modes
+- Files changed: `docs/distributed/architecture.md` (new), `prd.json`
+- **Learnings for future iterations:**
+  - Documentation-only stories don't affect pyright/ruff/tests — just verify pre-existing errors haven't changed
+  - Mermaid diagrams work well for sequence diagrams, state diagrams, and component graphs
+  - All 3493 tests continue to pass
+---
+
+## 2026-02-17 - US-026
+- Created `docs/distributed/workers.md` with comprehensive worker setup and scaling guide
+- Worker startup: CLI (`orbiter start worker`) and Python API with all constructor parameters documented
+- Environment variables reference: `ORBITER_REDIS_URL`, `TEMPORAL_HOST`, `TEMPORAL_NAMESPACE`
+- Concurrency tuning guidelines: CPU-bound vs I/O-bound agents, horizontal vs vertical scaling
+- Multi-worker deployment: multiple processes, systemd service template
+- Graceful shutdown behavior (SIGINT/SIGTERM handling)
+- Heartbeat and health monitoring: Redis hash fields, CLI commands, Python health check API
+- Task retry behavior and monitoring
+- Execution backends: local (default) and Temporal (durable) with configuration
+- Redis configuration recommendations: memory, persistence, connections
+- Docker deployment: Dockerfile and docker-compose.yml with Redis, workers, and optional Temporal
+- Monitoring and alerting: built-in alert rules, metrics table, task management CLI
+- Scaling recommendations table by workload size
+- Troubleshooting section for common issues
+- Files changed: `docs/distributed/workers.md` (new), `prd.json`
+- **Learnings for future iterations:**
+  - Documentation-only stories don't affect pyright/ruff/tests — just verify pre-existing errors haven't changed
+  - Worker constructor params well documented in worker.py docstring — reference source code for accurate defaults
+  - All 3493 tests continue to pass
+---
+
+## 2026-02-17 - US-027
+- Created `docs/distributed/migration.md` with comprehensive migration guide from local to distributed execution
+- Side-by-side code comparisons: `run()` vs `distributed()`, `run.stream()` vs `handle.stream()`, Swarm streaming
+- Step-by-step migration walkthrough (6 steps): install, start Redis, set URL, start worker, replace run(), replace stream()
+- Event consumption patterns: local direct iterator, distributed submit+subscribe, event replay via Redis Streams
+- Error handling differences: local exceptions vs distributed `RuntimeError` from `handle.result()`, `ErrorEvent` via streaming
+- Task cancellation section (distributed-only feature)
+- Decision table: when to use local vs distributed (8 scenarios)
+- Parameter mapping table: `run()`/`run.stream()` params → `distributed()` params with notes
+- Event filtering comparison: server-side (`event_types` param) vs client-side filtering
+- Files changed: `docs/distributed/migration.md` (new), `prd.json`
+- **Learnings for future iterations:**
+  - Documentation-only stories don't affect pyright/ruff/tests — just verify pre-existing errors haven't changed
+  - All 3493 tests continue to pass
+---

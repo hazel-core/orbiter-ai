@@ -445,7 +445,7 @@
         "docs/distributed/migration.md with: side-by-side comparison of local vs distributed code, step-by-step migration walkthrough, handling streaming events in both modes, error handling differences, when to use local vs distributed"
       ],
       "priority": 27,
-      "passes": false,
+      "passes": true,
       "notes": "Create docs/distributed/migration.md. Focus on the 2-line difference between local run() and run.distributed(). Show event consumption patterns for both modes."
     },
     {
