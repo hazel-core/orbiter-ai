@@ -2842,7 +2842,7 @@
         "Typecheck passes"
       ],
       "priority": 19,
-      "passes": false,
+      "passes": true,
       "notes": "Gap fill: default secret key 'change-me-in-production' means all Fernet-encrypted API keys share the same key across installs"
     },
     {

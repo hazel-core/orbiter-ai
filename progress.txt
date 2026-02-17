@@ -2118,3 +2118,16 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - SQLite CHECK constraints enforce enum values at the DB level for level and source columns
   - The WebSocket endpoint at /stream (relative to prefix /api/logs) resolves to ws://api/logs/stream
 ---
+
+## 2026-02-17 - US-162
+- What was implemented: Startup environment validation and secret key warning
+- Added `_validate_startup()` function in `app.py` called during FastAPI lifespan
+- Checks if ORBITER_SECRET_KEY equals default 'change-me-in-production' or is empty → logs WARNING
+- Validates database directory exists and is writable → logs ERROR if not
+- Logs startup config summary: database path, debug mode, session expiry, CORS origins (no secrets)
+- Files changed: `packages/orbiter-web/src/orbiter_web/app.py`
+- **Learnings for future iterations:**
+  - The `logger = logging.getLogger(...)` line must come AFTER all imports to avoid ruff E402 (module-level import not at top of file)
+  - `_DB_PATH` is exported from `database.py` — can be imported directly for use elsewhere
+  - The lifespan function runs `_validate_startup()` before `run_migrations()` so DB path validation happens first
+---
