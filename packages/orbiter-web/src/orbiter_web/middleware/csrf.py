@@ -19,8 +19,9 @@ _EXEMPT_PATHS = {
     "/api/health",
 }
 
-# Path prefixes exempt from CSRF (CI endpoints use API key auth, not cookies).
-_EXEMPT_PREFIXES = ("/api/v1/ci/",)
+# Path prefixes exempt from CSRF (CI endpoints use API key auth, not cookies;
+# webhook trigger endpoints are called by external systems without sessions).
+_EXEMPT_PREFIXES = ("/api/v1/ci/", "/api/v1/webhooks/")
 
 
 class CSRFMiddleware(BaseHTTPMiddleware):

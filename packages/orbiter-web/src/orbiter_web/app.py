@@ -63,6 +63,7 @@ from orbiter_web.routes.team import router as team_router
 from orbiter_web.routes.threads import router as threads_router
 from orbiter_web.routes.tools import router as tools_router
 from orbiter_web.routes.vector_stores import router as vector_stores_router
+from orbiter_web.routes.webhooks import router as webhooks_router
 from orbiter_web.routes.workflow_runs import router as workflow_runs_router
 from orbiter_web.routes.workflows import router as workflows_router
 from orbiter_web.routes.workspace_export import router as workspace_export_router
@@ -185,6 +186,7 @@ app.include_router(team_router)
 app.include_router(threads_router)
 app.include_router(tools_router)
 app.include_router(vector_stores_router)
+app.include_router(webhooks_router)
 app.include_router(workflow_runs_router)
 app.include_router(workflows_router)
 app.include_router(workspace_export_router)

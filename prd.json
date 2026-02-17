@@ -2565,7 +2565,7 @@
         "Typecheck passes"
       ],
       "priority": 147,
-      "passes": false,
+      "passes": true,
       "notes": "From PRD US-072"
     },
     {
