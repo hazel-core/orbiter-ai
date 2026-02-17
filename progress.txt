@@ -2527,3 +2527,17 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - agent_memory_summary uses UNIQUE(agent_id, thread_id) with ON CONFLICT UPDATE for upsert pattern
   - SlidingWindow uses subquery with DESC LIMIT + outer ASC ORDER to get last N messages in chronological order
 ---
+
+## 2026-02-17 - US-127
+- What was implemented: Live sandbox view tab on the run detail page
+- Files changed:
+  - `packages/orbiter-web/src/pages/monitoring/runs/[id].astro` — added Sandbox View tab with file tree, terminal output, file preview, and artifact collection panels
+- **Learnings for future iterations:**
+  - Sandbox execution data is already stored in `steps_json` tool_calls — `code_interpreter` tool calls contain the code, stdout, stderr, generated_files, and execution_time_ms in their result field
+  - No new backend endpoints or migrations needed — all sandbox data can be extracted from the run's existing steps_json
+  - Tab switching pattern: use `data-tab-btn` and `data-tab-panel` attributes with matching IDs, toggle `hidden` class and indicator styles in JS
+  - Generated files from sandbox include base64-encoded content (for files < 1MB) — use `atob()` to decode for text preview, data URIs for image preview
+  - File download: create Blob from decoded base64, use `URL.createObjectURL()` + temporary anchor element click
+  - Terminal output uses dark VS Code-inspired color scheme: `#1e1e1e` bg, `#d4d4d4` text, `#6a9955` green comments, `#569cd6` blue headers, `#f44747` red errors
+  - Unused icon variables (chevronDown, cpuIcon, wrenchIcon, arrowRightIcon) were cleaned up from frontmatter — only used icons remain
+---
