@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+import logging
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from orbiter_web.config import settings
-from orbiter_web.database import run_migrations
+from orbiter_web.database import _DB_PATH, run_migrations
 from orbiter_web.middleware.csrf import CSRFMiddleware
 from orbiter_web.middleware.rate_limit import RateLimitMiddleware
 from orbiter_web.routes.agents import router as agents_router
@@ -40,10 +43,44 @@ from orbiter_web.routes.workflow_runs import router as workflow_runs_router
 from orbiter_web.routes.workflows import router as workflows_router
 from orbiter_web.websocket import router as ws_router
 
+logger = logging.getLogger("orbiter_web")
+
+
+def _validate_startup() -> None:
+    """Validate configuration on startup and log warnings for insecure defaults."""
+    # Check for default or missing secret key
+    if settings.secret_key == "change-me-in-production" or not settings.secret_key:
+        logger.warning(
+            "Using default secret key — all encrypted data is insecure. "
+            "Set ORBITER_SECRET_KEY env var"
+        )
+
+    # Validate database path is writable
+    db_path = Path(_DB_PATH)
+    db_dir = db_path.parent
+    if db_dir.exists() and not os.access(db_dir, os.W_OK):
+        logger.error(
+            "Database directory is not writable: %s", db_dir
+        )
+    elif not db_dir.exists():
+        logger.error(
+            "Database directory does not exist: %s", db_dir
+        )
+
+    # Log startup config summary (no secrets)
+    logger.info(
+        "Orbiter startup config: database=%s, debug=%s, session_expiry=%dh, cors_origins=%s",
+        _DB_PATH,
+        settings.debug,
+        settings.session_expiry_hours,
+        settings.cors_origins or "(same-origin)",
+    )
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Run migrations on startup."""
+    """Validate config and run migrations on startup."""
+    _validate_startup()
     await run_migrations()
     yield
 
