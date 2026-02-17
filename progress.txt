@@ -3054,3 +3054,19 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - `run_migrations()` returns list of applied filenames — use for printing each migration name
   - Error handling: wrap `asyncio.run()` in try/except for migrate command, exit code 1 on failure
 ---
+
+## 2026-02-17 - US-141
+- What was implemented: Version history UI page with diff, rollback, tag editing, and JSON export
+- Files changed:
+  - packages/orbiter-web/src/pages/versions.astro (new — standalone version history page)
+  - packages/orbiter-web/src/pages/agents/[id]/edit.astro (added Versions button link in header)
+  - packages/orbiter-web/src/pages/workflows/[id].astro (added floating Versions button on canvas)
+- **Learnings for future iterations:**
+  - Version history page is entity-agnostic — uses `?type=agent|workflow&id=xxx` query params to work for both agents and workflows
+  - Config versions API returns `config_json` as a JSON string — parse it client-side for diff comparison
+  - Diff is done at the config key level (not line-by-line text) since configs are structured JSON objects
+  - Rollback creates a NEW version (doesn't delete history) — important for audit trail
+  - Tag API requires min_length=1 validation on the backend — empty string tags not allowed
+  - Floating buttons on workflow canvas need `right-36` positioning to avoid overlapping with Deploy button
+  - Export downloads use Blob + URL.createObjectURL pattern for client-side JSON file generation
+---
