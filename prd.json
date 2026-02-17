@@ -2982,7 +2982,7 @@
         "Typecheck passes"
       ],
       "priority": 24,
-      "passes": false,
+      "passes": true,
       "notes": "Gap fill: US-119 (approval gates), US-117 (alerts), US-113 (budget) all create notifications but no system exists"
     },
     {

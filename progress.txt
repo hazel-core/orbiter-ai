@@ -2397,3 +2397,17 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Dialog element with `.showModal()` automatically handles Escape key and focus trapping
   - Use delegated event listeners on the results container for click handling (results are dynamically rendered)
 ---
+
+## 2026-02-17 - US-170
+- What was implemented: Notification system — migration, service, and REST API
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/migrations/045_create_notifications.sql (new — notifications table with indexes)
+  - packages/orbiter-web/src/orbiter_web/services/notifications.py (new — create_notification() service with WebSocket push)
+  - packages/orbiter-web/src/orbiter_web/routes/notifications.py (new — GET /api/notifications with pagination, GET /api/notifications/unread-count, PUT /api/notifications/:id/read, POST /api/notifications/read-all)
+  - packages/orbiter-web/src/orbiter_web/app.py (updated — registered notifications_router)
+- **Learnings for future iterations:**
+  - Notification service uses lazy import of `manager` from websocket.py to avoid circular imports
+  - Route ordering matters: `/unread-count` and `/read-all` static paths must be defined BEFORE `/{notification_id}/read` param route
+  - `paginate()` utility handles cursor-based pagination automatically — pass table, conditions, params
+  - Service functions in `services/` can be imported by other modules (e.g., approval gates, alert rules) to create notifications
+---
