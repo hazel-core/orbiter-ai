@@ -3170,3 +3170,19 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Auth config for MCP supports bearer tokens and API keys — stored as JSON in auth_config_json column
   - Lazy-import httpx inside async functions to avoid overhead on module load (same pattern as providers.py)
 ---
+
+## 2026-02-17 - US-146
+- What was implemented: MCP client UI — full Integrations tab in Settings with MCP server management, tool discovery, and health status
+- Files changed:
+  - packages/orbiter-web/src/pages/settings.astro (added Integrations tab, MCP Servers panel with CRUD, Add/Edit/Delete modals, Discover Tools button, health status indicators, discovered tools display)
+  - packages/orbiter-web/src/pages/tools/index.astro (added MCP badge styling for tools with tool_type='mcp' in grid and list views)
+  - packages/orbiter-web/src/pages/tools/[id].astro (added MCP badge styling on tool detail page)
+- **Learnings for future iterations:**
+  - Settings tabs use lazy-load pattern: `if (target === "tabname" && !tabLoaded) { fetchData(); }` in the tab click handler
+  - MCP servers use the integrations API at `/api/v1/integrations/mcp` — CRUD + discover + status endpoints
+  - Discovered MCP tools are stored in the regular `tools` table with `tool_type='mcp'` and `code` column referencing the server ID — they're automatically assignable to agents via existing tool assignment UI
+  - Auth type toggle pattern: listen to select change, show/hide relevant auth field sections with classList.toggle("hidden", condition)
+  - Health status indicators: green dot for "connected", red for "error", grey for "disconnected"
+  - Button component has no "danger" variant — use `!bg-coral !text-white` overrides on primary variant for destructive actions (same pattern as team remove modal)
+  - No browser testing tools available — manual browser verification needed
+---

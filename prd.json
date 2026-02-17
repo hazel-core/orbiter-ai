@@ -2548,7 +2548,7 @@
         "Verify in browser using dev-browser skill"
       ],
       "priority": 146,
-      "passes": false,
+      "passes": true,
       "notes": "From PRD US-071"
     },
     {

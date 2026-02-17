@@ -229,7 +229,12 @@ const copyIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
       badge.className = "text-xs px-2 py-0.5 rounded-full font-medium " + catInfo.bg + " " + catInfo.text;
       badge.textContent = catInfo.label;
 
-      document.getElementById("detail-tool-type").textContent = tool.tool_type;
+      var detailTypeEl = document.getElementById("detail-tool-type");
+      detailTypeEl.textContent = tool.tool_type;
+      if (tool.tool_type === "mcp") {
+        detailTypeEl.className = detailTypeEl.className.replace("bg-muted/10 text-muted", "bg-zen-blue/10 text-zen-blue font-semibold uppercase tracking-wide");
+        detailTypeEl.textContent = "MCP";
+      }
       document.getElementById("detail-usage").textContent = tool.usage_count + " uses";
       document.getElementById("detail-description").textContent = tool.description || "No description provided.";
 

@@ -299,7 +299,13 @@ const schemaIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke=
 
       card.querySelector('[data-field="param-count"]').textContent = paramCount + " param" + (paramCount !== 1 ? "s" : "");
       card.querySelector('[data-field="usage-count"]').textContent = tool.usage_count + " uses";
-      card.querySelector('[data-field="tool-type"]').textContent = tool.tool_type;
+
+      var typeEl = card.querySelector('[data-field="tool-type"]');
+      typeEl.textContent = tool.tool_type;
+      if (tool.tool_type === "mcp") {
+        typeEl.className = "text-xs px-1.5 py-0.5 rounded bg-zen-blue/10 text-zen-blue font-semibold uppercase tracking-wide";
+        typeEl.textContent = "MCP";
+      }
 
       gridContainer.appendChild(card);
     }
@@ -325,7 +331,13 @@ const schemaIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke=
 
       row.querySelector('[data-field="param-count"]').textContent = paramCount + " params";
       row.querySelector('[data-field="usage-count"]').textContent = tool.usage_count + " uses";
-      row.querySelector('[data-field="tool-type"]').textContent = tool.tool_type;
+
+      var rowTypeEl = row.querySelector('[data-field="tool-type"]');
+      rowTypeEl.textContent = tool.tool_type;
+      if (tool.tool_type === "mcp") {
+        rowTypeEl.className = "px-1.5 py-0.5 rounded bg-zen-blue/10 text-zen-blue font-semibold uppercase tracking-wide";
+        rowTypeEl.textContent = "MCP";
+      }
 
       listContainer.appendChild(row);
     }
