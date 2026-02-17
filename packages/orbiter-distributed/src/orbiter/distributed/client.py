@@ -16,6 +16,11 @@ from orbiter.distributed.models import (  # pyright: ignore[reportMissingImports
     TaskStatus,
 )
 from orbiter.distributed.store import TaskStore  # pyright: ignore[reportMissingImports]
+from orbiter.observability.propagation import (  # pyright: ignore[reportMissingImports]
+    BaggagePropagator,
+    DictCarrier,
+)
+from orbiter.observability.tracing import aspan  # pyright: ignore[reportMissingImports]
 from orbiter.types import StreamEvent  # pyright: ignore[reportMissingImports]
 
 _DEFAULT_REDIS_ENV = "ORBITER_REDIS_URL"
@@ -146,17 +151,34 @@ async def distributed(
     await store.connect()
     await subscriber.connect()
 
+    # Build metadata with trace context propagation
+    task_metadata = dict(metadata) if metadata else {}
+    propagator = BaggagePropagator()
+    carrier = DictCarrier()
+    propagator.inject(carrier)
+    if carrier.headers:
+        task_metadata["trace_context"] = carrier.headers
+
+    agent_name = getattr(agent, "name", "")
+
     payload = TaskPayload(
         agent_config=agent.to_dict(),
         input=input,
         messages=messages or [],
         detailed=detailed,
-        metadata=metadata or {},
+        metadata=task_metadata,
         created_at=time.time(),
         timeout_seconds=timeout,
     )
 
-    await broker.submit(payload)
+    async with aspan(
+        "orbiter.distributed.submit",
+        attributes={
+            "dist.task_id": payload.task_id,
+            "dist.agent_name": agent_name,
+        },
+    ):
+        await broker.submit(payload)
 
     return TaskHandle(
         payload.task_id,

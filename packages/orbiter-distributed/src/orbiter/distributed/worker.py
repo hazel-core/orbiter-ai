@@ -26,6 +26,11 @@ from orbiter.distributed.models import (  # pyright: ignore[reportMissingImports
     TaskStatus,
 )
 from orbiter.distributed.store import TaskStore  # pyright: ignore[reportMissingImports]
+from orbiter.observability.propagation import (  # pyright: ignore[reportMissingImports]
+    BaggagePropagator,
+    DictCarrier,
+)
+from orbiter.observability.tracing import aspan  # pyright: ignore[reportMissingImports]
 
 
 def _generate_worker_id() -> str:
@@ -171,6 +176,13 @@ class Worker:
         self._current_task_id = task.task_id
         token = CancellationToken()
 
+        # Extract trace context from task metadata (injected by client)
+        trace_context = task.metadata.get("trace_context")
+        if isinstance(trace_context, dict):
+            carrier = DictCarrier(trace_context)
+            propagator = BaggagePropagator()
+            propagator.extract(carrier)
+
         # Start listening for cancel signals on orbiter:cancel:{task_id}
         cancel_task = asyncio.create_task(
             self._listen_for_cancel(task.task_id, token)
@@ -179,85 +191,93 @@ class Worker:
         started_at = time.time()
         wait_time = started_at - task.created_at if task.created_at > 0 else 0.0
 
-        try:
-            # Mark as RUNNING
-            await self._store.set_status(
-                task.task_id,
-                TaskStatus.RUNNING,
-                worker_id=self._worker_id,
-                started_at=started_at,
-            )
-
-            # Reconstruct agent from config
-            agent = self._reconstruct_agent(task.agent_config)
-
-            # Execute via run.stream()
-            result_text = await self._run_agent(agent, task, token)
-
-            duration = time.time() - started_at
-
-            if token.cancelled:
-                # Cancellation took effect during execution
+        async with aspan(
+            "orbiter.distributed.execute",
+            attributes={
+                "dist.task_id": task.task_id,
+                "dist.worker_id": self._worker_id,
+            },
+        ) as s:
+            try:
+                # Mark as RUNNING
                 await self._store.set_status(
                     task.task_id,
-                    TaskStatus.CANCELLED,
-                    completed_at=time.time(),
-                )
-                await self._broker.ack(task.task_id)
-                record_task_cancelled(
-                    task_id=task.task_id,
+                    TaskStatus.RUNNING,
                     worker_id=self._worker_id,
+                    started_at=started_at,
                 )
-            else:
-                # Mark as COMPLETED
+
+                # Reconstruct agent from config
+                agent = self._reconstruct_agent(task.agent_config)
+
+                # Execute via run.stream()
+                result_text = await self._run_agent(agent, task, token)
+
+                duration = time.time() - started_at
+
+                if token.cancelled:
+                    # Cancellation took effect during execution
+                    await self._store.set_status(
+                        task.task_id,
+                        TaskStatus.CANCELLED,
+                        completed_at=time.time(),
+                    )
+                    await self._broker.ack(task.task_id)
+                    record_task_cancelled(
+                        task_id=task.task_id,
+                        worker_id=self._worker_id,
+                    )
+                else:
+                    # Mark as COMPLETED
+                    await self._store.set_status(
+                        task.task_id,
+                        TaskStatus.COMPLETED,
+                        completed_at=time.time(),
+                        result={"output": result_text},
+                    )
+                    await self._broker.ack(task.task_id)
+                    self._tasks_processed += 1
+                    record_task_completed(
+                        task_id=task.task_id,
+                        worker_id=self._worker_id,
+                        duration=duration,
+                        wait_time=wait_time,
+                    )
+
+            except Exception as exc:
+                s.record_exception(exc)
+                self._tasks_failed += 1
+                duration = time.time() - started_at
                 await self._store.set_status(
                     task.task_id,
-                    TaskStatus.COMPLETED,
+                    TaskStatus.FAILED,
                     completed_at=time.time(),
-                    result={"output": result_text},
+                    error=str(exc),
                 )
-                await self._broker.ack(task.task_id)
-                self._tasks_processed += 1
-                record_task_completed(
+                record_task_failed(
                     task_id=task.task_id,
                     worker_id=self._worker_id,
                     duration=duration,
-                    wait_time=wait_time,
                 )
 
-        except Exception as exc:
-            self._tasks_failed += 1
-            duration = time.time() - started_at
-            await self._store.set_status(
-                task.task_id,
-                TaskStatus.FAILED,
-                completed_at=time.time(),
-                error=str(exc),
-            )
-            record_task_failed(
-                task_id=task.task_id,
-                worker_id=self._worker_id,
-                duration=duration,
-            )
+                # Check if retries remain
+                status = await self._store.get_status(task.task_id)
+                retries = status.retries if status else 0
+                if retries < self._broker.max_retries:
+                    await self._store.set_status(
+                        task.task_id,
+                        TaskStatus.RETRYING,
+                        retries=retries + 1,
+                    )
+                    await self._broker.nack(task.task_id)
+                else:
+                    await self._broker.ack(task.task_id)
 
-            # Check if retries remain
-            status = await self._store.get_status(task.task_id)
-            retries = status.retries if status else 0
-            if retries < self._broker.max_retries:
-                await self._store.set_status(
-                    task.task_id,
-                    TaskStatus.RETRYING,
-                    retries=retries + 1,
-                )
-                await self._broker.nack(task.task_id)
-            else:
-                await self._broker.ack(task.task_id)
-
-        finally:
-            self._current_task_id = None
-            cancel_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await cancel_task
+            finally:
+                self._current_task_id = None
+                cancel_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await cancel_task
 
     async def _listen_for_cancel(
         self, task_id: str, token: CancellationToken

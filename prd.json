@@ -327,7 +327,7 @@
         "Pyright passes"
       ],
       "priority": 19,
-      "passes": false,
+      "passes": true,
       "notes": "Add constants to packages/orbiter-observability/src/orbiter/observability/semconv.py following existing patterns. Create packages/orbiter-distributed/src/orbiter/distributed/metrics.py with recording helpers that use orbiter.observability.metrics. Update Worker to call recording helpers."
     },
     {
@@ -344,7 +344,7 @@
         "Pyright passes"
       ],
       "priority": 20,
-      "passes": false,
+      "passes": true,
       "notes": "Update client.py (run.distributed) to create submission span and inject trace context into metadata. Update worker.py to extract trace context and create execution span. Uses BaggagePropagator from orbiter.observability.propagation and aspan from orbiter.observability.tracing."
     },
     {
