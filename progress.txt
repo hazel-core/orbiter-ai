@@ -25,6 +25,11 @@ Started: Mon Feb 17 2026
 - TaskBroker uses Redis Streams consumer groups: `{queue_name}:group` as group name, worker_id as consumer name, `>` for new messages
 - TaskBroker._pending_ids maps task_id → stream message_id for ack/nack correlation
 - Redis hash/set async operations (HSET, HGETALL, EXPIRE, SADD, SMEMBERS) need `# type: ignore[misc]` for pyright — type stubs don't properly annotate these as awaitable (unlike Streams operations which work fine)
+- Agent/Swarm serialization: `to_dict()`/`from_dict()` in agent.py/swarm.py — tools as dotted paths, handoffs recursive, non-serializable items (closures, hooks, memory, context) raise ValueError
+- Tool serialization helpers: `_serialize_tool()`, `_deserialize_tool()`, `_import_object()` in agent.py — reuse these for any import-by-dotted-path needs
+- `_EVENT_TYPE_MAP` in `events.py` maps type discriminator → event class for deserialization; `_deserialize_event()` reconstructs `StreamEvent` from JSON dict
+- EventPublisher publishes to both Pub/Sub (`orbiter:events:{task_id}`) and Stream (`orbiter:stream:{task_id}`) — Pub/Sub for live, Stream for replay
+- EventSubscriber `subscribe()` terminates on terminal StatusEvent (completed/error/cancelled)
 
 ---
 
@@ -201,4 +206,48 @@ Started: Mon Feb 17 2026
   - `set_status()` uses HSET (not HMSET) with `mapping=` param — HSET with mapping is the modern Redis way
   - Calling `set_status()` multiple times preserves existing fields (HSET merges, doesn't replace the whole hash)
   - Total tests: 799 (49 distributed + 750 existing)
+---
+
+## 2026-02-17 - US-015
+- Added `to_dict()` and `from_dict()` methods to `Agent` class for serialization/deserialization
+- Added `to_dict()` and `from_dict()` methods to `Swarm` class for serialization/deserialization
+- Tools serialized as importable dotted paths (`module.qualname`) — FunctionTool uses wrapped `_fn`, custom Tool subclasses use the class path
+- Deserialization resolves paths via `importlib.import_module()` + `getattr()` with progressive fallback
+- Non-serializable components raise `ValueError`: callable instructions, hooks, memory, context, closures/lambdas
+- Handoffs serialized/deserialized recursively
+- `output_type` (Pydantic BaseModel subclass) serialized as importable dotted path
+- Added 36 tests across 9 test classes covering: to_dict, from_dict, round-trips (including JSON), error cases, Swarm serialization, and helper functions
+- Files changed: `packages/orbiter-core/src/orbiter/agent.py`, `packages/orbiter-core/src/orbiter/swarm.py`, `packages/orbiter-core/tests/test_serialization.py`
+- **Learnings for future iterations:**
+  - `FunctionTool._fn` gives access to the wrapped function for `__module__` and `__qualname__` extraction
+  - Closures/lambdas have `<` in their `__qualname__` (e.g., `make_tool.<locals>.my_closure`) — use this to detect non-serializable tools
+  - Custom `Tool` subclasses serialize via their class path, not function path — `_deserialize_tool` checks `isinstance(obj, Tool)` first, then `issubclass(obj, Tool)` for classes
+  - `_import_object()` tries `rsplit('.', 1)` first, then progressively shorter module paths for nested attributes
+  - Agent hooks check uses `any(self.hook_manager.has_hooks(hp) for hp in HookPoint)` — iterates all hook points
+  - Swarm `to_dict()` is thin: just agents list + flow/mode/max_handoffs; `from_dict()` delegates agent reconstruction to `Agent.from_dict()`
+  - Total tests: 835 (49 distributed + 786 orbiter-core)
+---
+
+## 2026-02-17 - US-011
+- Created `EventPublisher` and `EventSubscriber` classes in `orbiter/distributed/events.py`
+- `EventPublisher` publishes streaming events to both Redis Pub/Sub (live) and Redis Streams (persistent replay)
+- `publish(task_id, event)` serializes event as JSON, publishes to `orbiter:events:{task_id}` Pub/Sub channel and appends to `orbiter:stream:{task_id}` Stream with configurable TTL
+- `EventSubscriber` provides two consumption modes:
+  - `subscribe(task_id)` — live Pub/Sub `AsyncIterator[StreamEvent]`, terminates on terminal StatusEvent (completed/error/cancelled)
+  - `replay(task_id, from_id="0")` — reads persisted events from Redis Stream
+- Discriminated union deserialization via `_deserialize_event()` using `_EVENT_TYPE_MAP` dict mapping type string → concrete class
+- `_deserialize_event()` raises `ValueError` for unknown event types
+- Stream TTL configurable (default 3600s = 1 hour), set via EXPIRE on each publish
+- Updated `__init__.py` to export `EventPublisher` and `EventSubscriber`
+- Added 30 tests across 7 test classes: `TestDeserializeEvent` (10), `TestEventPublisherInit` (3), `TestEventPublisherConnect` (2), `TestEventPublisherWithFakeRedis` (5), `TestEventSubscriberInit` (2), `TestEventSubscriberReplay` (5), `TestEventSubscriberSubscribe` (3)
+- Files changed: `packages/orbiter-distributed/src/orbiter/distributed/events.py`, `packages/orbiter-distributed/src/orbiter/distributed/__init__.py`, `packages/orbiter-distributed/tests/test_events.py`
+- **Learnings for future iterations:**
+  - `_EVENT_TYPE_MAP` dict maps type discriminator strings to concrete event classes — extend this if new event types are added
+  - Redis Pub/Sub via `r.pubsub()` + `subscribe()` + `get_message(ignore_subscribe_messages=True)` for async listening; must `unsubscribe()` + `aclose()` in finally block
+  - `r.publish()` and `r.expire()` need `# type: ignore[misc]` for pyright (same as HSET/SADD pattern in store.py)
+  - fakeredis supports Pub/Sub — shared FakeRedis instance between publisher and subscriber in tests enables end-to-end Pub/Sub testing with `asyncio.gather(consumer, producer)`
+  - `subscribe()` terminates on terminal StatusEvent (completed/error/cancelled) — callers don't need to manually stop iteration
+  - `replay()` is a simple XRANGE read — no consumer groups needed since it's read-only replay
+  - Pub/Sub `get_message()` returns None when no message available — need `await asyncio.sleep(0.01)` to avoid busy-loop
+  - Total tests: 865 (79 distributed + 786 orbiter-core)
 ---
