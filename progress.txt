@@ -2626,3 +2626,20 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Cleanup service checks documents table for referenced files before deleting uploads — prevents removing files that are still in use
   - ORBITER_CLEANUP_INTERVAL_HOURS env var configurable at `settings.cleanup_interval_hours`
 ---
+
+## 2026-02-17 - US-130
+- What was implemented: Artifact editing with inline code editor, markdown preview, JSON validation, version history, auto-save, regenerate, and diff view
+- Files changed:
+  - `packages/orbiter-web/src/orbiter_web/migrations/052_create_artifact_versions.sql` (new) — artifact_versions table with id, artifact_id, version_number, content, file_size, created_at
+  - `packages/orbiter-web/src/orbiter_web/routes/artifacts.py` — added 5 new endpoints: GET /content, PUT /content, GET /versions, GET /versions/:num, POST /regenerate; plus ArtifactUpdateContent, ArtifactVersionResponse, ArtifactRegenerateRequest models
+  - `packages/orbiter-web/src/pages/artifacts/[id].astro` (new) — full artifact editor page with textarea, markdown preview, diff view, version history sidebar, auto-save 2s debounce, regenerate dialog
+  - `packages/orbiter-web/src/pages/artifacts.astro` — added isTextArtifact() helper and edit links in grid/list views for text-based artifacts
+- **Learnings for future iterations:**
+  - Version tracking for artifacts: first edit saves original as v1, then new content as v2+; uses COALESCE(MAX(version_number), 0) + 1 pattern
+  - `_is_text_artifact()` checks file extension against a frozenset of text/code extensions to determine editability
+  - Auto-save uses 2s debounce; Ctrl+S/Cmd+S saves immediately
+  - Regenerate endpoint uses `_resolve_provider` from agent_runtime.py — needs provider_type and model_name from agent row
+  - Simple diff is line-by-line comparison — works well for text files; could be upgraded to Myers diff algorithm later
+  - Markdown preview uses simple regex-based rendering — no external library needed for basic formatting
+  - JSON validation: `JSON.parse()` in try/catch; red border on editor + warning banner on invalid
+---
