@@ -1,6 +1,7 @@
 ---
 import BaseLayout from "./BaseLayout.astro";
 import Breadcrumbs from "../components/Breadcrumbs.astro";
+import OnboardingTour from "../components/OnboardingTour.astro";
 import { cn } from "../utils/merge";
 
 interface BreadcrumbItem {
@@ -114,6 +115,7 @@ const bellIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="c
           return (
             <a
               href={section.href}
+              data-nav={section.id}
               class={cn(
                 "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors duration-150",
                 isActive
@@ -1727,4 +1729,7 @@ const bellIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="c
       window.__orbiterOpenHelp = openHelp;
     })();
   </script>
+
+  <!-- Onboarding tour (auto-triggers for first-time users) -->
+  <OnboardingTour />
 </BaseLayout>
