@@ -2266,3 +2266,20 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - _MIME_MAP in upload.py maps extensions to valid MIME types — add new types there when needed
   - UploadResult.path is a Path object, use str() if you need string path for DB storage
 ---
+
+## 2026-02-17 - US-120
+- Implemented approval gate UI for workflows
+- Files changed:
+  - `packages/orbiter-web/src/islands/Canvas/NodeSidebar.tsx` — added approval_gate to Logic category with shield+checkmark icon
+  - `packages/orbiter-web/src/islands/Canvas/ApprovalGateConfig.tsx` (NEW) — config panel with timeout_minutes, approval_message fields, and approval history log
+  - `packages/orbiter-web/src/islands/Canvas/NodeConfigPanel.tsx` — added approval_gate case to renderTypeConfig
+  - `packages/orbiter-web/src/orbiter_web/routes/approvals.py` — added GET /api/approvals/count (badge) and GET /api/approvals/history?node_id= (node inspection panel)
+  - `packages/orbiter-web/src/layouts/PageLayout.astro` — added bell icon notification badge with pending count, approval modal dialog with approve/reject/comment, 30s polling
+- **Learnings for future iterations:**
+  - Backend for approval gate was already implemented (engine.py, migration 041, routes/approvals.py) — only frontend was missing
+  - Approval modal uses native `<dialog>` with `.showModal()` — same pattern as confirmation dialogs elsewhere
+  - Notification badge polls `/api/approvals/pending` every 30s; uses `/api/approvals/count` could be used for lighter-weight checks
+  - Bell icon inserted between theme toggle and user menu in PageLayout top bar
+  - ApprovalGateConfig fetches history from `/api/approvals/history?node_id=` on mount
+  - Comment is required for rejection but optional for approval (enforced client-side)
+---
