@@ -81,6 +81,14 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
       <button
         role="tab"
         aria-selected="false"
+        data-settings-tab="pricing"
+        class="settings-tab px-4 py-2.5 text-sm font-medium text-muted border-b-2 border-transparent hover:text-dark transition-colors duration-150 cursor-pointer whitespace-nowrap"
+      >
+        Pricing
+      </button>
+      <button
+        role="tab"
+        aria-selected="false"
         data-settings-tab="workspace"
         class="settings-tab px-4 py-2.5 text-sm font-medium text-muted border-b-2 border-transparent hover:text-dark transition-colors duration-150 cursor-pointer whitespace-nowrap"
       >
@@ -293,6 +301,39 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
 
         <!-- Saved confirmation -->
         <div id="vs-saved" class="hidden text-sm text-zen-green mt-3">Vector store configuration saved.</div>
+      </div>
+    </div>
+
+    <!-- Pricing section -->
+    <div id="panel-pricing" class="settings-panel hidden" role="tabpanel">
+      <div class="rounded-xl bg-subtle/80 border border-dark/[0.08] p-6">
+        <div class="flex items-center justify-between mb-6">
+          <div>
+            <h2 class="text-lg font-semibold text-dark mb-1">Model Pricing</h2>
+            <p class="text-sm text-muted">Configure per-token pricing for cost estimation</p>
+          </div>
+        </div>
+
+        <div id="pricing-loading" class="text-sm text-muted py-4">Loading pricing data...</div>
+
+        <div id="pricing-table-wrap" class="hidden">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-dark/[0.08]">
+                <th class="text-left text-xs font-medium text-muted uppercase tracking-wide py-2 pr-4">Model</th>
+                <th class="text-right text-xs font-medium text-muted uppercase tracking-wide py-2 px-4">Input (per 1K tokens)</th>
+                <th class="text-right text-xs font-medium text-muted uppercase tracking-wide py-2 pl-4">Output (per 1K tokens)</th>
+              </tr>
+            </thead>
+            <tbody id="pricing-tbody" class="divide-y divide-dark/[0.04]"></tbody>
+          </table>
+        </div>
+
+        <div id="pricing-empty" class="hidden flex flex-col items-center py-8 text-center">
+          <p class="text-sm text-muted">No pricing data available.</p>
+        </div>
+
+        <div id="pricing-saved" class="hidden text-sm text-zen-green mt-3">Pricing updated.</div>
       </div>
     </div>
 
@@ -577,6 +618,11 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
         // Load vector store config when Knowledge tab is first shown
         if (target === "knowledge" && !vsLoaded) {
           fetchVectorStoreConfig();
+        }
+
+        // Load pricing when Pricing tab is first shown
+        if (target === "pricing" && !pricingLoaded) {
+          fetchPricingData();
         }
       });
     });
@@ -1548,5 +1594,86 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
         }
       });
     }
+    // ------- Pricing -------
+    var pricingLoaded = false;
+    var pricingLoading = document.getElementById("pricing-loading");
+    var pricingTableWrap = document.getElementById("pricing-table-wrap");
+    var pricingTbody = document.getElementById("pricing-tbody");
+    var pricingEmpty = document.getElementById("pricing-empty");
+    var pricingSaved = document.getElementById("pricing-saved");
+
+    function fetchPricingData() {
+      fetch("/api/costs/pricing", { credentials: "same-origin" })
+        .then(function (res) {
+          if (!res.ok) throw new Error("Failed to load pricing");
+          return res.json();
+        })
+        .then(function (data) {
+          pricingLoaded = true;
+          if (pricingLoading) pricingLoading.classList.add("hidden");
+
+          if (!data.length) {
+            if (pricingEmpty) pricingEmpty.classList.remove("hidden");
+            return;
+          }
+
+          if (pricingTableWrap) pricingTableWrap.classList.remove("hidden");
+          renderPricingTable(data);
+        })
+        .catch(function () {
+          if (pricingLoading) pricingLoading.textContent = "Failed to load pricing data.";
+        });
+    }
+
+    function renderPricingTable(data) {
+      if (!pricingTbody) return;
+      pricingTbody.innerHTML = data.map(function (item) {
+        return '<tr data-pricing-id="' + item.id + '">'
+          + '<td class="py-2.5 pr-4 text-dark font-medium">' + item.model_name + '</td>'
+          + '<td class="py-2.5 px-4 text-right">'
+          + '<input type="number" step="0.0001" min="0" class="pricing-input w-28 text-right bg-paper border border-dark/[0.08] rounded-lg px-2.5 py-1.5 text-sm text-dark tabular-nums outline-none focus:border-coral focus:ring-2 focus:ring-coral/20" data-field="input" value="' + item.input_price_per_1k + '" />'
+          + '</td>'
+          + '<td class="py-2.5 pl-4 text-right">'
+          + '<input type="number" step="0.0001" min="0" class="pricing-input w-28 text-right bg-paper border border-dark/[0.08] rounded-lg px-2.5 py-1.5 text-sm text-dark tabular-nums outline-none focus:border-coral focus:ring-2 focus:ring-coral/20" data-field="output" value="' + item.output_price_per_1k + '" />'
+          + '</td>'
+          + '</tr>';
+      }).join("");
+
+      // Listen for changes on pricing inputs (auto-save on blur)
+      pricingTbody.querySelectorAll(".pricing-input").forEach(function (input) {
+        input.addEventListener("change", function () {
+          var row = input.closest("tr");
+          var pricingId = row.getAttribute("data-pricing-id");
+          var inputPrice = row.querySelector('[data-field="input"]').value;
+          var outputPrice = row.querySelector('[data-field="output"]').value;
+
+          fetch("/api/costs/pricing/" + pricingId, {
+            method: "PUT",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              input_price_per_1k: parseFloat(inputPrice) || 0,
+              output_price_per_1k: parseFloat(outputPrice) || 0,
+            }),
+          })
+            .then(function (res) {
+              if (!res.ok) throw new Error("Failed to update");
+              if (pricingSaved) {
+                pricingSaved.classList.remove("hidden");
+                setTimeout(function () {
+                  pricingSaved.classList.add("hidden");
+                }, 2000);
+              }
+            })
+            .catch(function () {
+              input.classList.add("border-coral");
+              setTimeout(function () {
+                input.classList.remove("border-coral");
+              }, 2000);
+            });
+        });
+      });
+    }
+
   })();
 </script>

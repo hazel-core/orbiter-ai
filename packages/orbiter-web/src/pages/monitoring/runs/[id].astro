@@ -256,6 +256,7 @@ const liveIcon = '<svg class="h-3 w-3" viewBox="0 0 24 24" fill="currentColor"><
         // Stats
         + '<div class="flex items-center gap-6 ml-auto shrink-0">'
         + '<span class="text-xs tabular-nums text-dark w-16 text-right">' + tokens + ' tok</span>'
+        + '<span class="text-xs tabular-nums text-dark w-16 text-right">' + (step.cost ? fmtCost(step.cost) : '—') + '</span>'
         + '<span class="text-xs tabular-nums text-muted w-16 text-right">' + duration + '</span>'
         + (hasError ? '<span class="w-2 h-2 rounded-full bg-red-500 shrink-0"></span>' : '<span class="w-2 shrink-0"></span>')
         + '<span class="step-chevron text-muted transition-transform">'

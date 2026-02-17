@@ -378,6 +378,24 @@ async def check_budget(user_id: str, agent_id: str | None = None) -> BudgetCheck
 # ---------------------------------------------------------------------------
 
 
+@router.delete("/budgets/{budget_id}", status_code=204)
+async def delete_budget(
+    budget_id: str,
+    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+) -> None:
+    """Delete a budget by ID."""
+    async with get_db() as db:
+        cursor = await db.execute(
+            "SELECT id FROM cost_budgets WHERE id = ? AND user_id = ?",
+            (budget_id, user["id"]),
+        )
+        if await cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Budget not found")
+
+        await db.execute("DELETE FROM cost_budgets WHERE id = ?", (budget_id,))
+        await db.commit()
+
+
 @router.get("/budget-check", response_model=BudgetCheck | None)
 async def budget_check_endpoint(
     agent_id: str | None = None,

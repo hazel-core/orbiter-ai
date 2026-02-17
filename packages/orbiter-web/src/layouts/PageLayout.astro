@@ -193,6 +193,14 @@ const closeIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="
 
       <!-- Main content area -->
       <main class={cn("flex-1 overflow-y-auto pb-16 md:pb-0", className)}>
+        <!-- Global budget warning banner -->
+        <div id="global-budget-banner" class="hidden mx-4 mt-4 rounded-xl border px-5 py-3">
+          <div class="flex items-center gap-3">
+            <svg class="h-4 w-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            <p id="global-budget-text" class="text-xs font-medium flex-1"></p>
+            <a href="/monitoring/costs" class="text-xs underline hover:no-underline flex-shrink-0">View costs</a>
+          </div>
+        </div>
         <slot />
       </main>
     </div>
@@ -482,6 +490,31 @@ const closeIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="
           closeMenu();
         }
       });
+    })();
+  </script>
+
+  <!-- Global budget check -->
+  <script is:inline>
+    (function () {
+      fetch("/api/costs/budget-check", { credentials: "same-origin" })
+        .then(function (res) { return res.ok ? res.json() : null; })
+        .then(function (data) {
+          if (!data) return;
+          var banner = document.getElementById("global-budget-banner");
+          var text = document.getElementById("global-budget-text");
+          if (!banner || !text) return;
+
+          function fc(n) { return "$" + (n < 0.01 ? n.toFixed(4) : n.toFixed(2)); }
+
+          if (data.status === "exceeded") {
+            banner.className = "mx-4 mt-4 rounded-xl border border-coral/30 bg-coral/5 text-coral px-5 py-3";
+            text.textContent = "Budget exceeded — spent " + fc(data.spent) + " of " + fc(data.budget_amount) + " (" + data.percent_used.toFixed(0) + "%)";
+          } else if (data.status === "warning") {
+            banner.className = "mx-4 mt-4 rounded-xl border border-amber-400/30 bg-amber-50 text-amber-800 px-5 py-3";
+            text.textContent = "Approaching budget — spent " + fc(data.spent) + " of " + fc(data.budget_amount) + " (" + data.percent_used.toFixed(0) + "%)";
+          }
+        })
+        .catch(function () {});
     })();
   </script>
 </BaseLayout>
