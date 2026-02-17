@@ -31,6 +31,7 @@ from orbiter_web.routes.projects import router as projects_router
 from orbiter_web.routes.prompt_templates import router as prompt_templates_router
 from orbiter_web.routes.provider_keys import router as provider_keys_router
 from orbiter_web.routes.providers import router as providers_router
+from orbiter_web.routes.runs import router as runs_router
 from orbiter_web.routes.threads import router as threads_router
 from orbiter_web.routes.tools import router as tools_router
 from orbiter_web.routes.vector_stores import router as vector_stores_router
@@ -82,6 +83,7 @@ app.include_router(models_router)
 app.include_router(playground_router)
 app.include_router(plugins_router)
 app.include_router(projects_router)
+app.include_router(runs_router)
 app.include_router(prompt_templates_router)
 app.include_router(provider_keys_router)
 app.include_router(providers_router)
