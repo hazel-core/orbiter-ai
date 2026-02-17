@@ -171,7 +171,7 @@
         "Pyright passes"
       ],
       "priority": 10,
-      "passes": false,
+      "passes": true,
       "notes": "Create packages/orbiter-distributed/src/orbiter/distributed/store.py. Use HSET/HGETALL for hash operations. Use EXPIRE for TTL. For list_tasks, use a secondary index: SADD orbiter:tasks:index task_id on set_status, SMEMBERS + filter for list_tasks. Reuse TaskResult model from US-009."
     },
     {

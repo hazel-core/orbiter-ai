@@ -8,10 +8,12 @@ from orbiter.distributed.models import (  # pyright: ignore[reportMissingImports
     TaskResult,
     TaskStatus,
 )
+from orbiter.distributed.store import TaskStore  # pyright: ignore[reportMissingImports]
 
 __all__: list[str] = [
     "TaskBroker",
     "TaskPayload",
     "TaskResult",
     "TaskStatus",
+    "TaskStore",
 ]

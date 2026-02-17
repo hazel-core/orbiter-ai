@@ -24,6 +24,7 @@ Started: Mon Feb 17 2026
 - fakeredis.aioredis.FakeRedis(decode_responses=True) for Redis integration tests — supports Streams (XADD/XREADGROUP/XACK/XRANGE)
 - TaskBroker uses Redis Streams consumer groups: `{queue_name}:group` as group name, worker_id as consumer name, `>` for new messages
 - TaskBroker._pending_ids maps task_id → stream message_id for ack/nack correlation
+- Redis hash/set async operations (HSET, HGETALL, EXPIRE, SADD, SMEMBERS) need `# type: ignore[misc]` for pyright — type stubs don't properly annotate these as awaitable (unlike Streams operations which work fine)
 
 ---
 
@@ -179,4 +180,25 @@ Started: Mon Feb 17 2026
   - `_pending_ids` dict maps task_id → stream message_id for ack/nack correlation — must be initialized in `__init__`
   - `aioredis.ResponseError` with "BUSYGROUP" indicates consumer group already exists — safe to ignore on reconnect
   - Total tests: 783 (33 distributed + 750 existing)
+---
+
+## 2026-02-17 - US-010
+- Created `TaskStore` class in `orbiter/distributed/store.py` backed by Redis hashes
+- Constructor: `TaskStore(redis_url, *, prefix='orbiter:task:', ttl_seconds=86400)`
+- `connect()` creates Redis client via `redis.asyncio.from_url()`
+- `disconnect()` closes the Redis connection
+- `set_status(task_id, status, **kwargs)` stores task state as Redis hash with TTL, maintains secondary index via SADD
+- `get_status(task_id)` retrieves task state via HGETALL and parses into `TaskResult`
+- `list_tasks(status=None, limit=100)` uses SMEMBERS on secondary index set, filters by status
+- `_parse_result()` handles type conversion from Redis strings (floats, ints, JSON-encoded dicts, None via empty string)
+- Updated `__init__.py` to export `TaskStore`
+- Added 16 tests across 2 test classes: `TestTaskStoreInit` (3), `TestTaskStoreWithFakeRedis` (13)
+- Files changed: `packages/orbiter-distributed/src/orbiter/distributed/store.py`, `packages/orbiter-distributed/src/orbiter/distributed/__init__.py`, `packages/orbiter-distributed/tests/test_store.py`
+- **Learnings for future iterations:**
+  - Redis hash operations (HSET, HGETALL, EXPIRE) and set operations (SADD, SMEMBERS) need `# type: ignore[misc]` for pyright — the redis async type stubs don't properly annotate these as awaitable
+  - Secondary index pattern: SADD `{prefix}index` task_id on every `set_status()`, SMEMBERS for `list_tasks()` — simple but effective for listing
+  - Redis hashes store everything as strings — need type conversion in `_parse_result()`: empty string → None, JSON.loads for dicts, float() for timestamps, int() for retries
+  - `set_status()` uses HSET (not HMSET) with `mapping=` param — HSET with mapping is the modern Redis way
+  - Calling `set_status()` multiple times preserves existing fields (HSET merges, doesn't replace the whole hash)
+  - Total tests: 799 (49 distributed + 750 existing)
 ---
