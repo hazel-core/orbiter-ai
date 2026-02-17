@@ -112,6 +112,8 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
 - Security headers: `SecurityHeadersMiddleware` in `middleware/security.py` adds CSP, X-Content-Type-Options, X-Frame-Options; add frameable paths to `_FRAMEABLE_PATHS` set
 - Time columns differ: `runs` table uses `start_time`/`end_time`; `workflow_runs` uses `started_at`/`completed_at` — always check migration SQL before writing queries
 - Takeover protocol: WebSocket commands `takeover`, `inject`, `resume`, `stop`; server responds with `takeover_ack`, `takeover_event`, `takeover_stopped`; stream runs in asyncio.Task for cancellability
+- Workspace settings: key-value store in `workspace_settings` table; GET/PUT at `/api/settings/workspace`; used for concurrent_run_limit and other workspace-level config
+- Run queue: `run_queue` table + `services/run_queue.py`; workflow_runs.py checks `can_start_run()` before executing; engine triggers `process_queue()` on terminal states
 
 ---
 
@@ -2782,4 +2784,24 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - SSE streaming for workflows needs asyncio.Queue bridge: task writes events to queue, generator yields from queue
   - For agent SSE, use `AgentService.stream_agent()` which yields `StreamChunk` objects
   - Two routers in one file: `router` (prefix `/api/deployments`) for CRUD, `deployed_router` (prefix `/api/deployed`) for runtime — both registered in app.py
+---
+
+## 2026-02-17 - US-181
+- What was implemented: Workflow concurrency limits and run queue
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/migrations/059_create_run_queue.sql (new — run_queue table, workspace_settings table, max_concurrent column on workflows)
+  - packages/orbiter-web/src/orbiter_web/services/run_queue.py (new — RunQueue service: can_start_run, enqueue_run, process_queue, cancel_queued_run, list_queued_runs)
+  - packages/orbiter-web/src/orbiter_web/routes/run_queue.py (new — GET /api/runs/queue, DELETE /api/runs/queue/:id)
+  - packages/orbiter-web/src/orbiter_web/routes/workspace_settings.py (new — GET/PUT /api/settings/workspace for concurrent_run_limit)
+  - packages/orbiter-web/src/orbiter_web/routes/workflow_runs.py (updated — start_workflow_run checks concurrency limits, queues if at capacity)
+  - packages/orbiter-web/src/orbiter_web/engine.py (updated — _update_run_status triggers process_queue on terminal states)
+  - packages/orbiter-web/src/orbiter_web/app.py (updated — registered run_queue_router and workspace_settings_router)
+  - packages/orbiter-web/src/pages/settings.astro (updated — concurrent limit saved/loaded from DB API instead of localStorage only)
+- **Learnings for future iterations:**
+  - workspace_settings table is a simple key-value store for workspace-level configuration (concurrent_run_limit, etc.)
+  - Queue processing: triggered from _update_run_status when run reaches terminal state (completed/failed/cancelled)
+  - Per-workflow concurrency: optional max_concurrent column on workflows table (NULL = no per-workflow limit)
+  - Queue entries store nodes_json/edges_json so they can be started without re-querying the workflow
+  - Background task GC prevention: engine.py uses _queue_tasks set + add_done_callback pattern for process_queue tasks
+  - run_queue status flow: queued → started (with run_id set) or queued → cancelled
 ---

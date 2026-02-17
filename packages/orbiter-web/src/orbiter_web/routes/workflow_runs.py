@@ -184,7 +184,12 @@ async def start_workflow_run(
     workflow_id: str,
     user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
 ) -> dict[str, Any]:
-    """Start executing a workflow. Returns the run_id immediately."""
+    """Start executing a workflow. Returns the run_id immediately.
+
+    If the concurrent run limit is reached, the run is queued instead.
+    """
+    from orbiter_web.services.run_queue import can_start_run, enqueue_run
+
     async with get_db() as db:
         wf = await _verify_workflow_ownership(db, workflow_id, user["id"])
 
@@ -194,6 +199,12 @@ async def start_workflow_run(
         if not nodes:
             raise HTTPException(status_code=422, detail="Workflow has no nodes")
 
+    # Check concurrency limits before starting.
+    if not await can_start_run(workflow_id):
+        result = await enqueue_run(workflow_id, user["id"], nodes, edges)
+        return {"queue_id": result["queue_id"], "status": "queued", "position": result["position"]}
+
+    async with get_db() as db:
         run_id = str(uuid.uuid4())
         now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
 

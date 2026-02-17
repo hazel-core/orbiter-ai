@@ -16,6 +16,9 @@ from orbiter_web.routes.costs import check_budget
 
 _log = logging.getLogger(__name__)
 
+# Background queue-processing tasks (prevent GC).
+_queue_tasks: set[asyncio.Task[Any]] = set()
+
 # ---------------------------------------------------------------------------
 # Node error-handling config defaults
 # ---------------------------------------------------------------------------
@@ -1285,6 +1288,14 @@ async def _update_run_status(
             values,
         )
         await db.commit()
+
+    # When a run reaches a terminal state, process the queue for waiting runs.
+    if status in ("completed", "failed", "cancelled"):
+        from orbiter_web.services.run_queue import process_queue
+
+        task = asyncio.create_task(process_queue())
+        _queue_tasks.add(task)
+        task.add_done_callback(_queue_tasks.discard)
 
 
 async def _compute_run_aggregates(run_id: str) -> dict[str, Any]:

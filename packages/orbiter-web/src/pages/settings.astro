@@ -1565,14 +1565,25 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
         .catch(function () {});
     }
 
-    // Load workspace settings from localStorage
+    // Load workspace settings from localStorage + DB
     if (workspaceForm) {
       var providerSelect = workspaceForm.querySelector('[name="default_provider"]');
       var limitInput = workspaceForm.querySelector('[name="concurrent_limit"]');
       var savedProvider = localStorage.getItem("orbiter_default_provider") || "";
-      var savedLimit = localStorage.getItem("orbiter_concurrent_limit") || "5";
       if (providerSelect) providerSelect.value = savedProvider;
-      if (limitInput) limitInput.value = savedLimit;
+
+      // Load concurrent limit from DB
+      fetch("/api/settings/workspace")
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (limitInput && data.concurrent_run_limit) {
+            limitInput.value = data.concurrent_run_limit;
+          }
+        })
+        .catch(function () {
+          var savedLimit = localStorage.getItem("orbiter_concurrent_limit") || "5";
+          if (limitInput) limitInput.value = savedLimit;
+        });
 
       fetchModelsForWorkspace();
 
@@ -1583,8 +1594,14 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
         var model = workspaceModelSelect ? workspaceModelSelect.value : "";
 
         localStorage.setItem("orbiter_default_provider", provider);
-        localStorage.setItem("orbiter_concurrent_limit", limit);
         localStorage.setItem("orbiter_default_model", model);
+
+        // Save concurrent limit to DB
+        fetch("/api/settings/workspace/concurrent_run_limit", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ value: limit }),
+        }).catch(function () {});
 
         if (workspaceSaved) {
           workspaceSaved.classList.remove("hidden");

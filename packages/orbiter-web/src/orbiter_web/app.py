@@ -47,6 +47,7 @@ from orbiter_web.routes.projects import router as projects_router
 from orbiter_web.routes.prompt_templates import router as prompt_templates_router
 from orbiter_web.routes.provider_keys import router as provider_keys_router
 from orbiter_web.routes.providers import router as providers_router
+from orbiter_web.routes.run_queue import router as run_queue_router
 from orbiter_web.routes.runs import router as runs_router
 from orbiter_web.routes.sandbox import router as sandbox_router
 from orbiter_web.routes.schedules import router as schedules_router
@@ -56,6 +57,7 @@ from orbiter_web.routes.tools import router as tools_router
 from orbiter_web.routes.vector_stores import router as vector_stores_router
 from orbiter_web.routes.workflow_runs import router as workflow_runs_router
 from orbiter_web.routes.workflows import router as workflows_router
+from orbiter_web.routes.workspace_settings import router as workspace_settings_router
 from orbiter_web.websocket import router as ws_router
 
 logger = logging.getLogger("orbiter_web")
@@ -155,6 +157,7 @@ app.include_router(notifications_router)
 app.include_router(playground_router)
 app.include_router(plugins_router)
 app.include_router(projects_router)
+app.include_router(run_queue_router)
 app.include_router(runs_router)
 app.include_router(sandbox_router)
 app.include_router(schedules_router)
@@ -167,6 +170,7 @@ app.include_router(tools_router)
 app.include_router(vector_stores_router)
 app.include_router(workflow_runs_router)
 app.include_router(workflows_router)
+app.include_router(workspace_settings_router)
 app.include_router(ws_router)
 
 
