@@ -3001,7 +3001,7 @@
         "Verify in browser using dev-browser skill"
       ],
       "priority": 24,
-      "passes": false,
+      "passes": true,
       "notes": "Gap fill: UI counterpart to US-170. US-120 requires 'in-app notification badge'"
     },
     {

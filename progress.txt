@@ -2448,3 +2448,20 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Base64 data URIs for inline images: `data:{mime};base64,{content}` — works for both display and download
   - Sandbox config is per-user (not per-agent) — stored in sandbox_configs table
 ---
+
+## 2026-02-17 - US-171
+- Implemented notification bell icon with unread count badge in top bar (PageLayout.astro)
+- Created dropdown panel with notification list, type icons, time-ago display, read/unread styling
+- Added click-to-navigate (routes to entity pages based on entity_type/entity_id) + mark-as-read on click
+- Added "Mark all as read" button using POST /api/notifications/read-all
+- Wired up WebSocket real-time updates via notifications channel (notification_created events)
+- Fallback polling every 30s for unread count
+- Files changed:
+  - `packages/orbiter-web/src/layouts/PageLayout.astro` — Added notification bell button, dropdown panel HTML, and inline script (~200 lines)
+- **Learnings for future iterations:**
+  - Notification backend (US-170) provides: GET /api/notifications (paginated), GET /api/notifications/unread-count, PUT /api/notifications/:id/read, POST /api/notifications/read-all
+  - WebSocket notification events arrive as `{channel: "notifications", type: "notification_created", payload: {id, notification_type, title, message, entity_type, entity_id, created_at}}`
+  - Approvals bell pattern in PageLayout is the template for badge + modal/dropdown UI patterns
+  - Notification dropdown uses `position: relative` on container + `absolute right-0 top-full` on dropdown for proper positioning
+  - Entity type to URL mapping: agent -> /agents/:id, workflow -> /workflows/:id/canvas, project -> /projects/:id, knowledge_base -> /knowledge/:id
+---
