@@ -2217,3 +2217,20 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Modal pattern: dialog element with .showModal(), backdrop click to close, form submission with error display
   - Delete confirmation uses separate dialog to prevent accidental deletion
 ---
+
+## 2026-02-17 - US-119
+- Implemented approval gate backend: new workflow node type that pauses execution until human approval
+- Files changed:
+  - `packages/orbiter-web/src/orbiter_web/migrations/041_create_workflow_approvals.sql` (new) — workflow_approvals table with status, timeout, comment fields
+  - `packages/orbiter-web/src/orbiter_web/routes/approvals.py` (new) — GET /api/approvals/pending, POST /api/approvals/:id/respond, engine-facing helpers (create_approval, poll_approval)
+  - `packages/orbiter-web/src/orbiter_web/engine.py` — added _execute_approval_gate() and approval_gate dispatch in _execute_node(); passed run_id/user_id/cancel_event through to support approval gate polling
+  - `packages/orbiter-web/src/orbiter_web/routes/tools.py` — added approval_gate to _NODE_HANDLE_MAP
+  - `packages/orbiter-web/src/islands/Canvas/handleTypes.ts` — added approval_gate to NODE_HANDLE_MAP
+  - `packages/orbiter-web/src/orbiter_web/app.py` — registered approvals_router
+- **Learnings for future iterations:**
+  - workflow_runs.status is TEXT with no CHECK constraint — safe to add new statuses like 'awaiting_approval' without migration
+  - Approval gate uses async polling (2s intervals) in the engine; the gate blocks the asyncio task but yields via sleep so other tasks can proceed
+  - When adding keyword-only args to _execute_node(), all 3 call sites (single node, workflow, debug) need updating
+  - Notifications piggyback on the existing alerts table (rule_id set to empty string for system-generated alerts)
+  - Timeout check uses SQLite datetime arithmetic: `datetime(requested_at, '+' || timeout_minutes || ' minutes')`
+---
