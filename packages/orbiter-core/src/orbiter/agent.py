@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import importlib
 from collections.abc import Callable, Sequence
 from typing import Any
 
@@ -322,6 +323,103 @@ class Agent:
 
         return results
 
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize the agent configuration to a dict.
+
+        Tools are serialized as importable dotted paths. Callable instructions,
+        hooks, memory, and context cannot be serialized and will raise ValueError.
+
+        Returns:
+            A dict suitable for JSON serialization and later reconstruction
+            via ``Agent.from_dict()``.
+
+        Raises:
+            ValueError: If the agent contains non-serializable components
+                (callable instructions, hooks, closure-based tools, memory, context).
+        """
+        if callable(self.instructions):
+            raise ValueError(
+                f"Agent '{self.name}' has callable instructions which cannot be serialized. "
+                "Use a string instruction instead."
+            )
+        if self.hook_manager.has_hooks(HookPoint.START) or any(
+            self.hook_manager.has_hooks(hp) for hp in HookPoint
+        ):
+            raise ValueError(
+                f"Agent '{self.name}' has hooks which cannot be serialized."
+            )
+        if self.memory is not None:
+            raise ValueError(
+                f"Agent '{self.name}' has a memory store which cannot be serialized."
+            )
+        if self.context is not None:
+            raise ValueError(
+                f"Agent '{self.name}' has a context engine which cannot be serialized."
+            )
+
+        data: dict[str, Any] = {
+            "name": self.name,
+            "model": self.model,
+            "instructions": self.instructions,
+            "max_steps": self.max_steps,
+            "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
+        }
+
+        # Serialize tools as importable dotted paths
+        if self.tools:
+            data["tools"] = [_serialize_tool(t) for t in self.tools.values()]
+
+        # Serialize handoffs recursively
+        if self.handoffs:
+            data["handoffs"] = [agent.to_dict() for agent in self.handoffs.values()]
+
+        # Serialize output_type as importable dotted path
+        if self.output_type is not None:
+            data["output_type"] = f"{self.output_type.__module__}.{self.output_type.__qualname__}"
+
+        return data
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Agent:
+        """Reconstruct an Agent from a dict produced by ``to_dict()``.
+
+        Tools are resolved by importing dotted paths. Handoff agents are
+        reconstructed recursively.
+
+        Args:
+            data: Dict as produced by ``Agent.to_dict()``.
+
+        Returns:
+            A reconstructed ``Agent`` instance.
+
+        Raises:
+            ValueError: If a tool or output_type path cannot be imported.
+        """
+        tools: list[Tool] | None = None
+        if "tools" in data:
+            tools = [_deserialize_tool(t) for t in data["tools"]]
+
+        handoffs: list[Agent] | None = None
+        if "handoffs" in data:
+            handoffs = [Agent.from_dict(h) for h in data["handoffs"]]
+
+        output_type: type[BaseModel] | None = None
+        if "output_type" in data:
+            output_type = _import_object(data["output_type"])
+
+        return cls(
+            name=data["name"],
+            model=data.get("model", "openai:gpt-4o"),
+            instructions=data.get("instructions", ""),
+            tools=tools,
+            handoffs=handoffs,
+            output_type=output_type,
+            max_steps=data.get("max_steps", 10),
+            temperature=data.get("temperature", 1.0),
+            max_tokens=data.get("max_tokens"),
+        )
+
     def __repr__(self) -> str:
         parts = [f"name={self.name!r}", f"model={self.model!r}"]
         if self.tools:
@@ -342,3 +440,114 @@ def _is_context_length_error(exc: Exception) -> bool:
         return True
     msg = str(exc).lower()
     return "context_length" in msg or "context length" in msg
+
+
+# ---------------------------------------------------------------------------
+# Serialization helpers
+# ---------------------------------------------------------------------------
+
+
+def _serialize_tool(t: Tool) -> str:
+    """Serialize a tool to an importable dotted path.
+
+    For ``FunctionTool``, uses the wrapped function's module and qualname.
+    For custom ``Tool`` subclasses, uses the class's module and qualname.
+
+    Raises:
+        ValueError: If the tool cannot be serialized (e.g., closures, lambdas).
+    """
+    from orbiter.tool import FunctionTool
+
+    if isinstance(t, FunctionTool):
+        fn = t._fn
+        module = getattr(fn, "__module__", None)
+        qualname = getattr(fn, "__qualname__", None)
+        if not module or not qualname:
+            raise ValueError(
+                f"Tool '{t.name}' wraps a function without __module__ or __qualname__ "
+                "and cannot be serialized."
+            )
+        # Detect closures/lambdas (qualname contains '<')
+        if "<" in qualname:
+            raise ValueError(
+                f"Tool '{t.name}' wraps a closure or lambda ({qualname}) "
+                "which cannot be serialized. Use a module-level function instead."
+            )
+        return f"{module}.{qualname}"
+
+    # Custom Tool subclass — serialize the class itself
+    cls = type(t)
+    module = cls.__module__
+    qualname = cls.__qualname__
+    if "<" in qualname:
+        raise ValueError(
+            f"Tool '{t.name}' is a locally-defined class ({qualname}) "
+            "which cannot be serialized."
+        )
+    return f"{module}.{qualname}"
+
+
+def _deserialize_tool(path: str) -> Tool:
+    """Deserialize a tool from an importable dotted path.
+
+    If the imported object is a callable (function), wraps it as a FunctionTool.
+    If it's already a Tool instance, returns it directly.
+    If it's a Tool subclass, instantiates it.
+
+    Raises:
+        ValueError: If the path cannot be imported or doesn't resolve to a tool.
+    """
+    from orbiter.tool import FunctionTool
+
+    obj = _import_object(path)
+
+    # Already a Tool instance (e.g., @tool decorated at module level)
+    if isinstance(obj, Tool):
+        return obj
+
+    # A Tool subclass — instantiate it
+    if isinstance(obj, type) and issubclass(obj, Tool):
+        return obj()
+
+    # A plain callable — wrap it
+    if callable(obj):
+        return FunctionTool(obj)
+
+    raise ValueError(
+        f"Imported '{path}' is not a callable or Tool instance: {type(obj)}"
+    )
+
+
+def _import_object(dotted_path: str) -> Any:
+    """Import an object from a dotted path like 'package.module.ClassName'.
+
+    Tries progressively shorter module paths, resolving the remainder
+    via getattr.
+
+    Raises:
+        ValueError: If the path cannot be resolved.
+    """
+    parts = dotted_path.rsplit(".", 1)
+    if len(parts) < 2:
+        raise ValueError(f"Invalid dotted path: {dotted_path!r}")
+
+    module_path, attr_name = parts
+    try:
+        module = importlib.import_module(module_path)
+        return getattr(module, attr_name)
+    except (ImportError, AttributeError):
+        pass
+
+    # Try splitting further for nested attributes (e.g., module.Class.method)
+    parts = dotted_path.split(".")
+    for i in range(len(parts) - 1, 0, -1):
+        module_path = ".".join(parts[:i])
+        try:
+            obj = importlib.import_module(module_path)
+            for attr in parts[i:]:
+                obj = getattr(obj, attr)
+            return obj
+        except (ImportError, AttributeError):
+            continue
+
+    raise ValueError(f"Cannot import '{dotted_path}'")

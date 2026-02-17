@@ -560,6 +560,42 @@ class Swarm:
 
         return result
 
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize the swarm configuration to a dict.
+
+        All agents are serialized via ``Agent.to_dict()``.
+
+        Returns:
+            A dict suitable for JSON serialization and later reconstruction
+            via ``Swarm.from_dict()``.
+        """
+        return {
+            "agents": [agent.to_dict() for agent in self.agents.values()],
+            "flow": self.flow,
+            "mode": self.mode,
+            "max_handoffs": self.max_handoffs,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Swarm:
+        """Reconstruct a Swarm from a dict produced by ``to_dict()``.
+
+        Args:
+            data: Dict as produced by ``Swarm.to_dict()``.
+
+        Returns:
+            A reconstructed ``Swarm`` instance.
+        """
+        from orbiter.agent import Agent
+
+        agents = [Agent.from_dict(a) for a in data["agents"]]
+        return cls(
+            agents=agents,
+            flow=data.get("flow"),
+            mode=data.get("mode", "workflow"),
+            max_handoffs=data.get("max_handoffs", 10),
+        )
+
     def describe(self) -> dict[str, Any]:
         """Return a summary of the swarm's configuration.
 
