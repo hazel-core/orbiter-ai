@@ -2105,3 +2105,16 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - PageLayout is the right place for global banners (budget warnings) since all app pages use it
   - Pricing inputs use auto-save on "change" event (blur after edit) — simpler UX than a separate save button
 ---
+
+## 2026-02-17 - US-115
+- What was implemented: Structured log storage backend with REST filtering and WebSocket live streaming
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/migrations/038_create_logs.sql (new — logs table with level/source CHECK constraints, indexes)
+  - packages/orbiter-web/src/orbiter_web/routes/logs.py (new — POST /api/logs, GET /api/logs with level/source/agent_id/time/search filters, WS /api/logs/stream)
+  - packages/orbiter-web/src/orbiter_web/app.py (updated — registered logs_router)
+- **Learnings for future iterations:**
+  - WebSocket streaming via in-memory subscriber registry pattern: _subscribers dict tracks connected WS clients; _notify_subscribers pushes new entries to all matching user connections
+  - Logs route uses both REST (Depends(get_current_user)) and WS (get_ws_user from websocket.py) auth patterns
+  - SQLite CHECK constraints enforce enum values at the DB level for level and source columns
+  - The WebSocket endpoint at /stream (relative to prefix /api/logs) resolves to ws://api/logs/stream
+---
