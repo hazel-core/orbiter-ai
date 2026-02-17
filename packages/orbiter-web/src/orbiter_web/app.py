@@ -18,6 +18,7 @@ from orbiter_web.errors import register_error_handlers
 from orbiter_web.middleware.csrf import CSRFMiddleware
 from orbiter_web.middleware.rate_limit import RateLimitMiddleware
 from orbiter_web.middleware.security import SecurityHeadersMiddleware
+from orbiter_web.routes.agent_templates import router as agent_templates_router
 from orbiter_web.routes.agents import router as agents_router
 from orbiter_web.routes.alerts import router as alerts_router
 from orbiter_web.routes.annotations import router as annotations_router
@@ -130,6 +131,7 @@ if settings.cors_origins:
         allow_headers=["Content-Type", "Authorization", "X-CSRF-Token"],
     )
 
+app.include_router(agent_templates_router)
 app.include_router(agents_router)
 app.include_router(alerts_router)
 app.include_router(annotations_router)
