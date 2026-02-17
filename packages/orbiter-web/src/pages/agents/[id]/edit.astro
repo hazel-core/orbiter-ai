@@ -454,6 +454,67 @@ const saveIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
               <p class="text-xs text-muted/60 mt-1">Click "Add Tool" to assign tools to this agent.</p>
             </div>
           </div>
+
+          <!-- Sandbox Configuration (shown when code_interpreter is assigned) -->
+          <div id="sandbox-config" class="hidden mt-6 border-t border-dark/[0.08] pt-5">
+            <div class="flex items-center gap-2 mb-4">
+              <span class="flex h-6 w-6 items-center justify-center rounded bg-zen-blue/10 text-zen-blue">
+                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+              </span>
+              <div>
+                <h3 class="text-sm font-medium text-dark">Sandbox Configuration</h3>
+                <p class="text-xs text-muted">Configure the Code Interpreter execution environment.</p>
+              </div>
+            </div>
+
+            <!-- Timeout slider -->
+            <div class="mb-4">
+              <div class="flex items-center justify-between mb-1.5">
+                <label for="sandbox-timeout" class="text-xs font-medium text-dark">Timeout</label>
+                <span id="sandbox-timeout-value" class="text-xs text-muted tabular-nums">30s</span>
+              </div>
+              <input
+                type="range"
+                id="sandbox-timeout"
+                min="1"
+                max="120"
+                value="30"
+                class="w-full h-1.5 rounded-full appearance-none cursor-pointer bg-subtle accent-zen-blue"
+              />
+              <div class="flex justify-between text-[10px] text-muted/50 mt-0.5">
+                <span>1s</span>
+                <span>120s</span>
+              </div>
+            </div>
+
+            <!-- Memory limit -->
+            <div class="mb-4">
+              <div class="flex items-center justify-between mb-1.5">
+                <label for="sandbox-memory" class="text-xs font-medium text-dark">Memory Limit</label>
+                <span id="sandbox-memory-value" class="text-xs text-muted tabular-nums">256 MB</span>
+              </div>
+              <input
+                type="range"
+                id="sandbox-memory"
+                min="64"
+                max="1024"
+                step="64"
+                value="256"
+                class="w-full h-1.5 rounded-full appearance-none cursor-pointer bg-subtle accent-zen-blue"
+              />
+              <div class="flex justify-between text-[10px] text-muted/50 mt-0.5">
+                <span>64 MB</span>
+                <span>1024 MB</span>
+              </div>
+            </div>
+
+            <!-- Allowed libraries checklist -->
+            <div>
+              <label class="text-xs font-medium text-dark mb-2 block">Allowed Libraries</label>
+              <div id="sandbox-libraries" class="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1979,6 +2040,7 @@ const saveIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
 
       if (assignedTools.length === 0) {
         toolsEmpty.classList.remove("hidden");
+        updateSandboxVisibility();
         return;
       }
       toolsEmpty.classList.add("hidden");
@@ -2048,6 +2110,8 @@ const saveIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
           renderToolsList();
         });
       });
+
+      updateSandboxVisibility();
     }
 
     /* Fetch available tools and open modal */
@@ -2121,6 +2185,122 @@ const saveIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
     if (toolSearch) {
       toolSearch.addEventListener("input", function () {
         renderToolSelectorItems(toolSearch.value);
+      });
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Sandbox configuration                                               */
+    /* ------------------------------------------------------------------ */
+    var sandboxConfigEl = document.getElementById("sandbox-config");
+    var sandboxTimeoutSlider = document.getElementById("sandbox-timeout");
+    var sandboxTimeoutValue = document.getElementById("sandbox-timeout-value");
+    var sandboxMemorySlider = document.getElementById("sandbox-memory");
+    var sandboxMemoryValue = document.getElementById("sandbox-memory-value");
+    var sandboxLibrariesEl = document.getElementById("sandbox-libraries");
+    var sandboxConfigLoaded = false;
+
+    var DEFAULT_LIBRARIES = [
+      "pandas", "numpy", "matplotlib", "json", "csv", "math",
+      "statistics", "collections", "itertools", "functools",
+      "re", "datetime", "io", "os.path", "pathlib"
+    ];
+    var sandboxAllowedLibs = DEFAULT_LIBRARIES.slice();
+
+    function hasCodeInterpreter() {
+      for (var i = 0; i < assignedTools.length; i++) {
+        if (assignedTools[i].id === "builtin:code_interpreter") return true;
+      }
+      return false;
+    }
+
+    function updateSandboxVisibility() {
+      if (!sandboxConfigEl) return;
+      if (hasCodeInterpreter()) {
+        sandboxConfigEl.classList.remove("hidden");
+        if (!sandboxConfigLoaded) {
+          loadSandboxConfig();
+        }
+      } else {
+        sandboxConfigEl.classList.add("hidden");
+      }
+    }
+
+    function loadSandboxConfig() {
+      sandboxConfigLoaded = true;
+      fetch("/api/sandbox/config")
+        .then(function (res) { return res.ok ? res.json() : null; })
+        .then(function (cfg) {
+          if (!cfg) return;
+          if (cfg.timeout_seconds && sandboxTimeoutSlider) {
+            sandboxTimeoutSlider.value = cfg.timeout_seconds;
+            sandboxTimeoutValue.textContent = cfg.timeout_seconds + "s";
+          }
+          if (cfg.memory_limit_mb && sandboxMemorySlider) {
+            sandboxMemorySlider.value = cfg.memory_limit_mb;
+            sandboxMemoryValue.textContent = cfg.memory_limit_mb + " MB";
+          }
+          if (cfg.allowed_libraries) {
+            sandboxAllowedLibs = cfg.allowed_libraries;
+          }
+          renderLibrariesChecklist();
+        })
+        .catch(function () { renderLibrariesChecklist(); });
+    }
+
+    function renderLibrariesChecklist() {
+      if (!sandboxLibrariesEl) return;
+      sandboxLibrariesEl.innerHTML = "";
+      DEFAULT_LIBRARIES.forEach(function (lib) {
+        var label = document.createElement("label");
+        label.className = "flex items-center gap-1.5 rounded px-2 py-1 hover:bg-subtle/50 transition-colors cursor-pointer";
+        var cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.value = lib;
+        cb.checked = sandboxAllowedLibs.indexOf(lib) !== -1;
+        cb.className = "rounded border-dark/20 text-zen-blue focus:ring-zen-blue/30";
+        cb.addEventListener("change", function () {
+          if (cb.checked) {
+            if (sandboxAllowedLibs.indexOf(lib) === -1) sandboxAllowedLibs.push(lib);
+          } else {
+            sandboxAllowedLibs = sandboxAllowedLibs.filter(function (l) { return l !== lib; });
+          }
+          saveSandboxConfig();
+        });
+        var span = document.createElement("span");
+        span.className = "text-xs text-dark font-mono";
+        span.textContent = lib;
+        label.appendChild(cb);
+        label.appendChild(span);
+        sandboxLibrariesEl.appendChild(label);
+      });
+    }
+
+    var sandboxSaveTimer = null;
+    function saveSandboxConfig() {
+      if (sandboxSaveTimer) clearTimeout(sandboxSaveTimer);
+      sandboxSaveTimer = setTimeout(function () {
+        fetch("/api/sandbox/config", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            timeout_seconds: parseInt(sandboxTimeoutSlider.value, 10),
+            memory_limit_mb: parseInt(sandboxMemorySlider.value, 10),
+            allowed_libraries: sandboxAllowedLibs,
+          }),
+        }).catch(function () { /* silent */ });
+      }, 500);
+    }
+
+    if (sandboxTimeoutSlider) {
+      sandboxTimeoutSlider.addEventListener("input", function () {
+        sandboxTimeoutValue.textContent = sandboxTimeoutSlider.value + "s";
+        saveSandboxConfig();
+      });
+    }
+    if (sandboxMemorySlider) {
+      sandboxMemorySlider.addEventListener("input", function () {
+        sandboxMemoryValue.textContent = sandboxMemorySlider.value + " MB";
+        saveSandboxConfig();
       });
     }
 

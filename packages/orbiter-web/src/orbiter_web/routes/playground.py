@@ -12,6 +12,7 @@ from typing import Any
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from orbiter_web.database import get_db
+from orbiter_web.routes.tools import BUILTIN_TOOLS
 
 router = APIRouter(tags=["playground"])
 
@@ -166,6 +167,109 @@ async def _find_provider_by_type(provider_type: str, user_id: str) -> str | None
     return row["id"] if row else None
 
 
+async def _resolve_agent_tool_schemas(
+    tools_json: str | None,
+) -> list[dict[str, Any]]:
+    """Build OpenAI-format tool schemas from the agent's tools_json.
+
+    Returns a list of tool definitions suitable for the OpenAI ``tools``
+    parameter.  Built-in tools (``builtin:*``) are resolved from
+    ``BUILTIN_TOOLS``; user-defined tools are looked up in the database.
+    """
+    try:
+        tool_ids: list[str] = json.loads(tools_json or "[]")
+    except (json.JSONDecodeError, TypeError):
+        return []
+    if not tool_ids:
+        return []
+
+    schemas: list[dict[str, Any]] = []
+    db_ids: list[str] = []
+
+    for tid in tool_ids:
+        if tid.startswith("builtin:"):
+            for bt in BUILTIN_TOOLS:
+                if bt["id"] == tid:
+                    try:
+                        params = json.loads(bt["schema_json"])
+                    except (json.JSONDecodeError, TypeError):
+                        params = {"type": "object", "properties": {}}
+                    schemas.append(
+                        {
+                            "type": "function",
+                            "function": {
+                                "name": bt["name"],
+                                "description": bt["description"],
+                                "parameters": params,
+                            },
+                        }
+                    )
+                    break
+        else:
+            db_ids.append(tid)
+
+    if db_ids:
+        async with get_db() as db:
+            placeholders = ", ".join("?" for _ in db_ids)
+            cursor = await db.execute(
+                f"SELECT name, description, schema_json FROM tools WHERE id IN ({placeholders})",
+                db_ids,
+            )
+            rows = await cursor.fetchall()
+        for row in rows:
+            r = dict(row)
+            try:
+                params = json.loads(r.get("schema_json") or "{}")
+            except (json.JSONDecodeError, TypeError):
+                params = {"type": "object", "properties": {}}
+            schemas.append(
+                {
+                    "type": "function",
+                    "function": {
+                        "name": r["name"],
+                        "description": r.get("description", ""),
+                        "parameters": params,
+                    },
+                }
+            )
+
+    return schemas
+
+
+async def _execute_sandbox(code: str, user_id: str) -> dict[str, Any]:
+    """Execute code in the sandbox and return a result dict."""
+    from orbiter_web.services.sandbox import SandboxConfig, execute_code
+
+    # Load user sandbox config
+    async with get_db() as db:
+        cursor = await db.execute("SELECT * FROM sandbox_configs WHERE user_id = ?", (user_id,))
+        row = await cursor.fetchone()
+
+    if row:
+        row_d = dict(row)
+        try:
+            libs = json.loads(row_d.get("allowed_libraries", "[]"))
+        except (json.JSONDecodeError, TypeError):
+            libs = SandboxConfig().allowed_libraries
+        config = SandboxConfig(
+            allowed_libraries=libs,
+            timeout_seconds=row_d.get("timeout_seconds", 30),
+            memory_limit_mb=row_d.get("memory_limit_mb", 256),
+        )
+    else:
+        config = SandboxConfig()
+
+    result = execute_code(code, config)
+    return {
+        "success": result.success,
+        "stdout": result.stdout,
+        "stderr": result.stderr,
+        "error": result.error,
+        "generated_files": result.generated_files,
+        "execution_time_ms": result.execution_time_ms,
+    }
+
+
 async def _stream_openai(
     websocket: WebSocket,
     api_key: str,
@@ -174,6 +278,8 @@ async def _stream_openai(
     messages: list[dict[str, str]],
     temperature: float,
     max_tokens: int | None,
+    tools: list[dict[str, Any]] | None = None,
+    user_id: str = "",
 ) -> None:
     """Stream a response from an OpenAI-compatible API."""
     import httpx
@@ -188,6 +294,8 @@ async def _stream_openai(
     }
     if max_tokens:
         body["max_tokens"] = max_tokens
+    if tools:
+        body["tools"] = tools
 
     prompt_tokens = 0
     completion_tokens = 0
@@ -242,7 +350,9 @@ async def _stream_openai(
                 for tc in delta.get("tool_calls", []):
                     idx = tc.get("index", 0)
                     if idx not in tool_calls_acc:
-                        tool_calls_acc[idx] = {"name": "", "arguments": ""}
+                        tool_calls_acc[idx] = {"name": "", "arguments": "", "id": ""}
+                    if tc.get("id"):
+                        tool_calls_acc[idx]["id"] = tc["id"]
                     if tc.get("function", {}).get("name"):
                         tool_calls_acc[idx]["name"] = tc["function"]["name"]
                     if tc.get("function", {}).get("arguments"):
@@ -253,6 +363,30 @@ async def _stream_openai(
 
     latency_ms = round((time.monotonic() - start_time) * 1000)
 
+    # Execute code_interpreter tool calls via sandbox
+    for tc in tool_calls_acc.values():
+        if tc["name"] == "code_interpreter" and user_id:
+            try:
+                args = json.loads(tc["arguments"])
+                code = args.get("code", "")
+            except (json.JSONDecodeError, TypeError):
+                code = ""
+            if code:
+                sandbox_result = await _execute_sandbox(code, user_id)
+                tc["result"] = json.dumps(sandbox_result, default=str)
+                # Send sandbox result with generated files to client
+                await websocket.send_json(
+                    {
+                        "type": "sandbox_result",
+                        "success": sandbox_result["success"],
+                        "stdout": sandbox_result["stdout"],
+                        "stderr": sandbox_result["stderr"],
+                        "error": sandbox_result.get("error"),
+                        "generated_files": sandbox_result["generated_files"],
+                        "execution_time_ms": sandbox_result["execution_time_ms"],
+                    }
+                )
+
     # Send tool call trace events
     for tc in tool_calls_acc.values():
         await websocket.send_json(
@@ -260,6 +394,10 @@ async def _stream_openai(
                 "type": "tool_call",
                 "name": tc["name"],
                 "arguments": tc["arguments"],
+                "result": tc.get("result"),
+                "duration_ms": round((time.monotonic() - start_time) * 1000)
+                if tc.get("result")
+                else None,
             }
         )
 
@@ -282,6 +420,8 @@ async def _stream_anthropic(
     messages: list[dict[str, str]],
     temperature: float,
     max_tokens: int | None,
+    tools: list[dict[str, Any]] | None = None,
+    user_id: str = "",
 ) -> None:
     """Stream a response from the Anthropic API."""
     import httpx
@@ -296,6 +436,19 @@ async def _stream_anthropic(
     }
     if system_prompt:
         body["system"] = system_prompt
+    # Convert OpenAI tool format to Anthropic tool format
+    if tools:
+        anthropic_tools = []
+        for t in tools:
+            fn = t.get("function", {})
+            anthropic_tools.append(
+                {
+                    "name": fn.get("name", ""),
+                    "description": fn.get("description", ""),
+                    "input_schema": fn.get("parameters", {"type": "object", "properties": {}}),
+                }
+            )
+        body["tools"] = anthropic_tools
 
     input_tokens = 0
     output_tokens = 0
@@ -359,11 +512,34 @@ async def _stream_anthropic(
                     thinking_content += delta.get("thinking", "")
             elif event_type == "content_block_stop":
                 if current_block_type == "tool_use" and current_tool_name:
+                    tool_result_str: str | None = None
+                    # Execute code_interpreter via sandbox
+                    if current_tool_name == "code_interpreter" and user_id:
+                        try:
+                            args = json.loads(current_tool_input)
+                            code = args.get("code", "")
+                        except (json.JSONDecodeError, TypeError):
+                            code = ""
+                        if code:
+                            sandbox_result = await _execute_sandbox(code, user_id)
+                            tool_result_str = json.dumps(sandbox_result, default=str)
+                            await websocket.send_json(
+                                {
+                                    "type": "sandbox_result",
+                                    "success": sandbox_result["success"],
+                                    "stdout": sandbox_result["stdout"],
+                                    "stderr": sandbox_result["stderr"],
+                                    "error": sandbox_result.get("error"),
+                                    "generated_files": sandbox_result["generated_files"],
+                                    "execution_time_ms": sandbox_result["execution_time_ms"],
+                                }
+                            )
                     await websocket.send_json(
                         {
                             "type": "tool_call",
                             "name": current_tool_name,
                             "arguments": current_tool_input,
+                            "result": tool_result_str,
                         }
                     )
                     current_tool_name = ""
@@ -573,6 +749,8 @@ async def _run_stream(
     history: list[dict[str, str]],
     temperature: float,
     max_tokens: int | None,
+    tools: list[dict[str, Any]] | None = None,
+    user_id: str = "",
 ) -> None:
     """Dispatch to the appropriate streaming function."""
     if provider_type in ("openai", "custom"):
@@ -584,6 +762,8 @@ async def _run_stream(
             history,
             temperature,
             max_tokens,  # type: ignore[arg-type]
+            tools=tools,
+            user_id=user_id,
         )
     elif provider_type == "anthropic":
         await _stream_anthropic(
@@ -594,6 +774,8 @@ async def _run_stream(
             history,
             temperature,
             max_tokens,  # type: ignore[arg-type]
+            tools=tools,
+            user_id=user_id,
         )
     elif provider_type == "gemini":
         await _stream_gemini(
@@ -655,6 +837,9 @@ async def playground_chat(websocket: WebSocket, agent_id: str) -> None:
     base_url = (provider or {}).get("base_url", "") or ""
     temperature = agent.get("temperature") or 0.7
     max_tokens = agent.get("max_tokens")
+
+    # Resolve tool schemas for function calling
+    tool_schemas = await _resolve_agent_tool_schemas(agent.get("tools_json"))
 
     # Build system prompt from agent config
     system_prompt = ""
@@ -820,6 +1005,8 @@ async def playground_chat(websocket: WebSocket, agent_id: str) -> None:
                             history,
                             temperature,
                             max_tokens,
+                            tools=tool_schemas or None,
+                            user_id=user["id"],
                         )
                     except (asyncio.CancelledError, Exception) as exc:
                         if not cancel_event.is_set():
@@ -883,6 +1070,8 @@ async def playground_chat(websocket: WebSocket, agent_id: str) -> None:
                             history,
                             temperature,
                             max_tokens,
+                            tools=tool_schemas or None,
+                            user_id=user["id"],
                         )
                     except (asyncio.CancelledError, Exception) as exc:
                         if not cancel_event.is_set():
@@ -939,6 +1128,8 @@ async def playground_chat(websocket: WebSocket, agent_id: str) -> None:
                     history,
                     temperature,
                     max_tokens,
+                    tools=tool_schemas or None,
+                    user_id=user["id"],
                 )
             )
 

@@ -1856,6 +1856,8 @@ function connectWebSocket(agentId: string, conversationId?: string, replayText?:
         error: data.error,
         duration_ms: data.duration_ms,
       });
+    } else if (data.type === "sandbox_result") {
+      appendSandboxResult(data);
     } else if (data.type === "reasoning") {
       pendingReasoning += (pendingReasoning ? "\n" : "") + (data.content || "");
     } else if (data.type === "error") {
@@ -2242,6 +2244,140 @@ function appendError(msg: string) {
   pill.className = "px-4 py-2 rounded-xl bg-coral/10 text-coral text-xs max-w-md text-center";
   pill.textContent = msg;
   row.appendChild(pill);
+  messagesEl.appendChild(row);
+  scrollToBottom();
+}
+
+/* ---- Sandbox result rendering ---- */
+const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "svg", "webp", "bmp"]);
+
+function _extOf(name: string): string {
+  const dot = name.lastIndexOf(".");
+  return dot >= 0 ? name.slice(dot + 1).toLowerCase() : "";
+}
+
+function _mimeFor(ext: string): string {
+  const map: Record<string, string> = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", svg: "image/svg+xml", webp: "image/webp", bmp: "image/bmp" };
+  return map[ext] || "application/octet-stream";
+}
+
+function appendSandboxResult(data: { success: boolean; stdout: string; stderr: string; error?: string; generated_files: Array<{ name: string; size_bytes: number; content_base64?: string }>; execution_time_ms: number }) {
+  hideEmptyState();
+  const row = document.createElement("div");
+  row.className = "flex justify-start";
+
+  const wrapper = document.createElement("div");
+  wrapper.className = "max-w-[75%] sm:max-w-[60%] flex gap-2";
+
+  const avatar = document.createElement("div");
+  avatar.className = "flex-shrink-0 w-7 h-7 rounded-full bg-zen-blue/10 text-zen-blue flex items-center justify-center mt-1";
+  avatar.innerHTML = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>';
+
+  const bubble = document.createElement("div");
+  bubble.className = "px-4 py-3 rounded-2xl rounded-bl-sm bg-paper border border-dark/[0.06] text-dark text-sm break-words min-w-0 space-y-2";
+
+  /* Header */
+  const header = document.createElement("div");
+  header.className = "flex items-center gap-2 text-xs";
+  const badge = document.createElement("span");
+  badge.className = data.success
+    ? "rounded-full bg-zen-green/10 text-zen-green px-2 py-0.5 font-medium"
+    : "rounded-full bg-coral/10 text-coral px-2 py-0.5 font-medium";
+  badge.textContent = data.success ? "Executed" : "Failed";
+  header.appendChild(badge);
+  const timing = document.createElement("span");
+  timing.className = "text-muted/60 tabular-nums";
+  timing.textContent = Math.round(data.execution_time_ms) + "ms";
+  header.appendChild(timing);
+  bubble.appendChild(header);
+
+  /* Stdout */
+  if (data.stdout) {
+    const pre = document.createElement("pre");
+    pre.className = "text-xs text-dark/80 bg-subtle/50 rounded px-3 py-2 overflow-x-auto max-h-48 whitespace-pre font-mono";
+    pre.textContent = data.stdout;
+    bubble.appendChild(pre);
+  }
+
+  /* Stderr */
+  if (data.stderr) {
+    const pre = document.createElement("pre");
+    pre.className = "text-xs text-amber-600 bg-amber-50 rounded px-3 py-2 overflow-x-auto max-h-32 whitespace-pre font-mono";
+    pre.textContent = data.stderr;
+    bubble.appendChild(pre);
+  }
+
+  /* Error */
+  if (data.error) {
+    const pre = document.createElement("pre");
+    pre.className = "text-xs text-coral bg-coral/5 rounded px-3 py-2 overflow-x-auto max-h-32 whitespace-pre font-mono";
+    pre.textContent = data.error;
+    bubble.appendChild(pre);
+  }
+
+  /* Generated files — images inline, others as download links */
+  if (data.generated_files && data.generated_files.length > 0) {
+    const filesSection = document.createElement("div");
+    filesSection.className = "space-y-2 mt-1";
+
+    for (const file of data.generated_files) {
+      const ext = _extOf(file.name);
+
+      if (IMAGE_EXTENSIONS.has(ext) && file.content_base64) {
+        /* Inline image */
+        const imgWrap = document.createElement("div");
+        imgWrap.className = "rounded-lg overflow-hidden border border-dark/[0.06]";
+        const img = document.createElement("img");
+        img.src = "data:" + _mimeFor(ext) + ";base64," + file.content_base64;
+        img.alt = file.name;
+        img.className = "max-w-full h-auto";
+        img.loading = "lazy";
+        imgWrap.appendChild(img);
+
+        /* Download link below image */
+        const dl = document.createElement("a");
+        dl.href = img.src;
+        dl.download = file.name;
+        dl.className = "flex items-center gap-1.5 text-xs text-zen-blue hover:underline mt-1";
+        dl.innerHTML = '<svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>' + file.name;
+        imgWrap.appendChild(dl);
+        filesSection.appendChild(imgWrap);
+      } else if (file.content_base64) {
+        /* Downloadable file link */
+        const link = document.createElement("a");
+        link.href = "data:" + _mimeFor(ext) + ";base64," + file.content_base64;
+        link.download = file.name;
+        link.className = "flex items-center gap-2 rounded-lg border border-dark/[0.08] bg-subtle/50 px-3 py-2 hover:bg-subtle transition-colors";
+        const sizeStr = file.size_bytes < 1024 ? file.size_bytes + " B" : (file.size_bytes / 1024).toFixed(1) + " KB";
+        link.innerHTML =
+          '<svg class="h-4 w-4 text-muted flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>' +
+          '<div class="min-w-0 flex-1">' +
+            '<p class="text-xs font-medium text-dark truncate">' + file.name + '</p>' +
+            '<p class="text-[10px] text-muted">' + sizeStr + '</p>' +
+          '</div>' +
+          '<svg class="h-3.5 w-3.5 text-zen-blue flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
+        filesSection.appendChild(link);
+      } else {
+        /* File without base64 — show name and size only */
+        const info = document.createElement("div");
+        info.className = "flex items-center gap-2 rounded-lg border border-dark/[0.08] bg-subtle/50 px-3 py-2";
+        const sizeStr = file.size_bytes < 1024 ? file.size_bytes + " B" : (file.size_bytes / 1024).toFixed(1) + " KB";
+        info.innerHTML =
+          '<svg class="h-4 w-4 text-muted flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>' +
+          '<div class="min-w-0 flex-1">' +
+            '<p class="text-xs font-medium text-dark truncate">' + file.name + '</p>' +
+            '<p class="text-[10px] text-muted">' + sizeStr + ' · Too large to download inline</p>' +
+          '</div>';
+        filesSection.appendChild(info);
+      }
+    }
+
+    bubble.appendChild(filesSection);
+  }
+
+  wrapper.appendChild(avatar);
+  wrapper.appendChild(bubble);
+  row.appendChild(wrapper);
   messagesEl.appendChild(row);
   scrollToBottom();
 }
