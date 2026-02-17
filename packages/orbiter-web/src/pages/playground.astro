@@ -368,6 +368,45 @@ const speakerOffIcon = '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none"
       </div>
     </div>
   </dialog>
+
+  <!-- Annotation editor dialog -->
+  <dialog
+    id="annotation-dialog"
+    class="rounded-xl border border-dark/[0.08] shadow-xl p-0 backdrop:bg-dark/40 max-w-lg w-full"
+  >
+    <div class="p-6">
+      <h3 class="text-base font-medium text-dark mb-4">Annotate Response</h3>
+      <div class="space-y-3">
+        <div>
+          <label class="block text-xs font-medium text-muted mb-1">Query</label>
+          <div id="annotation-query" class="text-sm text-dark bg-subtle/50 rounded-lg px-3 py-2 max-h-20 overflow-y-auto"></div>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-muted mb-1">Original Response</label>
+          <div id="annotation-original" class="text-sm text-dark bg-subtle/50 rounded-lg px-3 py-2 max-h-32 overflow-y-auto"></div>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-muted mb-1">Improved Response</label>
+          <textarea
+            id="annotation-improved"
+            rows="4"
+            class="w-full bg-paper border border-dark/[0.08] rounded-lg px-3 py-2 text-sm text-dark placeholder:text-muted/60 outline-none focus:border-coral focus:ring-2 focus:ring-coral/20 resize-y"
+            placeholder="Write the ideal response..."
+          ></textarea>
+        </div>
+      </div>
+      <div class="flex justify-end gap-3 mt-4">
+        <button
+          id="annotation-cancel"
+          class="px-4 py-2 text-sm text-muted hover:text-dark border border-dark/[0.08] rounded-lg hover:bg-subtle transition-colors"
+        >Cancel</button>
+        <button
+          id="annotation-save"
+          class="px-4 py-2 text-sm text-white bg-coral hover:bg-coral/90 rounded-lg transition-colors"
+        >Save Annotation</button>
+      </div>
+    </div>
+  </dialog>
 </PageLayout>
 
 <script>
@@ -414,6 +453,20 @@ let isStreaming = false;
 let userScrolledUp = false;
 let tracePanelOpen = false;
 let traceCounter = 0;
+let lastUserQuery = "";
+
+/* Annotation dialog elements */
+const annotationDialog = document.getElementById("annotation-dialog") as HTMLDialogElement;
+const annotationQueryEl = document.getElementById("annotation-query")!;
+const annotationOriginalEl = document.getElementById("annotation-original")!;
+const annotationImprovedEl = document.getElementById("annotation-improved") as HTMLTextAreaElement;
+const annotationCancelBtn = document.getElementById("annotation-cancel")!;
+const annotationSaveBtn = document.getElementById("annotation-save")!;
+
+/* Annotation icon SVGs */
+const annotateIconSvg = '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
+const thumbUpChatSvg = '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>';
+const thumbDownChatSvg = '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/></svg>';
 
 /* Takeover elements & state */
 const agentStatusBadge = document.getElementById("agent-status-badge")!;
@@ -1620,17 +1673,19 @@ function createCopyButton(getText: () => string): HTMLButtonElement {
 
 /* ---- Restore saved messages ---- */
 function restoreMessages(messages: Array<{ role: string; content: string }>) {
+  let prevUserQuery = "";
   messages.forEach(function(m) {
     if (m.role === "user") {
+      prevUserQuery = m.content;
       addUserMessage(m.content);
     } else if (m.role === "assistant") {
-      addRestoredAgentMessage(m.content);
+      addRestoredAgentMessage(m.content, prevUserQuery);
     }
     // Skip system messages — they're not displayed
   });
 }
 
-function addRestoredAgentMessage(text: string) {
+function addRestoredAgentMessage(text: string, query?: string) {
   hideEmptyState();
   const row = document.createElement("div");
   row.className = "flex justify-start";
@@ -1650,6 +1705,10 @@ function addRestoredAgentMessage(text: string) {
   wrapper.appendChild(avatar);
   wrapper.appendChild(bubble);
   wrapper.appendChild(copyBtn);
+
+  const annotBtns = createAnnotationButtons(query || "", text);
+  wrapper.appendChild(annotBtns);
+
   row.appendChild(wrapper);
   messagesEl.appendChild(row);
   scrollToBottom();
@@ -1748,6 +1807,97 @@ function speakText(text: string) {
   window.speechSynthesis.speak(utterance);
 }
 
+function createAnnotationButtons(query: string, responseText: string): HTMLElement {
+  const wrap = document.createElement("div");
+  wrap.className = "flex items-center gap-1 mt-1";
+
+  let currentRating: "up" | "down" | null = null;
+
+  const upBtn = document.createElement("button");
+  upBtn.className = "p-1 rounded text-muted hover:text-zen-green hover:bg-zen-green/10 transition-colors";
+  upBtn.title = "Thumbs up";
+  upBtn.innerHTML = thumbUpChatSvg;
+
+  const downBtn = document.createElement("button");
+  downBtn.className = "p-1 rounded text-muted hover:text-coral hover:bg-coral/10 transition-colors";
+  downBtn.title = "Thumbs down";
+  downBtn.innerHTML = thumbDownChatSvg;
+
+  const annotateBtn = document.createElement("button");
+  annotateBtn.className = "p-1 rounded text-muted hover:text-zen-blue hover:bg-zen-blue/10 transition-colors";
+  annotateBtn.title = "Annotate — write improved response";
+  annotateBtn.innerHTML = annotateIconSvg;
+
+  upBtn.addEventListener("click", function() {
+    currentRating = currentRating === "up" ? null : "up";
+    upBtn.className = currentRating === "up"
+      ? "p-1 rounded text-zen-green bg-zen-green/10 transition-colors"
+      : "p-1 rounded text-muted hover:text-zen-green hover:bg-zen-green/10 transition-colors";
+    downBtn.className = "p-1 rounded text-muted hover:text-coral hover:bg-coral/10 transition-colors";
+  });
+
+  downBtn.addEventListener("click", function() {
+    currentRating = currentRating === "down" ? null : "down";
+    downBtn.className = currentRating === "down"
+      ? "p-1 rounded text-coral bg-coral/10 transition-colors"
+      : "p-1 rounded text-muted hover:text-coral hover:bg-coral/10 transition-colors";
+    upBtn.className = "p-1 rounded text-muted hover:text-zen-green hover:bg-zen-green/10 transition-colors";
+  });
+
+  annotateBtn.addEventListener("click", function() {
+    openAnnotationDialog(query, responseText);
+  });
+
+  wrap.appendChild(upBtn);
+  wrap.appendChild(downBtn);
+  wrap.appendChild(annotateBtn);
+  return wrap;
+}
+
+function openAnnotationDialog(query: string, originalResponse: string) {
+  annotationQueryEl.textContent = query;
+  annotationOriginalEl.textContent = originalResponse;
+  annotationImprovedEl.value = "";
+  annotationDialog.showModal();
+
+  /* Store context for the save handler */
+  annotationSaveBtn.dataset.query = query;
+  annotationSaveBtn.dataset.original = originalResponse;
+}
+
+annotationCancelBtn.addEventListener("click", function() {
+  annotationDialog.close();
+});
+
+annotationDialog.addEventListener("click", function(e) {
+  if (e.target === annotationDialog) annotationDialog.close();
+});
+
+annotationSaveBtn.addEventListener("click", async function() {
+  const query = annotationSaveBtn.dataset.query || "";
+  const original = annotationSaveBtn.dataset.original || "";
+  const improved = annotationImprovedEl.value.trim();
+  if (!improved) return;
+
+  try {
+    const resp = await fetch("/api/annotations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({
+        query: query,
+        original_response: original,
+        improved_response: improved,
+      }),
+    });
+    if (resp.ok) {
+      annotationDialog.close();
+    }
+  } catch (_e) {
+    /* Silently fail — annotation save is non-critical */
+  }
+});
+
 function finishStream(data: { usage?: { prompt_tokens?: number; completion_tokens?: number } | null; model?: string; finish_reason?: string; latency_ms?: number }) {
   const usage = data.usage || null;
   if (currentStreamBubble) {
@@ -1761,6 +1911,10 @@ function finishStream(data: { usage?: { prompt_tokens?: number; completion_token
     const wrapper = currentStreamBubble.parentElement!;
     const copyBtn = createCopyButton(() => rawText);
     wrapper.appendChild(copyBtn);
+
+    // Add annotation buttons (thumbs up/down + annotate)
+    const annotBtns = createAnnotationButtons(lastUserQuery, rawText);
+    wrapper.appendChild(annotBtns);
 
     if (usage) {
       const meta = document.createElement("div");
@@ -1873,6 +2027,7 @@ function sendMessage() {
   const text = messageInput.value.trim();
   if (!text || !ws || ws.readyState !== WebSocket.OPEN || isStreaming) return;
 
+  lastUserQuery = text;
   addUserMessage(text);
   ws.send(JSON.stringify({ content: text }));
   messageInput.value = "";
@@ -2681,11 +2836,13 @@ async function switchToThread(t: ThreadItem) {
       showEmptyState();
     } else {
       hideEmptyState();
+      let prevQuery = "";
       messages.forEach(function(m: { role: string; content: string }) {
         if (m.role === "user") {
+          prevQuery = m.content;
           addUserMessage(m.content);
         } else if (m.role === "assistant") {
-          addRestoredAgentMessage(m.content);
+          addRestoredAgentMessage(m.content, prevQuery);
         }
       });
     }
