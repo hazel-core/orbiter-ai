@@ -354,7 +354,7 @@ const searchIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke=
       var res = await fetch("/api/agents");
       if (!res.ok) return;
       var data = await res.json();
-      agents = Array.isArray(data) ? data : (data.agents || []);
+      agents = Array.isArray(data) ? data : (data.data || data.agents || []);
       filterAgent.innerHTML = '<option value="">All Agents</option>';
       agents.forEach(function (a) {
         var opt = document.createElement("option");

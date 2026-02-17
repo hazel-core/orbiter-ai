@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from orbiter_web.database import get_db
+from orbiter_web.pagination import paginate
 from orbiter_web.routes.auth import get_current_user
 from orbiter_web.sanitize import sanitize_html
 
@@ -563,25 +564,31 @@ async def ai_generate_agent(
     return {"agents": agents}
 
 
-@router.get("", response_model=list[AgentResponse])
+@router.get("")
 async def list_agents(
     project_id: str | None = Query(None),
+    cursor: str | None = Query(None),
+    limit: int = Query(20, ge=1, le=100),
     user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
-) -> list[dict[str, Any]]:
-    """Return all agents for the current user, optionally filtered by project."""
+) -> dict[str, Any]:
+    """Return agents for the current user with cursor-based pagination."""
+    conditions = ["user_id = ?"]
+    params: list[Any] = [user["id"]]
+    if project_id:
+        conditions.append("project_id = ?")
+        params.append(project_id)
+
     async with get_db() as db:
-        if project_id:
-            cursor = await db.execute(
-                "SELECT * FROM agents WHERE user_id = ? AND project_id = ? ORDER BY created_at DESC",
-                (user["id"], project_id),
-            )
-        else:
-            cursor = await db.execute(
-                "SELECT * FROM agents WHERE user_id = ? ORDER BY created_at DESC",
-                (user["id"],),
-            )
-        rows = await cursor.fetchall()
-        return [_row_to_dict(r) for r in rows]
+        result = await paginate(
+            db,
+            table="agents",
+            conditions=conditions,
+            params=params,
+            cursor=cursor,
+            limit=limit,
+            row_mapper=_row_to_dict,
+        )
+        return result.model_dump()
 
 
 @router.post("", response_model=AgentResponse, status_code=201)

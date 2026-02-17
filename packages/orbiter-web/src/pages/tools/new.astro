@@ -242,6 +242,7 @@ const copyIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
         if (!res.ok) throw new Error("Failed");
         return res.json();
       })
+      .then(function (body) { return body.data || body; })
       .then(function (projects) {
         projectSelect.innerHTML = "";
         if (projects.length === 0) {

@@ -378,6 +378,7 @@ function AgentGraphInner({ projectId }: { projectId?: string }) {
         if (!r.ok) throw new Error("Failed to load agents");
         return r.json();
       })
+      .then((body: any) => (body.data ?? body) as Agent[])
       .then((agents: Agent[]) => {
         const agentMap = new Map(agents.map((a) => [a.id, a]));
         const rawNodes: Node[] = [];

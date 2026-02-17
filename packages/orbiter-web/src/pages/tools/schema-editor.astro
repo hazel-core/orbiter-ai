@@ -368,6 +368,7 @@ const chevronIcon = '<svg class="h-4 w-4 transition-transform" viewBox="0 0 24 2
         if (!res.ok) throw new Error("Failed");
         return res.json();
       })
+      .then(function (body) { return body.data || body; })
       .then(function (projects) {
         projectSelect.innerHTML = "";
         if (projects.length === 0) {

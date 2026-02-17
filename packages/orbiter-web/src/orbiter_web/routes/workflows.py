@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from orbiter_web.database import get_db
+from orbiter_web.pagination import paginate
 from orbiter_web.routes.auth import get_current_user
 from orbiter_web.sanitize import sanitize_html
 
@@ -92,25 +93,31 @@ async def _verify_ownership(db: Any, workflow_id: str, user_id: str) -> dict[str
 # ---------------------------------------------------------------------------
 
 
-@router.get("", response_model=list[WorkflowResponse])
+@router.get("")
 async def list_workflows(
     project_id: str | None = Query(None),
+    cursor: str | None = Query(None),
+    limit: int = Query(20, ge=1, le=100),
     user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
-) -> list[dict[str, Any]]:
-    """Return all workflows for the current user, optionally filtered by project."""
+) -> dict[str, Any]:
+    """Return workflows for the current user with cursor-based pagination."""
+    conditions = ["user_id = ?"]
+    params: list[Any] = [user["id"]]
+    if project_id:
+        conditions.append("project_id = ?")
+        params.append(project_id)
+
     async with get_db() as db:
-        if project_id:
-            cursor = await db.execute(
-                "SELECT * FROM workflows WHERE user_id = ? AND project_id = ? ORDER BY created_at DESC",
-                (user["id"], project_id),
-            )
-        else:
-            cursor = await db.execute(
-                "SELECT * FROM workflows WHERE user_id = ? ORDER BY created_at DESC",
-                (user["id"],),
-            )
-        rows = await cursor.fetchall()
-        return [_row_to_dict(r) for r in rows]
+        result = await paginate(
+            db,
+            table="workflows",
+            conditions=conditions,
+            params=params,
+            cursor=cursor,
+            limit=limit,
+            row_mapper=_row_to_dict,
+        )
+        return result.model_dump()
 
 
 @router.post("", response_model=WorkflowResponse, status_code=201)

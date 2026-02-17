@@ -360,7 +360,8 @@ const playIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
     try {
       const resp = await fetch("/api/agents");
       if (!resp.ok) throw new Error("Failed to load agents");
-      allAgents = await resp.json();
+      const body = await resp.json();
+      allAgents = body.data ?? body;
       renderSupervisorList();
     } catch (err) {
       supervisorList.innerHTML = '<p class="text-sm text-coral py-4 text-center">Failed to load agents.</p>';
@@ -806,7 +807,8 @@ const playIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
       if (supervisorData.isNew) {
         /* Get first project for placement */
         var projResp = await fetch("/api/projects");
-        var projects = await projResp.json();
+        var projBody = await projResp.json();
+        var projects = projBody.data || projBody;
         var projectId = projects.length > 0 ? projects[0].id : null;
         if (!projectId) {
           showToast("error", "No project found. Create a project first.");

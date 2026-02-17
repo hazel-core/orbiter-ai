@@ -497,6 +497,7 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
     var agentSelect = document.getElementById("budget-agent");
     if (!agentSelect) return;
     fetchJSON("/api/agents")
+      .then(function (body) { return body.data || body; })
       .then(function (data) {
         agentSelect.innerHTML = '<option value="">Select an agent...</option>';
         data.forEach(function (a) {

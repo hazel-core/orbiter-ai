@@ -113,7 +113,7 @@ export default function AgentNodeConfig({
     fetchedOnce.current = true;
 
     Promise.all([
-      fetch("/api/agents").then((r) => r.json()),
+      fetch("/api/agents").then((r) => r.json()).then((d) => d.data ?? d),
       fetch("/api/providers").then((r) => r.json()),
       fetch("/api/tools").then((r) => r.json()),
     ])

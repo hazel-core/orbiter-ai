@@ -453,6 +453,7 @@ const typeOptions = [
           if (!res.ok) throw new Error("Failed");
           return res.json();
         })
+        .then(function (body) { return body.data || body; })
         .then(function (projects) {
           var projectMap = {};
           projects.forEach(function (p) { projectMap[p.id] = p.name; });

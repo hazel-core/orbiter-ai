@@ -235,7 +235,8 @@ const chevronUp = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="
     try {
       var resp = await fetch('/api/projects');
       if (!resp.ok) return;
-      projects = await resp.json();
+      var body = await resp.json();
+      projects = body.data || body;
       projectSelect.innerHTML = '<option value="">Select a project...</option>';
       projects.forEach(function(p) {
         var opt = document.createElement('option');
@@ -250,7 +251,8 @@ const chevronUp = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="
     try {
       var resp = await fetch('/api/agents');
       if (!resp.ok) return;
-      agents = await resp.json();
+      var body = await resp.json();
+      agents = body.data || body;
       populateAgentSelect();
     } catch(e) { /* graceful fallback */ }
   }

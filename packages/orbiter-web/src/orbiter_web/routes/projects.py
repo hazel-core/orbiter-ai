@@ -6,10 +6,11 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from orbiter_web.database import get_db
+from orbiter_web.pagination import paginate
 from orbiter_web.routes.auth import get_current_user
 from orbiter_web.sanitize import sanitize_html
 
@@ -57,18 +58,24 @@ def _row_to_dict(row: Any) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-@router.get("", response_model=list[ProjectResponse])
+@router.get("")
 async def list_projects(
+    cursor: str | None = Query(None),
+    limit: int = Query(20, ge=1, le=100),
     user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
-) -> list[dict[str, Any]]:
-    """Return all projects for the current user."""
+) -> dict[str, Any]:
+    """Return projects for the current user with cursor-based pagination."""
     async with get_db() as db:
-        cursor = await db.execute(
-            "SELECT * FROM projects WHERE user_id = ? ORDER BY created_at DESC",
-            (user["id"],),
+        result = await paginate(
+            db,
+            table="projects",
+            conditions=["user_id = ?"],
+            params=[user["id"]],
+            cursor=cursor,
+            limit=limit,
+            row_mapper=_row_to_dict,
         )
-        rows = await cursor.fetchall()
-        return [_row_to_dict(r) for r in rows]
+        return result.model_dump()
 
 
 @router.post("", response_model=ProjectResponse, status_code=201)
