@@ -548,6 +548,35 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
           No tools discovered yet. Click "Discover Tools" on a connected server.
         </div>
       </div>
+
+      <!-- Observability Integrations section -->
+      <div class="rounded-xl bg-subtle/80 border border-dark/[0.08] p-6 mt-6">
+        <div class="flex items-center justify-between mb-6">
+          <div>
+            <h2 class="text-lg font-semibold text-dark mb-1">Observability</h2>
+            <p class="text-sm text-muted">Export traces to external observability platforms</p>
+          </div>
+          <Button variant="primary" id="add-obs-btn">
+            <span set:html={plusIcon} />
+            Add Integration
+          </Button>
+        </div>
+
+        <!-- Loading state -->
+        <div id="obs-loading" class="text-sm text-muted py-4">Loading integrations...</div>
+
+        <!-- Integration list -->
+        <div id="obs-list" class="hidden flex flex-col gap-3"></div>
+
+        <!-- Empty state -->
+        <div id="obs-empty" class="hidden flex flex-col items-center py-8 text-center">
+          <div class="w-12 h-12 rounded-full bg-muted/10 flex items-center justify-center mb-3">
+            <svg class="h-6 w-6 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+          </div>
+          <p class="text-sm text-muted">No observability integrations configured.</p>
+          <p class="text-xs text-muted/70 mt-1">Add an integration to export traces to external platforms.</p>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -676,6 +705,121 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
       </Button>
       <Button variant="primary" type="button" id="confirm-delete-mcp" class="!bg-coral hover:!bg-coral/90 text-white">
         Delete Server
+      </Button>
+    </div>
+  </Modal>
+
+  <!-- Add Observability Integration Modal -->
+  <Modal id="add-obs-modal" title="Add Observability Integration">
+    <form id="add-obs-form" class="flex flex-col gap-4">
+      <Select
+        label="Platform"
+        name="platform"
+        options={[
+          { value: "langfuse", label: "Langfuse" },
+          { value: "langsmith", label: "LangSmith" },
+          { value: "datadog", label: "Datadog" },
+          { value: "opik", label: "Opik" },
+          { value: "custom_webhook", label: "Custom Webhook" },
+        ]}
+        required
+      />
+      <Input
+        label="Display Name"
+        name="display_name"
+        placeholder="e.g. Production Langfuse"
+        required
+      />
+      <Input
+        label="Endpoint URL"
+        name="endpoint_url"
+        placeholder="Will use platform default if empty"
+      />
+      <Input
+        label="API Key"
+        name="api_key"
+        type="password"
+        placeholder="Enter API key"
+      />
+      <div id="obs-add-langfuse-extra" class="hidden">
+        <Input
+          label="Public Key (Langfuse)"
+          name="public_key"
+          placeholder="pk-lf-..."
+        />
+      </div>
+      <Input
+        label="Project / Dataset Name"
+        name="project_name"
+        placeholder="e.g. my-project"
+      />
+      <div id="add-obs-error" class="text-sm text-coral hidden"></div>
+      <div class="flex justify-end gap-3 mt-2">
+        <Button variant="default" type="button" data-modal-close="add-obs-modal">
+          Cancel
+        </Button>
+        <Button variant="primary" type="submit" id="add-obs-submit">
+          Add Integration
+        </Button>
+      </div>
+    </form>
+  </Modal>
+
+  <!-- Edit Observability Integration Modal -->
+  <Modal id="edit-obs-modal" title="Edit Observability Integration">
+    <form id="edit-obs-form" class="flex flex-col gap-4">
+      <input type="hidden" name="integration_id" />
+      <Input
+        label="Display Name"
+        name="display_name"
+        placeholder="e.g. Production Langfuse"
+        required
+      />
+      <Input
+        label="Endpoint URL"
+        name="endpoint_url"
+        placeholder="Endpoint URL"
+      />
+      <Input
+        label="API Key (leave blank to keep current)"
+        name="api_key"
+        type="password"
+        placeholder="Enter new API key"
+      />
+      <div id="obs-edit-langfuse-extra" class="hidden">
+        <Input
+          label="Public Key (Langfuse)"
+          name="public_key"
+          placeholder="pk-lf-..."
+        />
+      </div>
+      <Input
+        label="Project / Dataset Name"
+        name="project_name"
+        placeholder="e.g. my-project"
+      />
+      <div id="edit-obs-error" class="text-sm text-coral hidden"></div>
+      <div class="flex justify-end gap-3 mt-2">
+        <Button variant="default" type="button" data-modal-close="edit-obs-modal">
+          Cancel
+        </Button>
+        <Button variant="primary" type="submit" id="edit-obs-submit">
+          Save Changes
+        </Button>
+      </div>
+    </form>
+  </Modal>
+
+  <!-- Delete Observability Integration Confirmation -->
+  <Modal id="delete-obs-modal" title="Delete Integration">
+    <p class="text-sm text-muted mb-2">Are you sure you want to delete this observability integration?</p>
+    <p id="delete-obs-name" class="text-sm font-medium text-dark mb-4"></p>
+    <div class="flex justify-end gap-3">
+      <Button variant="default" type="button" data-modal-close="delete-obs-modal">
+        Cancel
+      </Button>
+      <Button variant="primary" type="button" id="confirm-delete-obs" class="!bg-coral hover:!bg-coral/90 text-white">
+        Delete Integration
       </Button>
     </div>
   </Modal>
@@ -982,6 +1126,11 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
         // Load MCP servers when Integrations tab is first shown
         if (target === "integrations" && !mcpLoaded) {
           fetchMcpServers();
+        }
+
+        // Load observability integrations when Integrations tab is first shown
+        if (target === "integrations" && !obsLoaded) {
+          fetchObsIntegrations();
         }
       });
     });
@@ -2913,6 +3062,420 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
           .finally(function () {
             confirmDeleteMcp.disabled = false;
             confirmDeleteMcp.textContent = "Delete Server";
+          });
+      });
+    }
+
+    // ------- Observability Integrations -------
+    var obsLoaded = false;
+    var obsIntegrations = [];
+    var obsList = document.getElementById("obs-list");
+    var obsLoading = document.getElementById("obs-loading");
+    var obsEmpty = document.getElementById("obs-empty");
+
+    // Platform display metadata
+    var obsPlatforms = {
+      langfuse: { label: "Langfuse", color: "zen-blue" },
+      langsmith: { label: "LangSmith", color: "zen-green" },
+      datadog: { label: "Datadog", color: "coral" },
+      opik: { label: "Opik", color: "zen-blue" },
+      custom_webhook: { label: "Custom Webhook", color: "muted" }
+    };
+
+    // Add modal elements
+    var addObsModal = document.getElementById("add-obs-modal");
+    var addObsForm = document.getElementById("add-obs-form");
+    var addObsError = document.getElementById("add-obs-error");
+    var addObsSubmit = document.getElementById("add-obs-submit");
+    var addObsBtn = document.getElementById("add-obs-btn");
+
+    // Edit modal elements
+    var editObsModal = document.getElementById("edit-obs-modal");
+    var editObsForm = document.getElementById("edit-obs-form");
+    var editObsError = document.getElementById("edit-obs-error");
+    var editObsSubmit = document.getElementById("edit-obs-submit");
+
+    // Delete modal elements
+    var deleteObsModal = document.getElementById("delete-obs-modal");
+    var deleteObsName = document.getElementById("delete-obs-name");
+    var confirmDeleteObs = document.getElementById("confirm-delete-obs");
+    var deleteObsTargetId = null;
+
+    // Show/hide Langfuse public key field in add modal
+    var addObsPlatformSelect = addObsForm ? addObsForm.querySelector('[name="platform"]') : null;
+    if (addObsPlatformSelect) {
+      addObsPlatformSelect.addEventListener("change", function () {
+        var extra = document.getElementById("obs-add-langfuse-extra");
+        if (extra) extra.classList.toggle("hidden", addObsPlatformSelect.value !== "langfuse");
+      });
+    }
+
+    function getObsStatusDot(integration) {
+      if (!integration.enabled) return '<span class="inline-block h-2.5 w-2.5 rounded-full bg-muted/40 flex-shrink-0" title="Disabled"></span>';
+      if (integration.last_test_status === "success") return '<span class="inline-block h-2.5 w-2.5 rounded-full bg-zen-green flex-shrink-0" title="Connected"></span>';
+      if (integration.last_test_status === "error") return '<span class="inline-block h-2.5 w-2.5 rounded-full bg-coral flex-shrink-0" title="Error"></span>';
+      return '<span class="inline-block h-2.5 w-2.5 rounded-full bg-amber-400 flex-shrink-0" title="Untested"></span>';
+    }
+
+    function renderObsIntegrations() {
+      if (!obsList) return;
+      obsList.innerHTML = "";
+
+      if (obsIntegrations.length === 0) {
+        if (obsEmpty) obsEmpty.classList.remove("hidden");
+        obsList.classList.add("hidden");
+        return;
+      }
+
+      if (obsEmpty) obsEmpty.classList.add("hidden");
+      obsList.classList.remove("hidden");
+
+      obsIntegrations.forEach(function (intg) {
+        var info = obsPlatforms[intg.platform] || { label: intg.platform, color: "muted" };
+        var lastTest = intg.last_test_at
+          ? new Date(intg.last_test_at + "Z").toLocaleString()
+          : "Never";
+
+        var card = document.createElement("div");
+        card.className = "rounded-lg border border-dark/[0.08] bg-paper p-4";
+
+        card.innerHTML =
+          '<div class="flex items-start justify-between gap-3">' +
+            '<div class="flex items-center gap-3 min-w-0">' +
+              getObsStatusDot(intg) +
+              '<div class="min-w-0">' +
+                '<div class="flex items-center gap-2">' +
+                  '<h4 class="text-sm font-medium text-dark truncate">' + intg.display_name + '</h4>' +
+                  '<span class="inline-flex items-center rounded-full bg-' + info.color + '/10 text-' + info.color + ' px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide">' + info.label + '</span>' +
+                '</div>' +
+                '<p class="text-xs text-muted truncate">' + (intg.endpoint_url || "Default endpoint") + '</p>' +
+              '</div>' +
+            '</div>' +
+            '<div class="flex items-center gap-2 flex-shrink-0">' +
+              '<button type="button" class="obs-test-btn inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-dark/[0.08] text-dark hover:bg-dark/5 transition-colors cursor-pointer font-medium" data-id="' + intg.id + '">' +
+                '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>' +
+                'Test' +
+              '</button>' +
+              '<label class="relative inline-flex items-center cursor-pointer">' +
+                '<input type="checkbox" class="obs-toggle sr-only peer" data-id="' + intg.id + '"' + (intg.enabled ? " checked" : "") + '>' +
+                '<div class="w-9 h-5 bg-muted/30 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[\'\'] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-zen-green"></div>' +
+              '</label>' +
+              '<button type="button" class="obs-edit-btn text-muted hover:text-dark transition-colors cursor-pointer p-1" data-id="' + intg.id + '" title="Edit">' +
+                '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>' +
+              '</button>' +
+              '<button type="button" class="obs-delete-btn text-muted hover:text-coral transition-colors cursor-pointer p-1" data-id="' + intg.id + '" title="Delete">' +
+                '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>' +
+              '</button>' +
+            '</div>' +
+          '</div>' +
+          (intg.last_test_error
+            ? '<p class="text-xs text-coral mt-2">' + intg.last_test_error + '</p>'
+            : '') +
+          '<div class="flex items-center gap-4 mt-2 text-xs text-muted">' +
+            '<span>Key: ' + (intg.api_key_set ? "configured" : "not set") + '</span>' +
+            (intg.project_name ? '<span>Project: ' + intg.project_name + '</span>' : '') +
+            '<span>Last test: ' + lastTest + '</span>' +
+          '</div>';
+
+        obsList.appendChild(card);
+      });
+
+      // Bind action buttons
+      obsList.querySelectorAll(".obs-test-btn").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          testObsIntegration(btn.getAttribute("data-id"), btn);
+        });
+      });
+
+      obsList.querySelectorAll(".obs-toggle").forEach(function (toggle) {
+        toggle.addEventListener("change", function () {
+          toggleObsIntegration(toggle.getAttribute("data-id"), toggle.checked);
+        });
+      });
+
+      obsList.querySelectorAll(".obs-edit-btn").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          openEditObsModal(btn.getAttribute("data-id"));
+        });
+      });
+
+      obsList.querySelectorAll(".obs-delete-btn").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          openDeleteObsModal(btn.getAttribute("data-id"));
+        });
+      });
+    }
+
+    function fetchObsIntegrations() {
+      if (obsLoading) obsLoading.classList.remove("hidden");
+      if (obsList) obsList.classList.add("hidden");
+      if (obsEmpty) obsEmpty.classList.add("hidden");
+
+      fetch("/api/v1/observability", { credentials: "same-origin" })
+        .then(function (res) {
+          if (!res.ok) throw new Error("Failed to load observability integrations");
+          return res.json();
+        })
+        .then(function (data) {
+          obsLoaded = true;
+          obsIntegrations = data;
+          if (obsLoading) obsLoading.classList.add("hidden");
+          renderObsIntegrations();
+        })
+        .catch(function (err) {
+          if (obsLoading) obsLoading.classList.add("hidden");
+          showToast(err.message, "error");
+        });
+    }
+
+    function testObsIntegration(id, btn) {
+      var origText = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = '<svg class="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Testing...';
+
+      fetch("/api/v1/observability/" + id + "/test", {
+        method: "POST",
+        credentials: "same-origin"
+      })
+        .then(function (res) {
+          if (!res.ok) return res.json().then(function (d) { throw new Error(d.detail || "Test failed"); });
+          return res.json();
+        })
+        .then(function (result) {
+          if (result.status === "success") {
+            showToast("Integration test passed!", "success");
+          } else {
+            showToast("Test failed: " + (result.error || "Unknown error"), "error");
+          }
+          fetchObsIntegrations();
+        })
+        .catch(function (err) {
+          showToast(err.message, "error");
+        })
+        .finally(function () {
+          btn.disabled = false;
+          btn.innerHTML = origText;
+        });
+    }
+
+    function toggleObsIntegration(id, enabled) {
+      fetch("/api/v1/observability/" + id, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ enabled: enabled })
+      })
+        .then(function (res) {
+          if (!res.ok) return res.json().then(function (d) { throw new Error(d.detail || "Toggle failed"); });
+          showToast(enabled ? "Integration enabled" : "Integration disabled", "success");
+          return res.json();
+        })
+        .then(function () {
+          fetchObsIntegrations();
+        })
+        .catch(function (err) {
+          showToast(err.message, "error");
+          fetchObsIntegrations(); // Re-render to reset toggle
+        });
+    }
+
+    // Open add modal
+    if (addObsBtn && addObsModal) {
+      addObsBtn.addEventListener("click", function () {
+        if (addObsForm) addObsForm.reset();
+        if (addObsError) addObsError.classList.add("hidden");
+        var extra = document.getElementById("obs-add-langfuse-extra");
+        if (extra) extra.classList.add("hidden");
+        addObsModal.showModal();
+      });
+    }
+
+    // Submit add form
+    if (addObsForm) {
+      addObsForm.addEventListener("submit", function (e) {
+        e.preventDefault();
+        if (addObsError) addObsError.classList.add("hidden");
+
+        var platform = addObsForm.querySelector('[name="platform"]').value;
+        var displayName = addObsForm.querySelector('[name="display_name"]').value.trim();
+        if (!platform || !displayName) {
+          if (addObsError) {
+            addObsError.textContent = "Platform and display name are required.";
+            addObsError.classList.remove("hidden");
+          }
+          return;
+        }
+
+        var extraConfig = {};
+        if (platform === "langfuse") {
+          var pubKey = addObsForm.querySelector('[name="public_key"]');
+          if (pubKey && pubKey.value.trim()) {
+            extraConfig.public_key = pubKey.value.trim();
+          }
+        }
+
+        if (addObsSubmit) { addObsSubmit.disabled = true; addObsSubmit.textContent = "Adding..."; }
+
+        fetch("/api/v1/observability", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({
+            platform: platform,
+            display_name: displayName,
+            endpoint_url: addObsForm.querySelector('[name="endpoint_url"]').value.trim(),
+            api_key: addObsForm.querySelector('[name="api_key"]').value,
+            project_name: addObsForm.querySelector('[name="project_name"]').value.trim(),
+            extra_config: extraConfig
+          })
+        })
+          .then(function (res) {
+            if (!res.ok) return res.json().then(function (d) { throw new Error(d.detail || "Failed to add integration"); });
+            return res.json();
+          })
+          .then(function () {
+            addObsModal.close();
+            showToast("Observability integration added", "success");
+            fetchObsIntegrations();
+          })
+          .catch(function (err) {
+            if (addObsError) {
+              addObsError.textContent = err.message;
+              addObsError.classList.remove("hidden");
+            }
+          })
+          .finally(function () {
+            if (addObsSubmit) { addObsSubmit.disabled = false; addObsSubmit.textContent = "Add Integration"; }
+          });
+      });
+    }
+
+    // Open edit modal
+    function openEditObsModal(id) {
+      var intg = obsIntegrations.find(function (i) { return i.id === id; });
+      if (!intg || !editObsModal || !editObsForm) return;
+
+      editObsForm.querySelector('[name="integration_id"]').value = id;
+      editObsForm.querySelector('[name="display_name"]').value = intg.display_name;
+      editObsForm.querySelector('[name="endpoint_url"]').value = intg.endpoint_url || "";
+      editObsForm.querySelector('[name="api_key"]').value = "";
+      editObsForm.querySelector('[name="project_name"]').value = intg.project_name || "";
+
+      // Show Langfuse extra field if applicable
+      var extra = document.getElementById("obs-edit-langfuse-extra");
+      if (extra) {
+        extra.classList.toggle("hidden", intg.platform !== "langfuse");
+        var pubKeyInput = editObsForm.querySelector('[name="public_key"]');
+        if (pubKeyInput) {
+          pubKeyInput.value = (intg.extra_config && intg.extra_config.public_key) || "";
+        }
+      }
+
+      if (editObsError) editObsError.classList.add("hidden");
+      editObsModal.showModal();
+    }
+
+    // Submit edit form
+    if (editObsForm) {
+      editObsForm.addEventListener("submit", function (e) {
+        e.preventDefault();
+        if (editObsError) editObsError.classList.add("hidden");
+
+        var id = editObsForm.querySelector('[name="integration_id"]').value;
+        var intg = obsIntegrations.find(function (i) { return i.id === id; });
+        var body = {};
+
+        var displayName = editObsForm.querySelector('[name="display_name"]').value.trim();
+        if (displayName) body.display_name = displayName;
+        var endpointUrl = editObsForm.querySelector('[name="endpoint_url"]').value.trim();
+        if (endpointUrl) body.endpoint_url = endpointUrl;
+        var apiKey = editObsForm.querySelector('[name="api_key"]').value;
+        if (apiKey) body.api_key = apiKey;
+        var projectName = editObsForm.querySelector('[name="project_name"]').value.trim();
+        body.project_name = projectName;
+
+        // Handle Langfuse public key
+        if (intg && intg.platform === "langfuse") {
+          var pubKeyInput = editObsForm.querySelector('[name="public_key"]');
+          var existing = (intg.extra_config && intg.extra_config.public_key) || "";
+          var newPub = pubKeyInput ? pubKeyInput.value.trim() : "";
+          if (newPub !== existing) {
+            body.extra_config = Object.assign({}, intg.extra_config || {}, { public_key: newPub });
+          }
+        }
+
+        if (Object.keys(body).length === 0) {
+          if (editObsError) {
+            editObsError.textContent = "No changes to save.";
+            editObsError.classList.remove("hidden");
+          }
+          return;
+        }
+
+        if (editObsSubmit) { editObsSubmit.disabled = true; editObsSubmit.textContent = "Saving..."; }
+
+        fetch("/api/v1/observability/" + id, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify(body)
+        })
+          .then(function (res) {
+            if (!res.ok) return res.json().then(function (d) { throw new Error(d.detail || "Failed to update integration"); });
+            return res.json();
+          })
+          .then(function () {
+            editObsModal.close();
+            showToast("Integration updated", "success");
+            fetchObsIntegrations();
+          })
+          .catch(function (err) {
+            if (editObsError) {
+              editObsError.textContent = err.message;
+              editObsError.classList.remove("hidden");
+            }
+          })
+          .finally(function () {
+            if (editObsSubmit) { editObsSubmit.disabled = false; editObsSubmit.textContent = "Save Changes"; }
+          });
+      });
+    }
+
+    // Open delete confirmation
+    function openDeleteObsModal(id) {
+      var intg = obsIntegrations.find(function (i) { return i.id === id; });
+      if (!intg || !deleteObsModal) return;
+      deleteObsTargetId = id;
+      if (deleteObsName) deleteObsName.textContent = intg.display_name + " (" + (obsPlatforms[intg.platform] || {}).label + ")";
+      deleteObsModal.showModal();
+    }
+
+    // Confirm delete
+    if (confirmDeleteObs) {
+      confirmDeleteObs.addEventListener("click", function () {
+        if (!deleteObsTargetId) return;
+
+        confirmDeleteObs.disabled = true;
+        confirmDeleteObs.textContent = "Deleting...";
+
+        fetch("/api/v1/observability/" + deleteObsTargetId, {
+          method: "DELETE",
+          credentials: "same-origin"
+        })
+          .then(function (res) {
+            if (!res.ok) return res.json().then(function (d) { throw new Error(d.detail || "Failed to delete integration"); });
+            deleteObsModal.close();
+            deleteObsTargetId = null;
+            showToast("Integration deleted", "success");
+            fetchObsIntegrations();
+          })
+          .catch(function (err) {
+            showToast(err.message, "error");
+            deleteObsModal.close();
+          })
+          .finally(function () {
+            confirmDeleteObs.disabled = false;
+            confirmDeleteObs.textContent = "Delete Integration";
           });
       });
     }
