@@ -2198,3 +2198,22 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Health endpoint returns per-agent status (healthy/degraded based on error_rate > 50%) and per-provider status (configured/no_keys)
   - Foreign key ON DELETE CASCADE on alerts.rule_id means deleting a rule auto-deletes its alerts
 ---
+
+## 2026-02-17 12:20 - US-118
+- What was implemented: Alert management UI with alert rules CRUD, triggered alerts list, and health status page
+- Files changed:
+  - packages/orbiter-web/src/pages/monitoring/alerts.astro (new — alert rules + triggered alerts tabs)
+  - packages/orbiter-web/src/pages/monitoring/health.astro (new — per-agent and per-provider health cards)
+  - packages/orbiter-web/src/pages/monitoring.astro (updated — added nav links to Alerts and Health pages)
+- **Learnings for future iterations:**
+  - Alert rules page uses two tabs (Alert Rules + Triggered Alerts) with shared fetch patterns
+  - Condition builder: select condition_type (error_rate/latency/cost), threshold with dynamic suffix (%/ms/$)
+  - Action config: conditional fields shown/hidden based on action_type (webhook URL, email address)
+  - Triggered alerts use severity badges with color-coded dots (critical=red, warning=yellow, info=blue)
+  - Acknowledge button calls PUT /api/alerts/:id/acknowledge then re-fetches list
+  - Health page uses /api/health endpoint which returns per-agent (error_rate, avg_latency, recent_runs) and per-provider (key_count, status)
+  - Agent health cards include success rate progress bars with color coding (>=90% green, >=50% yellow, <50% red)
+  - Provider health shows API key count and links to /settings when no keys configured
+  - Modal pattern: dialog element with .showModal(), backdrop click to close, form submission with error display
+  - Delete confirmation uses separate dialog to prevent accidental deletion
+---
