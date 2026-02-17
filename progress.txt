@@ -2599,3 +2599,18 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - When inserting new imports in app.py, ruff requires strict alphabetical sorting — use `ruff check --fix` to auto-sort
   - DELETE with file cleanup: remove from DB first (inside context manager), then delete file outside (best-effort) to avoid orphaned DB records
 ---
+
+## 2026-02-17 - US-129
+- What was implemented: Artifacts page UI at `/artifacts` with grid/list view toggle, file previews, filtering, download, and delete with confirmation
+- Files changed:
+  - packages/orbiter-web/src/pages/artifacts.astro (new — full artifacts library page)
+  - packages/orbiter-web/src/layouts/PageLayout.astro (updated — added "artifacts" nav item with file icon)
+- **Learnings for future iterations:**
+  - Artifacts API at `/api/artifacts` returns flat list (no pagination wrapper) — client-side pagination with array slicing
+  - File type filtering is client-side since API `file_type` param matches exact strings, but UI needs category-based filtering (e.g., "image" matches png, jpg, etc.)
+  - Agent names need separate `/api/agents` fetch to build a lookup map — API returns `agent_id` not `agent_name`
+  - Grid/list view toggle: use two containers with `hidden` class toggling, re-render into the visible one
+  - File preview pattern: images via `<img>`, PDFs via `<iframe>`, text/code via `fetch().then(r => r.text())` into `<pre><code>`
+  - Bulk download without server-side ZIP: trigger multiple `<a download>` clicks programmatically
+  - New sidebar icons must be added to both the `navSections` array AND the `icons` Record in PageLayout.astro
+---
