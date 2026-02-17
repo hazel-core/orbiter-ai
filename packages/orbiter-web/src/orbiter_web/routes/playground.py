@@ -13,6 +13,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from orbiter_web.database import get_db
 from orbiter_web.routes.tools import BUILTIN_TOOLS
+from orbiter_web.services.memory import memory_service
 
 router = APIRouter(tags=["playground"])
 
@@ -838,6 +839,9 @@ async def playground_chat(websocket: WebSocket, agent_id: str) -> None:
     temperature = agent.get("temperature") or 0.7
     max_tokens = agent.get("max_tokens")
 
+    # Memory strategy from agent config
+    memory_type = agent.get("context_memory_type", "conversation")
+
     # Resolve tool schemas for function calling
     tool_schemas = await _resolve_agent_tool_schemas(agent.get("tools_json"))
 
@@ -896,11 +900,18 @@ async def playground_chat(websocket: WebSocket, agent_id: str) -> None:
                     saved_messages = await _load_conversation_messages(conv_id)
                     if saved_messages:
                         conversation_id = conv_id
-                        # Rebuild history: system prompt + saved messages
+                        # Rebuild history: system prompt + memory-managed messages
                         history = []
                         if system_prompt:
                             history.append({"role": "system", "content": system_prompt})
-                        history.extend(saved_messages)
+                        # Use memory service to build context-aware history
+                        if memory_type != "conversation":
+                            mem = await memory_service.get_memory(
+                                agent_id, conv_id, memory_type=memory_type,
+                            )
+                            history.extend(mem)
+                        else:
+                            history.extend(saved_messages)
                         await websocket.send_json(
                             {
                                 "type": "conversation_loaded",
@@ -1106,6 +1117,16 @@ async def playground_chat(websocket: WebSocket, agent_id: str) -> None:
                 # Save system prompt as first message
                 if system_prompt:
                     await _save_message(conversation_id, "system", system_prompt)
+                # Inject persisted memory into history
+                memory_messages = await memory_service.get_memory(
+                    agent_id, conversation_id, memory_type=memory_type,
+                )
+                if memory_messages:
+                    # Insert memory after system prompt but before new messages
+                    insert_idx = 1 if system_prompt else 0
+                    for mm in memory_messages:
+                        history.insert(insert_idx, mm)
+                        insert_idx += 1
 
             # Add user message to history and persist
             history.append({"role": "user", "content": content})
@@ -1164,6 +1185,10 @@ async def playground_chat(websocket: WebSocket, agent_id: str) -> None:
                 )
                 await websocket.send_json(
                     {"type": "message_saved", "message_id": asst_msg_id, "role": "assistant"}
+                )
+                # Persist turn to agent memory
+                await memory_service.save_turn(
+                    agent_id, conversation_id, content, assistant_content,
                 )
                 stream_task = None
 

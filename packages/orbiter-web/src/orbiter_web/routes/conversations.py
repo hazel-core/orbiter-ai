@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from orbiter_web.database import get_db
 from orbiter_web.routes.auth import get_current_user
 from orbiter_web.sanitize import sanitize_html
+from orbiter_web.services.memory import memory_service
 
 router = APIRouter(prefix="/api/conversations", tags=["conversations"])
 
@@ -117,8 +118,16 @@ async def delete_conversation(
         if not await cursor.fetchone():
             raise HTTPException(status_code=404, detail="Conversation not found")
 
+        # Get agent_id before deleting so we can clear memory
+        cursor = await db.execute(
+            "SELECT agent_id FROM conversations WHERE id = ?", (conversation_id,),
+        )
+        conv_row = await cursor.fetchone()
         await db.execute("DELETE FROM conversations WHERE id = ?", (conversation_id,))
         await db.commit()
+    # Clear associated agent memory
+    if conv_row:
+        await memory_service.clear_memory(conv_row["agent_id"], conversation_id)
     return {"status": "deleted"}
 
 

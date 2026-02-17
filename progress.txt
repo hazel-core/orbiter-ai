@@ -103,6 +103,7 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
 - Knowledge retrieval node in engine.py: `_execute_retrieval_node()` handles `knowledge_retrieval` nodeType; reads KB settings from DB
 - Agent KB assignment: `knowledge_base_ids` column (JSON TEXT array) on agents table — stores list of KB IDs the agent can query
 - Vector store config: singleton per user in `vector_store_config` table; auto-created on first GET; routes at `/api/vector-stores` (GET, PUT, POST /test)
+- Agent memory: `memory_service` singleton in `services/memory.py` — `get_memory()`, `save_turn()`, `clear_memory()` using `context_memory_type` from agent config; strategies: conversation (full), sliding_window (last N), summary (LLM-summarized)
 - Settings tabs: add tab button + panel div + lazy-load check in tab click handler; use `vsLoaded` / `providersLoaded` pattern for one-time fetch
 - Context config fields: stored as proper columns on agents table (not in hooks_json meta); automation_level, max_tokens_per_step, max_total_tokens, memory_type, workspace_enabled
 - Neuron pipelines: separate `neuron_pipelines` table, CRUD at `/api/agents/:id/pipelines`; neurons stored as JSON array in `neurons_json` column; auto-save with debounce
@@ -2502,4 +2503,27 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Retry metadata flows through result dict via `_` prefixed keys (_retry_attempt, _max_retries, _on_error, _skipped, _fallback) — popped before DB storage
   - `on_error='skip'` sets `variables[nid] = None` so downstream nodes get null input
   - Both `execute_workflow` and `execute_workflow_debug` share the same retry wrapper — keep them in sync
+---
+
+## 2026-02-17 - US-174
+- What was implemented: Agent memory persistence backend with three strategies
+  - `MemoryService` class in `services/memory.py` with ConversationMemory, SlidingWindowMemory, and SummaryMemory strategies
+  - `get_memory(agent_id, thread_id)` returns messages based on strategy
+  - `save_turn(agent_id, thread_id, user_message, assistant_message)` persists turns
+  - `clear_memory(agent_id, thread_id)` resets memory for a thread
+  - Migration `049_create_agent_memory.sql` creates `agent_memory` and `agent_memory_summary` tables
+  - Playground WebSocket integrated: reads `context_memory_type` from agent config, injects memory on conversation create/load, saves turns after each assistant response
+  - Conversation delete route clears associated agent memory
+- Files changed:
+  - `packages/orbiter-web/src/orbiter_web/services/memory.py` — new file (~200 lines)
+  - `packages/orbiter-web/src/orbiter_web/migrations/049_create_agent_memory.sql` — new migration
+  - `packages/orbiter-web/src/orbiter_web/routes/playground.py` — memory integration (import, memory_type extraction, history injection, turn persistence)
+  - `packages/orbiter-web/src/orbiter_web/routes/conversations.py` — clear memory on conversation delete
+- **Learnings for future iterations:**
+  - `context_memory_type` field already exists on agents table (from migration 032) with default 'conversation'
+  - Playground uses `SELECT * FROM agents` so all agent columns including context_memory_type are available in the WebSocket handler
+  - Memory uses conversation_id as thread_id — each conversation is a separate memory thread
+  - SummaryMemory needs an async summarize_fn callable for LLM summarization — kept as optional dependency
+  - agent_memory_summary uses UNIQUE(agent_id, thread_id) with ON CONFLICT UPDATE for upsert pattern
+  - SlidingWindow uses subquery with DESC LIMIT + outer ASC ORDER to get last N messages in chronological order
 ---

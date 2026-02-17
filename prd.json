@@ -3058,7 +3058,7 @@
         "Typecheck passes"
       ],
       "priority": 31,
-      "passes": false,
+      "passes": true,
       "notes": "Gap fill: US-034 and US-104 have memory toggle in UI but no backend implements the strategies"
     },
     {
