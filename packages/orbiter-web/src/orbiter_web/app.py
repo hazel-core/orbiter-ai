@@ -23,6 +23,7 @@ from orbiter_web.routes.alerts import router as alerts_router
 from orbiter_web.routes.annotations import router as annotations_router
 from orbiter_web.routes.applications import router as applications_router
 from orbiter_web.routes.approvals import router as approvals_router
+from orbiter_web.routes.artifacts import router as artifacts_router
 from orbiter_web.routes.auth import router as auth_router
 from orbiter_web.routes.checkpoints import router as checkpoints_router
 from orbiter_web.routes.context_state import router as context_state_router
@@ -124,6 +125,7 @@ if settings.cors_origins:
 app.include_router(agents_router)
 app.include_router(alerts_router)
 app.include_router(annotations_router)
+app.include_router(artifacts_router)
 app.include_router(approvals_router)
 app.include_router(checkpoints_router)
 app.include_router(neuron_pipelines_router)

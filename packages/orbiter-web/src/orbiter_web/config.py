@@ -19,6 +19,7 @@ class Settings:
     rate_limit_agent: int = int(os.getenv("ORBITER_RATE_LIMIT_AGENT", "10"))
     max_upload_mb: float = float(os.getenv("ORBITER_MAX_UPLOAD_MB", "50"))
     upload_dir: str = os.getenv("ORBITER_UPLOAD_DIR", "data/uploads/")
+    artifact_dir: str = os.getenv("ORBITER_ARTIFACT_DIR", "data/artifacts/")
     cors_origins: list[str] = None  # type: ignore[assignment]
 
     def __post_init__(self) -> None:
