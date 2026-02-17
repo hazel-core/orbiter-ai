@@ -3330,3 +3330,16 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Settings class in config.py reads all ORBITER_* env vars — reference these when documenting configuration
   - docs/getting-started/quickstart.md (project-level) is for the framework SDK; src/content/docs/getting-started.md is for the web platform
 ---
+
+## 2026-02-17 - US-196
+- What was implemented: Architecture and design documentation — system architecture overview with text-based diagrams and Mermaid ER diagram, plus ADRs for 10 key architectural decisions
+- Files changed:
+  - docs/architecture/overview.md (new — full system architecture: high-level diagram, frontend structure, backend lifecycle, middleware stack, configuration, database schema with Mermaid ER diagram, WebSocket multiplexing protocol, AgentService bridge, authentication flow, file storage layout, service layer, route organization)
+  - docs/architecture/decisions.md (new — 10 ADRs: SQLite, FTS5, single multiplexed WebSocket, Astro+FastAPI single unit, session cookies over JWT, sequential SQL migrations, API versioning, RBAC hierarchy, in-memory rate limiting, encrypted API key storage)
+- **Learnings for future iterations:**
+  - docs/architecture/design-decisions.md covers orbiter-framework decisions; docs/architecture/decisions.md covers orbiter-web decisions — they are separate docs for different scopes
+  - The existing docs/architecture/index.md and related files document the orbiter framework package architecture, not the web platform
+  - orbiter-web has 69 migration files covering the full schema from users through observability integrations
+  - WebSocket manager is ~160 lines in websocket.py with channel-based multiplexing for 6 channels
+  - AgentService in services/agent_runtime.py has 3 methods: build_agent, run_agent, stream_agent
+---

@@ -3433,7 +3433,7 @@
         "docs/architecture/decisions.md with ADRs for key choices (SQLite, FTS5, single WS, etc.)"
       ],
       "priority": 157,
-      "passes": false,
+      "passes": true,
       "notes": "Documentation: architecture docs for maintainers and contributors"
     },
     {
