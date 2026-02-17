@@ -3042,3 +3042,15 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Audit logging: call audit_log() after export/import for security trail
   - Ruff auto-fix for import sorting: I001 can be fixed with --fix when adding new imports to app.py
 ---
+
+## 2026-02-17 - US-191
+- What was implemented: Database migration CLI — `migrate` subcommand added to existing CLI
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/cli.py (updated — added `migrate` subcommand with `--status` flag)
+- **Learnings for future iterations:**
+  - CLI already has argparse + subparsers pattern — just add new subparser for new commands
+  - `MIGRATIONS_DIR` is already exported from `database.py` — reuse for status display
+  - Check `sqlite_master` for `_migrations` table existence before querying status (handles fresh DB)
+  - `run_migrations()` returns list of applied filenames — use for printing each migration name
+  - Error handling: wrap `asyncio.run()` in try/except for migrate command, exit code 1 on failure
+---

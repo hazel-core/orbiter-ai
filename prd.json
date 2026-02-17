@@ -3346,7 +3346,7 @@
         "Typecheck passes"
       ],
       "priority": 83,
-      "passes": false,
+      "passes": true,
       "notes": "Gap fill: migrations only run on app startup. No way to run them independently"
     },
     {
