@@ -1996,3 +1996,15 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Checkpoint state_blob is stored as JSON TEXT; use json.loads with contextlib.suppress for safe deserialization
   - Run ownership check pattern: `_verify_run_ownership(db, run_id, user_id)` queries workflow_runs filtered by user_id
 ---
+
+## 2026-02-17 - US-108
+- What was implemented: Checkpoint management UI in RunHistoryPanel with full CRUD, diff, and auto-checkpoint settings
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/routes/checkpoints.py (added DELETE endpoint, diff endpoint, CheckpointDiffOut model)
+  - packages/orbiter-web/src/islands/Canvas/RunHistoryPanel.tsx (added Checkpoint types, state management, CheckpointRow, CheckpointDiffView, DiffKeyList components; integrated into RunDetailView with save/restore/delete/diff actions and auto-checkpoint interval setting)
+- **Learnings for future iterations:**
+  - Checkpoint diff compares state_blob keys as dicts — non-dict blobs get wrapped in `{"_raw": value}` for comparison
+  - FastAPI route ordering: the diff endpoint `/checkpoints/diff` doesn't conflict with `/{cp_id}` param routes because diff is a subpath under checkpoints, not at the cp_id level
+  - Blob size display: use `new Blob([str]).size` for accurate byte count in browser (handles UTF-8 correctly)
+  - RunDetailView prop drilling: checkpoint data/callbacks are passed from the main component through RunDetailView — consider extracting to context if more sections need checkpoint data
+---
