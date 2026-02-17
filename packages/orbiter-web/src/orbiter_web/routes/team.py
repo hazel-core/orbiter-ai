@@ -40,6 +40,10 @@ class RoleUpdateRequest(BaseModel):
     role: str = Field(..., min_length=1)
 
 
+class PermanentDeleteRequest(BaseModel):
+    confirm: bool = Field(...)
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -205,3 +209,79 @@ async def deactivate_member(
         user_id,
         ip_address=ip,
     )
+
+
+@router.delete("/{user_id}/permanent", status_code=204)
+async def permanent_delete_member(
+    user_id: str,
+    body: PermanentDeleteRequest,
+    request: Request,
+    user: dict[str, Any] = Depends(require_role("admin")),  # noqa: B008
+) -> None:
+    """Permanently delete a user and reassign their resources (admin only)."""
+    if not body.confirm:
+        raise HTTPException(status_code=400, detail="Confirmation required")
+
+    if user_id == user["id"]:
+        raise HTTPException(status_code=400, detail="Cannot delete yourself")
+
+    async with get_db() as db:
+        cursor = await db.execute(
+            "SELECT id, email, role FROM users WHERE id = ?",
+            (user_id,),
+        )
+        target = await cursor.fetchone()
+
+    if target is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    target_dict = dict(target)
+
+    # Prevent deleting the last admin.
+    if target_dict["role"] == "admin":
+        async with get_db() as db:
+            cursor = await db.execute(
+                "SELECT COUNT(*) AS cnt FROM users WHERE role = 'admin'",
+            )
+            row = await cursor.fetchone()
+        if row and row["cnt"] <= 1:  # type: ignore[index]
+            raise HTTPException(
+                status_code=400, detail="Cannot delete the last admin"
+            )
+
+    # Audit log BEFORE deletion (records who deleted whom).
+    ip = request.client.host if request.client else None
+    await audit_log(
+        user["id"],
+        "permanent_delete_user",
+        "user",
+        user_id,
+        details={"email": target_dict["email"], "role": target_dict["role"]},
+        ip_address=ip,
+    )
+
+    admin_id = user["id"]
+
+    async with get_db() as db:
+        # Reassign projects, agents, and workflows to requesting admin.
+        await db.execute(
+            "UPDATE projects SET user_id = ? WHERE user_id = ?",
+            (admin_id, user_id),
+        )
+        await db.execute(
+            "UPDATE agents SET user_id = ? WHERE user_id = ?",
+            (admin_id, user_id),
+        )
+        await db.execute(
+            "UPDATE workflows SET user_id = ? WHERE user_id = ?",
+            (admin_id, user_id),
+        )
+
+        # Delete sessions, notifications, and audit log entries for the user.
+        await db.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+        await db.execute("DELETE FROM notifications WHERE user_id = ?", (user_id,))
+        await db.execute("DELETE FROM audit_log WHERE user_id = ?", (user_id,))
+
+        # Delete the user record (CASCADE handles remaining dependent rows).
+        await db.execute("DELETE FROM users WHERE id = ?", (user_id,))
+        await db.commit()
