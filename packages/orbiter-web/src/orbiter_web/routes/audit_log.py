@@ -34,6 +34,30 @@ def _map_row(row: Any) -> dict[str, Any]:
     return d
 
 
+@router.get("/filters")
+async def audit_log_filters(
+    _user: dict[str, Any] = Depends(require_role("admin")),  # noqa: B008
+) -> dict[str, list[str]]:
+    """Return distinct filter values for the audit log UI (admin only)."""
+    async with get_db() as db:
+        users_cur = await db.execute(
+            "SELECT DISTINCT al.user_id, u.email FROM audit_log al LEFT JOIN users u ON u.id = al.user_id ORDER BY u.email"
+        )
+        users = [{"id": r[0], "email": r[1] or r[0]} for r in await users_cur.fetchall()]
+
+        actions_cur = await db.execute(
+            "SELECT DISTINCT action FROM audit_log ORDER BY action"
+        )
+        actions = [r[0] for r in await actions_cur.fetchall()]
+
+        types_cur = await db.execute(
+            "SELECT DISTINCT entity_type FROM audit_log WHERE entity_type IS NOT NULL ORDER BY entity_type"
+        )
+        entity_types = [r[0] for r in await types_cur.fetchall()]
+
+    return {"users": users, "actions": actions, "entity_types": entity_types}
+
+
 @router.get("")
 async def list_audit_log(
     user_id: str | None = None,

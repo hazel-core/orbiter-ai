@@ -114,6 +114,7 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
 - Takeover protocol: WebSocket commands `takeover`, `inject`, `resume`, `stop`; server responds with `takeover_ack`, `takeover_event`, `takeover_stopped`; stream runs in asyncio.Task for cancellability
 - Workspace settings: key-value store in `workspace_settings` table; GET/PUT at `/api/settings/workspace`; used for concurrent_run_limit and other workspace-level config
 - Run queue: `run_queue` table + `services/run_queue.py`; workflow_runs.py checks `can_start_run()` before executing; engine triggers `process_queue()` on terminal states
+- Audit logging: `audit_log(user_id, action, entity_type, entity_id, details, ip_address)` from `services/audit.py`; call after security-sensitive actions (login, logout, create/delete agent/workflow/deployment/provider_key)
 
 ---
 
@@ -2839,4 +2840,44 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Deploy modal pattern: form view + success view in same modal, toggled via classList; success view shows one-time API key
   - Workflow detail page is canvas-only — use absolute positioned floating buttons with z-20 to overlay the ReactFlow canvas
   - Entity name resolution: deployments table only stores entity_id, need to JOIN with agents/workflows to get names for display
+---
+
+## 2026-02-17 - US-183
+- What was implemented: Audit log migration, service function, and REST API endpoint with filters
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/migrations/061_create_audit_log.sql (new — audit_log table with indexes)
+  - packages/orbiter-web/src/orbiter_web/services/audit.py (new — audit_log() async service function)
+  - packages/orbiter-web/src/orbiter_web/routes/audit_log.py (new — GET /api/audit-log with filters, admin only)
+  - packages/orbiter-web/src/orbiter_web/app.py (updated — register audit_log_router)
+  - packages/orbiter-web/src/orbiter_web/routes/auth.py (updated — audit login/logout)
+  - packages/orbiter-web/src/orbiter_web/routes/agents.py (updated — audit create/delete agent)
+  - packages/orbiter-web/src/orbiter_web/routes/workflows.py (updated — audit create/delete workflow)
+  - packages/orbiter-web/src/orbiter_web/routes/provider_keys.py (updated — audit add/delete provider_key)
+  - packages/orbiter-web/src/orbiter_web/routes/deployments.py (updated — audit create/delete deployment)
+  - packages/orbiter-web/src/orbiter_web/services/cleanup.py (updated — added exemption comment for audit_log)
+- **Learnings for future iterations:**
+  - audit_log() service wraps inserts in try/except so audit failures never break business logic
+  - audit_log table is intentionally exempt from retention cleanup — entries are never deleted
+  - GET /api/audit-log uses cursor-based pagination via paginate() helper, with filters: user_id, action, entity_type, date_from, date_to
+  - IP address captured via `request.client.host` in FastAPI — need to add `Request` param to route handlers
+  - create_user and update_role actions will be logged when US-185 (team management) is implemented
+---
+
+## 2026-02-17 - US-184
+- Implemented audit log UI page at /settings/audit-log (admin only)
+- Added GET /api/audit-log/filters endpoint returning distinct users, actions, entity_types for filter dropdowns
+- Created settings/ subdirectory under src/pages/ for settings subpages
+- Filter bar with user dropdown, action dropdown, entity type dropdown, date range picker
+- Table with timestamp, user email, action, entity type, entity ID, IP address columns
+- Expandable rows showing full details JSON (parsed from details_json field)
+- Cursor-based pagination with "Load more" button and entry count display
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/routes/audit_log.py (added /filters endpoint)
+  - packages/orbiter-web/src/pages/settings/audit-log.astro (new — full audit log UI)
+- **Learnings for future iterations:**
+  - Settings subpages go in src/pages/settings/ directory — first subpage created here
+  - Filter endpoint pattern: /api/<resource>/filters returns distinct values for dropdowns (define BEFORE /{id} routes)
+  - User email lookup: JOIN audit_log with users table to get email; fall back to user_id if no match
+  - Expandable table rows: use pairs of <tr> elements — main row + hidden detail row toggled by click
+  - Cursor-based pagination on frontend: pass next_cursor from response to subsequent fetch, append rows to tbody
 ---
