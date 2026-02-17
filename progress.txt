@@ -2746,3 +2746,20 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Leaderboard uses SQL aggregation (MAX, AVG, COUNT) grouped by agent_id across all completed runs
   - Score badge color coding: >= 80% green, >= 50% amber, < 50% coral
 ---
+
+## 2026-02-17 - US-134
+- What was implemented: Safety evaluation and red-teaming system
+- Files changed:
+  - `packages/orbiter-web/src/orbiter_web/migrations/057_create_safety_evaluations.sql` (new) — safety_runs table
+  - `packages/orbiter-web/src/orbiter_web/services/safety.py` (new) — Safety categories, adversarial test cases, LLM judge, red-team generator, heuristic fallback
+  - `packages/orbiter-web/src/orbiter_web/routes/evaluations.py` (modified) — Added `/safety/categories`, `/{id}/safety-run`, `/{id}/safety-results` endpoints
+  - `packages/orbiter-web/src/pages/evaluations.astro` (modified) — Safety Test button, config dialog, category scores, flagged responses UI
+- **Learnings for future iterations:**
+  - Static routes like `/safety/categories` MUST be defined BEFORE parametric routes like `/{evaluation_id}` in FastAPI, otherwise "safety" gets matched as an evaluation_id
+  - The existing `_send_to_agent()` helper in evaluations.py is reusable for safety testing — just send adversarial inputs through same path
+  - Safety judging uses a structured "SCORE: / EXPLANATION:" format prompt that's easy to parse — avoids needing JSON parsing from the LLM
+  - Heuristic fallback for safety scoring uses refusal/concern phrase detection when no LLM judge is available
+  - Pre-built adversarial test cases are organized by category (prompt_injection, jailbreak, pii_leakage, harmful_content, bias_detection) with 5 tests each
+  - Red-team mode generates novel adversarial inputs via LLM — falls back to preset cases if generation fails
+  - Safety results stored separately from eval_results (safety_runs table) with category_scores_json for per-category breakdown
+---
