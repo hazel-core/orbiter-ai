@@ -17,14 +17,14 @@ Usage::
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import AsyncIterator, Sequence
 from typing import Any
 
 from orbiter._internal.call_runner import call_runner
 from orbiter._internal.graph import GraphError, parse_flow_dsl, topological_sort
 from orbiter.observability.logging import get_logger  # pyright: ignore[reportMissingImports]
 from orbiter.tool import Tool
-from orbiter.types import Message, OrbiterError, RunResult
+from orbiter.types import Message, OrbiterError, RunResult, StatusEvent, StreamEvent
 
 _log = get_logger(__name__)
 
@@ -140,6 +140,229 @@ class Swarm:
                 input, messages=messages, provider=provider, max_retries=max_retries
             )
         raise SwarmError(f"Unsupported swarm mode: {self.mode!r}")
+
+    async def stream(
+        self,
+        input: str,
+        *,
+        messages: Sequence[Message] | None = None,
+        provider: Any = None,
+        detailed: bool = False,
+        max_steps: int | None = None,
+    ) -> AsyncIterator[StreamEvent]:
+        """Stream swarm execution, yielding events from each sub-agent.
+
+        Each event includes the correct ``agent_name`` of the sub-agent
+        that produced it.  ``StatusEvent`` is emitted for agent handoffs
+        and delegations.
+
+        Args:
+            input: User query string.
+            messages: Prior conversation history.
+            provider: LLM provider for all agents.
+            detailed: When ``True``, emit rich event types.
+            max_steps: Maximum LLM-tool round-trips per agent.
+
+        Yields:
+            ``StreamEvent`` instances from sub-agent execution.
+        """
+        if self.mode == "workflow":
+            async for event in self._stream_workflow(
+                input, messages=messages, provider=provider,
+                detailed=detailed, max_steps=max_steps,
+            ):
+                yield event
+        elif self.mode == "handoff":
+            async for event in self._stream_handoff(
+                input, messages=messages, provider=provider,
+                detailed=detailed, max_steps=max_steps,
+            ):
+                yield event
+        elif self.mode == "team":
+            async for event in self._stream_team(
+                input, messages=messages, provider=provider,
+                detailed=detailed, max_steps=max_steps,
+            ):
+                yield event
+        else:
+            raise SwarmError(f"Unsupported swarm mode: {self.mode!r}")
+
+    async def _stream_workflow(
+        self,
+        input: str,
+        *,
+        messages: Sequence[Message] | None = None,
+        provider: Any = None,
+        detailed: bool = False,
+        max_steps: int | None = None,
+    ) -> AsyncIterator[StreamEvent]:
+        """Stream workflow mode: agents run sequentially, chaining output→input.
+
+        Collects text from ``TextEvent`` objects during streaming to build
+        the output for chaining to the next agent — avoiding double execution.
+        """
+        from orbiter.runner import run
+        from orbiter.types import TextEvent
+
+        current_input = input
+
+        for agent_name in self.flow_order:
+            agent = self.agents[agent_name]
+
+            if detailed:
+                yield StatusEvent(
+                    status="running",
+                    agent_name=agent_name,
+                    message=f"Workflow executing agent '{agent_name}'",
+                )
+
+            # For groups/nested swarms, delegate to their stream if available
+            if getattr(agent, "is_group", False) or getattr(agent, "is_swarm", False):
+                if hasattr(agent, "stream"):
+                    text_parts: list[str] = []
+                    async for event in agent.stream(
+                        current_input, messages=messages, provider=provider,
+                        detailed=detailed, max_steps=max_steps,
+                    ):
+                        if isinstance(event, TextEvent):
+                            text_parts.append(event.text)
+                        yield event
+                    current_input = "".join(text_parts)
+                else:
+                    result = await agent.run(
+                        current_input, messages=messages, provider=provider,
+                    )
+                    current_input = result.output
+                continue
+
+            # Stream the agent and collect text for chaining
+            text_parts = []
+            async for event in run.stream(
+                agent, current_input, messages=messages, provider=provider,
+                detailed=detailed, max_steps=max_steps,
+            ):
+                if isinstance(event, TextEvent):
+                    text_parts.append(event.text)
+                yield event
+
+            current_input = "".join(text_parts)
+
+    async def _stream_handoff(
+        self,
+        input: str,
+        *,
+        messages: Sequence[Message] | None = None,
+        provider: Any = None,
+        detailed: bool = False,
+        max_steps: int | None = None,
+    ) -> AsyncIterator[StreamEvent]:
+        """Stream handoff mode: agents delegate dynamically.
+
+        Collects text from ``TextEvent`` objects during streaming to detect
+        handoff targets without double execution.
+        """
+        from orbiter.runner import run
+        from orbiter.types import TextEvent
+
+        current_agent_name = self.flow_order[0]
+        current_input = input
+        handoff_count = 0
+
+        while True:
+            agent = self.agents[current_agent_name]
+
+            if detailed:
+                yield StatusEvent(
+                    status="running",
+                    agent_name=current_agent_name,
+                    message=f"Handoff executing agent '{current_agent_name}'",
+                )
+
+            # Stream the agent's execution and collect text
+            text_parts: list[str] = []
+            async for event in run.stream(
+                agent, current_input, messages=messages, provider=provider,
+                detailed=detailed, max_steps=max_steps,
+            ):
+                if isinstance(event, TextEvent):
+                    text_parts.append(event.text)
+                yield event
+
+            output_text = "".join(text_parts)
+
+            # Check for handoff using a lightweight RunResult
+            from orbiter.types import RunResult
+
+            fake_result = RunResult(output=output_text)
+            next_agent = self._detect_handoff(agent, fake_result)
+            if next_agent is None:
+                return
+
+            handoff_count += 1
+            if handoff_count > self.max_handoffs:
+                raise SwarmError(f"Max handoffs ({self.max_handoffs}) exceeded in swarm")
+
+            if detailed:
+                yield StatusEvent(
+                    status="running",
+                    agent_name=next_agent,
+                    message=f"Handoff from '{current_agent_name}' to '{next_agent}'",
+                )
+
+            current_agent_name = next_agent
+            current_input = output_text
+
+    async def _stream_team(
+        self,
+        input: str,
+        *,
+        messages: Sequence[Message] | None = None,
+        provider: Any = None,
+        detailed: bool = False,
+        max_steps: int | None = None,
+    ) -> AsyncIterator[StreamEvent]:
+        """Stream team mode: lead delegates to workers via tools."""
+        from orbiter.runner import run
+
+        if len(self.agents) < 2:
+            raise SwarmError("Team mode requires at least two agents (lead + workers)")
+
+        lead_name = self.flow_order[0]
+        lead = self.agents[lead_name]
+        worker_names = [n for n in self.flow_order if n != lead_name]
+
+        # Create delegate tools for each worker and add to lead
+        delegate_tools: list[Tool] = []
+        for worker_name in worker_names:
+            worker = self.agents[worker_name]
+            dtool = _DelegateTool(
+                worker=worker,
+                provider=provider,
+                max_retries=3,
+            )
+            delegate_tools.append(dtool)
+
+        # Temporarily add delegate tools to the lead agent
+        original_tools = dict(lead.tools)
+        for dtool in delegate_tools:
+            lead.tools[dtool.name] = dtool
+
+        try:
+            if detailed:
+                yield StatusEvent(
+                    status="running",
+                    agent_name=lead_name,
+                    message=f"Team lead '{lead_name}' starting execution",
+                )
+
+            async for event in run.stream(
+                lead, input, messages=messages, provider=provider,
+                detailed=detailed, max_steps=max_steps,
+            ):
+                yield event
+        finally:
+            # Restore original tools
+            lead.tools = original_tools
 
     async def _run_workflow(
         self,

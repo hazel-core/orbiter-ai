@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import AsyncIterator
 from typing import Any
 from unittest.mock import AsyncMock
 
@@ -11,7 +12,19 @@ import pytest
 from orbiter.agent import Agent
 from orbiter.runner import run
 from orbiter.swarm import Swarm, SwarmError, _DelegateTool
-from orbiter.types import AgentOutput, RunResult, ToolCall, Usage
+from orbiter.types import (
+    AgentOutput,
+    RunResult,
+    StatusEvent,
+    StepEvent,
+    StreamEvent,
+    TextEvent,
+    ToolCall,
+    ToolCallEvent,
+    ToolResultEvent,
+    Usage,
+    UsageEvent,
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures: mock provider
@@ -950,3 +963,354 @@ class TestDelegateTool:
         result = await dtool.execute(task="do something")
 
         assert result == "worker output"
+
+
+# ---------------------------------------------------------------------------
+# Streaming helpers (mirrors test_runner.py helpers)
+# ---------------------------------------------------------------------------
+
+
+class _FakeStreamChunk:
+    """Lightweight stream chunk for testing."""
+
+    def __init__(
+        self,
+        delta: str = "",
+        tool_call_deltas: list[Any] | None = None,
+        finish_reason: str | None = None,
+        usage: Usage | None = None,
+    ) -> None:
+        self.delta = delta
+        self.tool_call_deltas = tool_call_deltas or []
+        self.finish_reason = finish_reason
+        self.usage = usage or Usage()
+
+
+class _FakeToolCallDelta:
+    """Mirrors ToolCallDelta fields for testing."""
+
+    def __init__(
+        self,
+        index: int = 0,
+        id: str | None = None,
+        name: str | None = None,
+        arguments: str = "",
+    ) -> None:
+        self.index = index
+        self.id = id
+        self.name = name
+        self.arguments = arguments
+
+
+def _make_stream_provider(
+    stream_rounds: list[list[_FakeStreamChunk]],
+) -> Any:
+    """Create a mock provider with stream() returning pre-defined chunks.
+
+    Each call to stream() consumes the next list of chunks from stream_rounds.
+    """
+    call_count = 0
+
+    async def stream(messages: Any, **kwargs: Any) -> AsyncIterator[Any]:
+        nonlocal call_count
+        chunks = stream_rounds[min(call_count, len(stream_rounds) - 1)]
+        call_count += 1
+        for c in chunks:
+            yield c
+
+    mock = AsyncMock()
+    mock.stream = stream
+    mock.complete = AsyncMock()
+    return mock
+
+
+# ---------------------------------------------------------------------------
+# Swarm streaming — workflow mode
+# ---------------------------------------------------------------------------
+
+
+class TestSwarmStreamWorkflow:
+    async def test_workflow_stream_single_agent(self) -> None:
+        """Workflow streaming with one agent yields text events."""
+        a = Agent(name="agent_a", instructions="Be agent A.")
+        swarm = Swarm(agents=[a])
+        chunks = [
+            _FakeStreamChunk(delta="Hello from A"),
+        ]
+        provider = _make_stream_provider([chunks])
+
+        events: list[StreamEvent] = []
+        async for ev in run.stream(swarm, "Hi", provider=provider):
+            events.append(ev)
+
+        text_events = [e for e in events if isinstance(e, TextEvent)]
+        assert len(text_events) == 1
+        assert text_events[0].text == "Hello from A"
+        assert text_events[0].agent_name == "agent_a"
+
+    async def test_workflow_stream_two_agents(self) -> None:
+        """Workflow streaming chains through two agents."""
+        a = Agent(name="agent_a")
+        b = Agent(name="agent_b")
+        swarm = Swarm(agents=[a, b], flow="agent_a >> agent_b")
+
+        # Agent a: produces "from_a"
+        # Agent b: produces "from_b"
+        chunks_a = [_FakeStreamChunk(delta="from_a")]
+        chunks_b = [_FakeStreamChunk(delta="from_b")]
+        provider = _make_stream_provider([chunks_a, chunks_b])
+
+        events: list[StreamEvent] = []
+        async for ev in run.stream(swarm, "Hi", provider=provider):
+            events.append(ev)
+
+        text_events = [e for e in events if isinstance(e, TextEvent)]
+        assert len(text_events) == 2
+        assert text_events[0].text == "from_a"
+        assert text_events[0].agent_name == "agent_a"
+        assert text_events[1].text == "from_b"
+        assert text_events[1].agent_name == "agent_b"
+
+    async def test_workflow_stream_detailed_emits_status_per_agent(self) -> None:
+        """detailed=True emits StatusEvent for each agent in workflow."""
+        a = Agent(name="agent_a")
+        b = Agent(name="agent_b")
+        swarm = Swarm(agents=[a, b], flow="agent_a >> agent_b")
+
+        chunks_a = [_FakeStreamChunk(delta="A")]
+        chunks_b = [_FakeStreamChunk(delta="B")]
+        provider = _make_stream_provider([chunks_a, chunks_b])
+
+        events: list[StreamEvent] = []
+        async for ev in run.stream(swarm, "Hi", provider=provider, detailed=True):
+            events.append(ev)
+
+        status_events = [e for e in events if isinstance(e, StatusEvent)]
+        # At minimum: workflow running events per agent + starting/completed from _stream
+        running_events = [e for e in status_events if e.status == "running"]
+        assert len(running_events) >= 2
+        agent_names = [e.agent_name for e in running_events]
+        assert "agent_a" in agent_names
+        assert "agent_b" in agent_names
+
+    async def test_workflow_stream_correct_agent_names(self) -> None:
+        """All events have the correct agent_name in workflow streaming."""
+        a = Agent(name="first")
+        b = Agent(name="second")
+        swarm = Swarm(agents=[a, b], flow="first >> second")
+
+        chunks_a = [_FakeStreamChunk(delta="A output")]
+        chunks_b = [_FakeStreamChunk(delta="B output")]
+        provider = _make_stream_provider([chunks_a, chunks_b])
+
+        events: list[StreamEvent] = []
+        async for ev in run.stream(swarm, "go", provider=provider):
+            events.append(ev)
+
+        text_events = [e for e in events if isinstance(e, TextEvent)]
+        assert text_events[0].agent_name == "first"
+        assert text_events[1].agent_name == "second"
+
+
+# ---------------------------------------------------------------------------
+# Swarm streaming — handoff mode
+# ---------------------------------------------------------------------------
+
+
+class TestSwarmStreamHandoff:
+    async def test_handoff_stream_no_handoff(self) -> None:
+        """Handoff streaming with no handoff yields events from first agent."""
+        a = Agent(name="agent_a")
+        b = Agent(name="agent_b")
+        swarm = Swarm(agents=[a, b], mode="handoff")
+
+        chunks = [_FakeStreamChunk(delta="no handoff")]
+        provider = _make_stream_provider([chunks])
+
+        events: list[StreamEvent] = []
+        async for ev in run.stream(swarm, "Hi", provider=provider):
+            events.append(ev)
+
+        text_events = [e for e in events if isinstance(e, TextEvent)]
+        assert len(text_events) == 1
+        assert text_events[0].text == "no handoff"
+        assert text_events[0].agent_name == "agent_a"
+
+    async def test_handoff_stream_a_to_b(self) -> None:
+        """Handoff streaming follows handoff chain."""
+        b = Agent(name="b")
+        a = Agent(name="a", handoffs=[b])
+        swarm = Swarm(agents=[a, b], mode="handoff")
+
+        # Agent a outputs "b" -> handoff to b
+        # Agent b outputs "final answer"
+        chunks_a = [_FakeStreamChunk(delta="b")]
+        chunks_b = [_FakeStreamChunk(delta="final answer")]
+        provider = _make_stream_provider([chunks_a, chunks_b])
+
+        events: list[StreamEvent] = []
+        async for ev in run.stream(swarm, "Hello", provider=provider):
+            events.append(ev)
+
+        text_events = [e for e in events if isinstance(e, TextEvent)]
+        assert len(text_events) == 2
+        assert text_events[0].text == "b"
+        assert text_events[0].agent_name == "a"
+        assert text_events[1].text == "final answer"
+        assert text_events[1].agent_name == "b"
+
+    async def test_handoff_stream_detailed_emits_handoff_status(self) -> None:
+        """detailed=True emits StatusEvent for handoff transitions."""
+        b = Agent(name="b")
+        a = Agent(name="a", handoffs=[b])
+        swarm = Swarm(agents=[a, b], mode="handoff")
+
+        chunks_a = [_FakeStreamChunk(delta="b")]
+        chunks_b = [_FakeStreamChunk(delta="done")]
+        provider = _make_stream_provider([chunks_a, chunks_b])
+
+        events: list[StreamEvent] = []
+        async for ev in run.stream(swarm, "Hi", provider=provider, detailed=True):
+            events.append(ev)
+
+        status_events = [e for e in events if isinstance(e, StatusEvent)]
+        # Should have handoff status events
+        running_events = [e for e in status_events if e.status == "running"]
+        agent_names = [e.agent_name for e in running_events]
+        assert "a" in agent_names
+        assert "b" in agent_names
+
+        # Verify handoff message
+        handoff_events = [
+            e for e in running_events if "Handoff from" in e.message
+        ]
+        assert len(handoff_events) >= 1
+        assert "a" in handoff_events[0].message
+        assert "b" in handoff_events[0].message
+
+    async def test_handoff_stream_max_handoffs_exceeded(self) -> None:
+        """Handoff streaming raises SwarmError on excessive handoffs."""
+        b = Agent(name="b")
+        a = Agent(name="a", handoffs=[b])
+        b.handoffs = {"a": a}
+
+        swarm = Swarm(agents=[a, b], mode="handoff", max_handoffs=1)
+
+        # a -> b -> a (exceeds max_handoffs=1)
+        chunks_a = [_FakeStreamChunk(delta="b")]
+        chunks_b = [_FakeStreamChunk(delta="a")]
+        provider = _make_stream_provider([chunks_a, chunks_b, chunks_a])
+
+        with pytest.raises(SwarmError, match=r"Max handoffs.*1.*exceeded"):
+            async for _ in run.stream(swarm, "Hello", provider=provider):
+                pass
+
+
+# ---------------------------------------------------------------------------
+# Swarm streaming — team mode
+# ---------------------------------------------------------------------------
+
+
+class TestSwarmStreamTeam:
+    async def test_team_stream_no_delegation(self) -> None:
+        """Team streaming works when lead doesn't delegate."""
+        lead = Agent(name="lead")
+        worker = Agent(name="worker")
+        swarm = Swarm(agents=[lead, worker], mode="team")
+
+        chunks = [_FakeStreamChunk(delta="I can handle this")]
+        provider = _make_stream_provider([chunks])
+
+        events: list[StreamEvent] = []
+        async for ev in run.stream(swarm, "simple", provider=provider):
+            events.append(ev)
+
+        text_events = [e for e in events if isinstance(e, TextEvent)]
+        assert len(text_events) == 1
+        assert text_events[0].text == "I can handle this"
+        assert text_events[0].agent_name == "lead"
+
+    async def test_team_stream_tools_restored(self) -> None:
+        """Team streaming restores lead's original tools after execution."""
+        lead = Agent(name="lead")
+        worker = Agent(name="worker")
+        swarm = Swarm(agents=[lead, worker], mode="team")
+
+        chunks = [_FakeStreamChunk(delta="done")]
+        provider = _make_stream_provider([chunks])
+
+        async for _ in run.stream(swarm, "test", provider=provider):
+            pass
+
+        assert "delegate_to_worker" not in lead.tools
+
+    async def test_team_stream_single_agent_raises(self) -> None:
+        """Team streaming with one agent raises SwarmError."""
+        a = Agent(name="a")
+        swarm = Swarm(agents=[a], mode="team")
+
+        chunks = [_FakeStreamChunk(delta="ok")]
+        provider = _make_stream_provider([chunks])
+
+        with pytest.raises(SwarmError, match="at least two agents"):
+            async for _ in run.stream(swarm, "test", provider=provider):
+                pass
+
+    async def test_team_stream_detailed_emits_status(self) -> None:
+        """detailed=True emits StatusEvent for team lead."""
+        lead = Agent(name="lead")
+        worker = Agent(name="worker")
+        swarm = Swarm(agents=[lead, worker], mode="team")
+
+        chunks = [_FakeStreamChunk(delta="done")]
+        provider = _make_stream_provider([chunks])
+
+        events: list[StreamEvent] = []
+        async for ev in run.stream(swarm, "test", provider=provider, detailed=True):
+            events.append(ev)
+
+        status_events = [e for e in events if isinstance(e, StatusEvent)]
+        running_events = [e for e in status_events if e.status == "running"]
+        assert any(e.agent_name == "lead" for e in running_events)
+
+
+# ---------------------------------------------------------------------------
+# Swarm streaming — unsupported mode
+# ---------------------------------------------------------------------------
+
+
+class TestSwarmStreamUnsupportedMode:
+    async def test_unsupported_mode_raises(self) -> None:
+        """Streaming with unsupported mode raises SwarmError."""
+        a = Agent(name="a")
+        swarm = Swarm(agents=[a], mode="invalid")
+
+        chunks = [_FakeStreamChunk(delta="ok")]
+        provider = _make_stream_provider([chunks])
+
+        with pytest.raises(SwarmError, match="Unsupported swarm mode"):
+            async for _ in run.stream(swarm, "test", provider=provider):
+                pass
+
+
+# ---------------------------------------------------------------------------
+# Swarm streaming via run.stream() public API
+# ---------------------------------------------------------------------------
+
+
+class TestSwarmStreamViaRun:
+    async def test_run_stream_detects_swarm(self) -> None:
+        """run.stream() detects Swarm and delegates to Swarm.stream()."""
+        a = Agent(name="agent_a")
+        swarm = Swarm(agents=[a])
+
+        chunks = [_FakeStreamChunk(delta="via run.stream")]
+        provider = _make_stream_provider([chunks])
+
+        events: list[StreamEvent] = []
+        async for ev in run.stream(swarm, "test", provider=provider):
+            events.append(ev)
+
+        text_events = [e for e in events if isinstance(e, TextEvent)]
+        assert len(text_events) == 1
+        assert text_events[0].text == "via run.stream"

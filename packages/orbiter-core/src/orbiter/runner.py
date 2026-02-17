@@ -175,6 +175,19 @@ async def _stream(
         regardless of the *detailed* flag.
     """
     resolved = provider or _resolve_provider(agent)
+
+    # Detect Swarm: delegate to its stream() method
+    if hasattr(agent, "flow_order"):
+        async for event in agent.stream(
+            input,
+            messages=messages,
+            provider=resolved,
+            detailed=detailed,
+            max_steps=max_steps,
+        ):
+            yield event
+        return
+
     if resolved is None:
         from orbiter.agent import AgentError
 
