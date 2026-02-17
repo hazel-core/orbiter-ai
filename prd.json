@@ -2429,7 +2429,7 @@
         "Verify in browser using dev-browser skill"
       ],
       "priority": 139,
-      "passes": false,
+      "passes": true,
       "notes": "From PRD US-067"
     },
     {

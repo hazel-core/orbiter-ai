@@ -2977,3 +2977,19 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Session is deliberately preserved on email change (no session invalidation)
   - audit_log() already exists in services/audit.py — use it for all security-sensitive actions
 ---
+
+## 2026-02-17 - US-139
+- What was implemented: Template library UI — full template management pages and Save as Agent Template on agent edit page
+- Files changed:
+  - packages/orbiter-web/src/layouts/PageLayout.astro (added "templates" to navSections + template icon)
+  - packages/orbiter-web/src/pages/templates/index.astro (new — template list page with search, create, import JSON)
+  - packages/orbiter-web/src/pages/templates/[id].astro (new — template detail page with config preview, export, delete, Use Template)
+  - packages/orbiter-web/src/pages/agents/[id]/edit.astro (added Save as Agent Template button + modal calling POST /api/v1/templates/from-agent)
+- **Learnings for future iterations:**
+  - Backend for templates was already fully implemented in agent_templates.py (routes) and 063_create_agent_templates.sql (migration) — check existing routes before building new ones
+  - The paginated template list API returns `{data: [...], pagination: {...}}` — frontend must extract `.data` from response body
+  - Agent edit page has existing prompt template save/load (save-template-btn) which saves prompts — Save as Agent Template is a separate feature that saves the whole agent config
+  - `define:vars={{ agentId: id }}` in edit.astro script tag makes `agentId` available in the inline JS
+  - Icons in PageLayout.astro are defined in a `const icons: Record<string, string>` map — add new icons there when adding new nav sections
+  - Manual browser verification needed (no browser tools available)
+---
