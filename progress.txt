@@ -3,6 +3,9 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
 ---
 
 ## Codebase Patterns
+- Sandbox execution: `execute_code(code, config)` in `services/sandbox.py` — runs Python in isolated subprocess with import allowlist, filesystem restriction, and timeout; returns SandboxResult with stdout/stderr/files
+- Sandbox import restriction: don't block exec/eval/compile from builtins (breaks importlib); use explicit import allowlist + safe stdlib set instead
+- Built-in tools: add to `BUILTIN_TOOLS` list in `routes/tools.py` — they get merged into list_tools endpoint automatically
 - File uploads: use `handle_upload(file, allowed_types, max_size_mb)` from `orbiter_web/upload.py`; returns `UploadResult` with path, metadata; use `cleanup_upload(path)` on processing failure
 - Pagination: list endpoints return `{data: [...], pagination: {next_cursor, has_more, total}}`; use `paginate()` from `orbiter_web/pagination.py`; frontend extracts `.data` via `.then(body => body.data || body)`
 - CSRF: window.fetch is monkey-patched in PageLayout to auto-include X-CSRF-Token on POST/PUT/DELETE; no need to manually add headers in page scripts
@@ -2410,4 +2413,20 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Route ordering matters: `/unread-count` and `/read-all` static paths must be defined BEFORE `/{notification_id}/read` param route
   - `paginate()` utility handles cursor-based pagination automatically — pass table, conditions, params
   - Service functions in `services/` can be imported by other modules (e.g., approval gates, alert rules) to create notifications
+---
+
+## 2026-02-17 - US-125
+- What was implemented: Code interpreter sandbox backend — sandboxed Python execution environment for agents
+- Files changed:
+  - `packages/orbiter-web/src/orbiter_web/services/sandbox.py` (NEW) — SandboxConfig, SandboxResult, execute_code() with subprocess isolation
+  - `packages/orbiter-web/src/orbiter_web/routes/sandbox.py` (NEW) — POST /api/sandbox/execute, GET/PUT /api/sandbox/config
+  - `packages/orbiter-web/src/orbiter_web/routes/tools.py` — Added BUILTIN_TOOLS with code_interpreter, merged into list_tools
+  - `packages/orbiter-web/src/orbiter_web/app.py` — Registered sandbox_router
+  - `packages/orbiter-web/src/orbiter_web/migrations/046_create_sandbox_configs.sql` (NEW) — sandbox_configs table
+- **Learnings for future iterations:**
+  - Sandbox subprocess inherits Python import system — blocking exec/eval/compile from builtins breaks importlib.exec_module() internally. Don't block these; use import restriction + filesystem restriction as the security boundary instead
+  - Import restriction needs explicit "safe stdlib" set (encodings, codecs, importlib internals, etc.) because Python's import machinery itself needs these modules to load anything
+  - F-strings in textwrap.dedent templates are tricky — avoid nested f-string expressions with brackets. Use string concatenation for generated error messages instead
+  - Generated file collection: read file content as base64 BEFORE workspace cleanup (shutil.rmtree in finally block)
+  - sys.stdlib_module_names is too permissive for sandbox (includes subprocess, socket, etc.) — maintain an explicit safe stdlib set
 ---
