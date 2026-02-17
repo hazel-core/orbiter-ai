@@ -6,6 +6,8 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
 - Sandbox execution: `execute_code(code, config)` in `services/sandbox.py` — runs Python in isolated subprocess with import allowlist, filesystem restriction, and timeout; returns SandboxResult with stdout/stderr/files
 - Sandbox import restriction: don't block exec/eval/compile from builtins (breaks importlib); use explicit import allowlist + safe stdlib set instead
 - Built-in tools: add to `BUILTIN_TOOLS` list in `routes/tools.py` — they get merged into list_tools endpoint automatically
+- Tool schemas for playground: `_resolve_agent_tool_schemas()` in playground.py builds OpenAI-format schemas from agent's tools_json; pass to `_run_stream()` via `tools` param
+- Sandbox result events: `sandbox_result` WebSocket event carries `success, stdout, stderr, error, generated_files, execution_time_ms`; frontend renders images inline via base64 data URIs
 - File uploads: use `handle_upload(file, allowed_types, max_size_mb)` from `orbiter_web/upload.py`; returns `UploadResult` with path, metadata; use `cleanup_upload(path)` on processing failure
 - Pagination: list endpoints return `{data: [...], pagination: {next_cursor, has_more, total}}`; use `paginate()` from `orbiter_web/pagination.py`; frontend extracts `.data` via `.then(body => body.data || body)`
 - CSRF: window.fetch is monkey-patched in PageLayout to auto-include X-CSRF-Token on POST/PUT/DELETE; no need to manually add headers in page scripts
@@ -2429,4 +2431,20 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - F-strings in textwrap.dedent templates are tricky — avoid nested f-string expressions with brackets. Use string concatenation for generated error messages instead
   - Generated file collection: read file content as base64 BEFORE workspace cleanup (shutil.rmtree in finally block)
   - sys.stdlib_module_names is too permissive for sandbox (includes subprocess, socket, etc.) — maintain an explicit safe stdlib set
+---
+
+## 2026-02-17 08:30 - US-126
+- What was implemented: Sandbox config and file display UI — code interpreter tool integration with playground chat
+- Files changed:
+  - `packages/orbiter-web/src/orbiter_web/routes/playground.py` — Added _resolve_agent_tool_schemas() to build OpenAI tool schemas from agent's tools_json, _execute_sandbox() helper, tool schema passing to _stream_openai/_stream_anthropic, sandbox execution for code_interpreter tool calls, sandbox_result WebSocket events with generated files
+  - `packages/orbiter-web/src/pages/playground.astro` — Added sandbox_result WebSocket event handler, appendSandboxResult() function rendering images inline (base64 data URIs), files as downloadable links with size info, stdout/stderr/error display
+  - `packages/orbiter-web/src/pages/agents/[id]/edit.astro` — Added sandbox configuration section in Tools tab (timeout slider 1-120s, memory limit slider 64-1024MB, allowed libraries checklist), auto-shown when builtin:code_interpreter is assigned, loads/saves config via /api/sandbox/config
+- **Learnings for future iterations:**
+  - Playground streams directly from provider APIs (not Orbiter Agent runtime) — tool schemas must be passed manually via the `tools` param in API requests
+  - OpenAI tool format: `{type: "function", function: {name, description, parameters}}`; Anthropic uses `{name, description, input_schema}` — convert between formats
+  - Tool call accumulation in OpenAI streaming uses `delta.tool_calls[].index` for multi-tool responses; track `id` field for tool call IDs
+  - Anthropic tool calls come via content_block_start (type: tool_use) / content_block_delta (input_json_delta) / content_block_stop — execute sandbox at content_block_stop
+  - Image detection for inline rendering: check file extension against known image types (png, jpg, gif, svg, webp, bmp)
+  - Base64 data URIs for inline images: `data:{mime};base64,{content}` — works for both display and download
+  - Sandbox config is per-user (not per-agent) — stored in sandbox_configs table
 ---
