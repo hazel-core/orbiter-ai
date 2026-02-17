@@ -2704,3 +2704,45 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - No dedicated "user management" or "system settings" routes exist yet — guard those when they're created in future stories
   - `_ROLE_HIERARCHY` dict maps role strings to ints for comparison — easy to extend with new roles later
 ---
+
+## 2026-02-17 - US-132
+- What was implemented: Evaluation UI page at /evaluations with full create/view/run/delete functionality
+- Files changed:
+  - packages/orbiter-web/src/pages/evaluations.astro (new — full evaluation UI page)
+  - packages/orbiter-web/src/layouts/PageLayout.astro (updated — added "evaluations" nav item with checklist icon)
+- Features implemented:
+  - List view: displays all evaluation suites with agent name, test case count, and creation time
+  - Create dialog: name + agent selection (agents loaded from /api/agents)
+  - Detail view: inline-editable test cases with input, expected output, and evaluator type dropdown
+  - Evaluator types: exact_match, contains, regex_match, semantic_similarity, llm_as_judge
+  - Run button: sends POST /api/evaluations/:id/run, shows spinner while running
+  - Results table: input, expected, actual, evaluator, score %, pass/fail badges
+  - Aggregate metrics: overall score, pass rate, test case count
+  - History chart: SVG line chart with score (coral) and pass rate (green) over time
+  - Delete with confirmation dialog
+  - Test case auto-save with 500ms debounce
+- **Learnings for future iterations:**
+  - Evaluation backend stores test_cases_json as a JSON string in the response — parse with JSON.parse on the client
+  - EVALUATOR_TYPES must match the keys in EVALUATORS dict from services/evaluators.py
+  - Adding nav items: add to `navSections` array AND `icons` map in PageLayout.astro
+  - History chart needs at least 2 result runs to display — hidden otherwise
+  - Manual browser verification needed (no dev-browser skill available)
+---
+
+## 2026-02-17 - US-133
+- Implemented agent benchmarking feature: create benchmarks linked to evaluation suites, run same test cases against 2+ agents, compare results
+- Files changed:
+  - `packages/orbiter-web/src/orbiter_web/migrations/056_create_benchmarks.sql` — new tables: benchmarks, benchmark_runs, benchmark_results
+  - `packages/orbiter-web/src/orbiter_web/routes/benchmarks.py` — full CRUD + run + leaderboard + CSV/JSON export endpoints
+  - `packages/orbiter-web/src/orbiter_web/app.py` — registered benchmarks router
+  - `packages/orbiter-web/src/pages/benchmarks.astro` — full UI with list/detail views, tabs (leaderboard, comparison, charts)
+  - `packages/orbiter-web/src/layouts/PageLayout.astro` — added benchmarks nav item with trophy icon
+- **Learnings for future iterations:**
+  - Benchmarks build on top of existing evaluations — a benchmark references an evaluation_id for its test cases
+  - The `_send_to_agent` helper from evaluations.py was duplicated into benchmarks.py with latency tracking (returns tuple of response + latency_ms)
+  - SVG bar charts pattern: calculate bar dimensions from container width, use viewBox for responsiveness, render grid lines + value labels + axis labels
+  - Tab UI pattern: use `tab-btn` class + `data-tab` attribute, `tab-content` class for panels, `switchTab()` toggles visibility and active styling
+  - Export endpoint pattern: StreamingResponse with Content-Disposition header for file download; use `fmt` query param to switch between CSV and JSON
+  - Leaderboard uses SQL aggregation (MAX, AVG, COUNT) grouped by agent_id across all completed runs
+  - Score badge color coding: >= 80% green, >= 50% amber, < 50% coral
+---
