@@ -1,0 +1,77 @@
+# Docker Compose for Orbiter distributed execution.
+#
+# Starts Redis, two workers, and (optionally) Temporal.
+#
+# Usage:
+#   # Workers only (Redis backend)
+#   docker compose up -d
+#
+#   # With Temporal for durable execution
+#   docker compose --profile temporal up -d
+#
+# Environment variables (set in .env or export before running):
+#   OPENAI_API_KEY   — required for agent execution
+#   WORKER_IMAGE     — custom worker image (default: orbiter-worker)
+
+services:
+  # -- Redis ----------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # -- Workers --------------------------------------------------------------
+  worker-1:
+    build:
+      context: ../..
+      dockerfile: examples/distributed/Dockerfile
+    image: ${WORKER_IMAGE:-orbiter-worker}
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      ORBITER_REDIS_URL: redis://redis:6379
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+    command: orbiter start worker --concurrency 2 --worker-id worker-1
+
+  worker-2:
+    build:
+      context: ../..
+      dockerfile: examples/distributed/Dockerfile
+    image: ${WORKER_IMAGE:-orbiter-worker}
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      ORBITER_REDIS_URL: redis://redis:6379
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+    command: orbiter start worker --concurrency 2 --worker-id worker-2
+
+  # -- Temporal (optional, activate with --profile temporal) ----------------
+  temporal:
+    image: temporalio/auto-setup:latest
+    profiles: [temporal]
+    ports:
+      - "7233:7233"
+    environment:
+      DB: sqlite
+      DYNAMIC_CONFIG_FILE_PATH: config/dynamicconfig/development-sql.yaml
+
+  temporal-ui:
+    image: temporalio/ui:latest
+    profiles: [temporal]
+    ports:
+      - "8233:8080"
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+
+volumes:
+  redis-data:

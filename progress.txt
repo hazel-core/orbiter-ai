@@ -628,3 +628,22 @@ Started: Mon Feb 17 2026
   - Documentation-only stories don't affect pyright/ruff/tests — just verify pre-existing errors haven't changed
   - All 3493 tests continue to pass
 ---
+
+## 2026-02-17 - US-029
+- Created four example applications in `examples/distributed/`
+- `simple_chat.py` — single agent with a tool, submitted via `distributed()`, streams all rich event types with pattern matching
+- `multi_agent.py` — three-agent workflow Swarm (researcher >> drafter >> reviewer), streams events with agent name tracking
+- `docker-compose.yml` — Docker Compose with Redis 7, 2 workers, and optional Temporal (via `--profile temporal`)
+- `Dockerfile` — worker container image using uv for dependency resolution
+- `fastapi_sse.py` — FastAPI endpoint that submits distributed tasks and streams SSE events to frontend, includes `/chat` (SSE stream) and `/task/{id}/status` (polling) endpoints
+- All examples have inline comments explaining the code, prerequisites, and usage instructions
+- All examples use `# pyright: ignore[reportMissingImports]` for `orbiter.distributed` imports (standard pattern)
+- Files changed: `examples/distributed/simple_chat.py` (new), `examples/distributed/multi_agent.py` (new), `examples/distributed/docker-compose.yml` (new), `examples/distributed/Dockerfile` (new), `examples/distributed/fastapi_sse.py` (new), `prd.json`
+- **Learnings for future iterations:**
+  - Example files don't need tests but must pass ruff + pyright
+  - ruff catches f-strings without placeholders (F541) and unsorted imports (I001) — use `--fix` for auto-correction
+  - `orbiter.distributed` imports in examples need `# pyright: ignore[reportMissingImports]` — same pattern as all cross-namespace imports
+  - FastAPI `StreamingResponse` works well with async generators for SSE — use `text/event-stream` media type
+  - Docker Compose `profiles` feature allows optional services (Temporal) without cluttering default startup
+  - All 3493 tests continue to pass
+---
