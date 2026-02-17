@@ -2918,3 +2918,15 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Widget preview in settings page is pure HTML injection into a container div — no iframe needed
   - `_escape_attr()` helper for safe HTML attribute escaping in embed code generation
 ---
+
+## 2026-02-17 11:15 - US-186
+- What was implemented: Team management UI in Settings page — Team tab (admin-only visibility), user table with email/role/joined/actions columns, Invite User modal, role change dropdown, Remove User confirmation dialog, success/error toast notifications
+- Files changed:
+  - packages/orbiter-web/src/pages/settings.astro (updated — added Team tab, panel-team section with user table, invite-user-modal, remove-user-modal, showToast helper, team management JavaScript)
+- **Learnings for future iterations:**
+  - Team tab visibility is controlled client-side: fetch `/api/auth/me`, check role === "admin", then unhide the tab — this avoids needing server-side rendering for role checks
+  - Pattern for inline toast: create DOM element dynamically, append to body, auto-remove after 4s; use `id="settings-toast"` and remove existing before creating new to prevent stacking
+  - Cannot change own role or remove yourself — enforced both in backend (400 error) and frontend (show badge instead of dropdown, hide remove button)
+  - Role dropdown change fires PUT immediately (no save button needed) — follows the pricing table auto-save pattern
+  - 204 responses from DELETE don't have body — must handle `.json()` error gracefully; use `res.ok` check before parsing
+---
