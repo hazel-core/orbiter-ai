@@ -397,7 +397,7 @@
         "Pyright passes"
       ],
       "priority": 23,
-      "passes": false,
+      "passes": true,
       "notes": "Create packages/orbiter-distributed/src/orbiter/distributed/temporal.py. temporalio is in [temporal] optional deps from US-007. Use try/except ImportError with HAS_TEMPORAL flag pattern (same as OTel in orbiter-observability). Update Worker to accept executor param. Temporal workflow is a @workflow.defn class, activity is a @activity.defn function."
     },
     {

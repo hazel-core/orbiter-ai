@@ -2723,6 +2723,7 @@ dev = [
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "ruff" },
+    { name = "temporalio" },
 ]
 
 [package.metadata]
@@ -2750,6 +2751,7 @@ dev = [
     { name = "pytest", specifier = ">=8.0" },
     { name = "pytest-asyncio", specifier = ">=0.24" },
     { name = "ruff", specifier = ">=0.8" },
+    { name = "temporalio", specifier = ">=1.7" },
 ]
 
 [[package]]

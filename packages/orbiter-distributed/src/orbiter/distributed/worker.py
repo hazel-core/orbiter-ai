@@ -9,7 +9,7 @@ import random
 import signal
 import socket
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import redis.asyncio as aioredis
 
@@ -26,11 +26,17 @@ from orbiter.distributed.models import (  # pyright: ignore[reportMissingImports
     TaskStatus,
 )
 from orbiter.distributed.store import TaskStore  # pyright: ignore[reportMissingImports]
+from orbiter.distributed.temporal import HAS_TEMPORAL  # pyright: ignore[reportMissingImports]
 from orbiter.observability.propagation import (  # pyright: ignore[reportMissingImports]
     BaggagePropagator,
     DictCarrier,
 )
 from orbiter.observability.tracing import aspan  # pyright: ignore[reportMissingImports]
+
+if TYPE_CHECKING:
+    from orbiter.distributed.temporal import (  # pyright: ignore[reportMissingImports]
+        TemporalExecutor,
+    )
 
 
 def _generate_worker_id() -> str:
@@ -58,6 +64,8 @@ class Worker:
         concurrency: Number of concurrent task executions (default 1).
         queue_name: Redis Streams queue name (default ``"orbiter:tasks"``).
         heartbeat_ttl: TTL in seconds for the heartbeat key (default 30).
+        executor: Execution backend — ``"local"`` for direct execution or
+            ``"temporal"`` for durable Temporal workflows.
     """
 
     def __init__(
@@ -68,16 +76,32 @@ class Worker:
         concurrency: int = 1,
         queue_name: str = "orbiter:tasks",
         heartbeat_ttl: int = 30,
+        executor: Literal["local", "temporal"] = "local",
     ) -> None:
         self._redis_url = redis_url
         self._worker_id = worker_id or _generate_worker_id()
         self._concurrency = concurrency
         self._queue_name = queue_name
         self._heartbeat_ttl = heartbeat_ttl
+        self._executor_type = executor
 
         self._broker = TaskBroker(redis_url, queue_name=queue_name)
         self._store = TaskStore(redis_url)
         self._publisher = EventPublisher(redis_url)
+        self._temporal_executor: TemporalExecutor | None = None
+
+        if executor == "temporal":
+            if not HAS_TEMPORAL:
+                msg = (
+                    "Temporal executor requires temporalio to be installed. "
+                    "Install it with: pip install orbiter-distributed[temporal]"
+                )
+                raise ImportError(msg)
+            from orbiter.distributed.temporal import (  # pyright: ignore[reportMissingImports]
+                TemporalExecutor,
+            )
+
+            self._temporal_executor = TemporalExecutor()
 
         self._shutdown_event = asyncio.Event()
         self._tasks_processed = 0
@@ -101,12 +125,16 @@ class Worker:
         """Enter the claim-execute loop until shutdown is signalled.
 
         Registers SIGINT/SIGTERM handlers for graceful shutdown.
+        When ``executor="temporal"``, also connects the Temporal executor.
         """
         self._started_at = time.time()
 
         await self._broker.connect()
         await self._store.connect()
         await self._publisher.connect()
+
+        if self._temporal_executor is not None:
+            await self._temporal_executor.connect()
 
         # Register signal handlers for graceful shutdown
         loop = asyncio.get_running_loop()
@@ -127,6 +155,8 @@ class Worker:
             with contextlib.suppress(asyncio.CancelledError):
                 await heartbeat_task
         finally:
+            if self._temporal_executor is not None:
+                await self._temporal_executor.disconnect()
             await self._broker.disconnect()
             await self._store.disconnect()
             await self._publisher.disconnect()
@@ -207,11 +237,19 @@ class Worker:
                     started_at=started_at,
                 )
 
-                # Reconstruct agent from config
-                agent = self._reconstruct_agent(task.agent_config)
-
-                # Execute via run.stream()
-                result_text = await self._run_agent(agent, task, token)
+                if self._temporal_executor is not None:
+                    # Delegate to Temporal for durable execution
+                    result_text = await self._temporal_executor.execute_task(
+                        task,
+                        self._store,
+                        self._publisher,
+                        token,
+                        self._worker_id,
+                    )
+                else:
+                    # Local execution: reconstruct agent and stream directly
+                    agent = self._reconstruct_agent(task.agent_config)
+                    result_text = await self._run_agent(agent, task, token)
 
                 duration = time.time() - started_at
 
