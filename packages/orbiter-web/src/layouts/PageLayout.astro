@@ -196,6 +196,42 @@ const bellIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="c
             ></span>
           </button>
 
+          <!-- Notifications bell -->
+          <div class="relative" id="notif-container">
+            <button
+              id="notif-bell"
+              class="relative flex items-center justify-center rounded-lg p-2 text-muted hover:bg-dark/5 hover:text-dark transition-colors cursor-pointer"
+              title="Notifications"
+            >
+              <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+              <span
+                id="notif-badge"
+                class="hidden absolute -top-0.5 -right-0.5 flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-coral text-white text-[10px] font-bold leading-none px-1"
+              ></span>
+            </button>
+
+            <!-- Notifications dropdown -->
+            <div
+              id="notif-dropdown"
+              class="hidden absolute right-0 top-full mt-2 w-80 max-h-[420px] rounded-xl border border-dark/[0.08] bg-paper shadow-xl z-50 flex flex-col overflow-hidden"
+            >
+              <!-- Header -->
+              <div class="flex items-center justify-between border-b border-dark/[0.08] px-4 py-3">
+                <span class="text-sm font-semibold text-dark">Notifications</span>
+                <button
+                  id="notif-mark-all"
+                  class="text-xs text-coral hover:underline cursor-pointer"
+                >Mark all as read</button>
+              </div>
+              <!-- Notification list -->
+              <div id="notif-list" class="flex-1 overflow-y-auto">
+                <div id="notif-empty" class="px-4 py-8 text-center text-sm text-muted">
+                  No notifications
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- User menu -->
           <button
             id="user-menu-trigger"
@@ -956,6 +992,268 @@ const bellIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="c
       // Initial fetch + poll every 30s
       fetchPending();
       setInterval(fetchPending, 30000);
+    })();
+  </script>
+
+  <!-- Notifications bell + dropdown script -->
+  <script is:inline>
+    (function () {
+      var bell = document.getElementById("notif-bell");
+      var badge = document.getElementById("notif-badge");
+      var dropdown = document.getElementById("notif-dropdown");
+      var container = document.getElementById("notif-container");
+      var listEl = document.getElementById("notif-list");
+      var emptyEl = document.getElementById("notif-empty");
+      var markAllBtn = document.getElementById("notif-mark-all");
+      if (!bell || !badge || !dropdown || !listEl) return;
+
+      var notifications = [];
+      var unreadCount = 0;
+      var isOpen = false;
+
+      /* --- Type icons --- */
+      var typeIcons = {
+        approval: '<svg class="h-4 w-4 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>',
+        alert: '<svg class="h-4 w-4 text-coral" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+        budget: '<svg class="h-4 w-4 text-zen-green" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>',
+        info: '<svg class="h-4 w-4 text-zen-blue" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>'
+      };
+      var defaultIcon = typeIcons.info;
+
+      /* --- Entity navigation URLs --- */
+      function entityUrl(entityType, entityId) {
+        if (!entityType || !entityId) return null;
+        var map = {
+          agent: "/agents/" + entityId,
+          workflow: "/workflows/" + entityId + "/canvas",
+          project: "/projects/" + entityId,
+          knowledge_base: "/knowledge/" + entityId,
+          tool: "/tools",
+          run: "/monitoring"
+        };
+        return map[entityType] || null;
+      }
+
+      /* --- Time ago helper --- */
+      function timeAgo(dateStr) {
+        var now = new Date();
+        var d = new Date(dateStr + (dateStr.indexOf("Z") === -1 ? "Z" : ""));
+        var sec = Math.floor((now - d) / 1000);
+        if (sec < 60) return "just now";
+        var min = Math.floor(sec / 60);
+        if (min < 60) return min + "m ago";
+        var hr = Math.floor(min / 60);
+        if (hr < 24) return hr + "h ago";
+        var day = Math.floor(hr / 24);
+        if (day < 7) return day + "d ago";
+        return d.toLocaleDateString();
+      }
+
+      /* --- Badge --- */
+      function updateBadge() {
+        if (unreadCount > 0) {
+          badge.textContent = unreadCount > 99 ? "99+" : String(unreadCount);
+          badge.classList.remove("hidden");
+          badge.classList.add("flex");
+        } else {
+          badge.classList.add("hidden");
+          badge.classList.remove("flex");
+        }
+      }
+
+      /* --- Render list --- */
+      function renderList() {
+        if (notifications.length === 0) {
+          emptyEl.classList.remove("hidden");
+          // Remove items but keep emptyEl
+          var children = Array.from(listEl.children);
+          children.forEach(function (c) { if (c !== emptyEl) listEl.removeChild(c); });
+          return;
+        }
+        emptyEl.classList.add("hidden");
+        var children = Array.from(listEl.children);
+        children.forEach(function (c) { if (c !== emptyEl) listEl.removeChild(c); });
+
+        notifications.forEach(function (n) {
+          var icon = typeIcons[n.type] || defaultIcon;
+          var url = entityUrl(n.entity_type, n.entity_id);
+          var tag = url ? "a" : "div";
+          var item = document.createElement(tag);
+          item.className = "flex items-start gap-3 px-4 py-3 border-b border-dark/[0.04] cursor-pointer transition-colors hover:bg-dark/[0.03]"
+            + (n.read ? "" : " bg-coral/[0.04]");
+          if (url) item.setAttribute("href", url);
+          item.setAttribute("data-notif-id", n.id);
+          item.innerHTML =
+            '<div class="shrink-0 mt-0.5">' + icon + '</div>'
+            + '<div class="flex-1 min-w-0">'
+            + '<div class="flex items-center gap-2">'
+            + '<span class="text-sm font-medium text-dark truncate' + (n.read ? '' : ' font-semibold') + '">' + escapeHtml(n.title) + '</span>'
+            + (n.read ? '' : '<span class="shrink-0 w-2 h-2 rounded-full bg-coral"></span>')
+            + '</div>'
+            + '<p class="text-xs text-muted truncate mt-0.5">' + escapeHtml(n.message) + '</p>'
+            + '<span class="text-[11px] text-muted/60 mt-0.5 block">' + timeAgo(n.created_at) + '</span>'
+            + '</div>';
+          listEl.insertBefore(item, emptyEl);
+        });
+      }
+
+      function escapeHtml(s) {
+        var d = document.createElement("div");
+        d.textContent = s || "";
+        return d.innerHTML;
+      }
+
+      /* --- Fetch notifications --- */
+      function fetchNotifications() {
+        fetch("/api/notifications?limit=20", { credentials: "same-origin" })
+          .then(function (r) { return r.ok ? r.json() : { data: [] }; })
+          .then(function (body) {
+            notifications = (body.data || body || []).map(function (n) {
+              n.read = !!n.read;
+              return n;
+            });
+            renderList();
+          })
+          .catch(function () {});
+      }
+
+      function fetchUnreadCount() {
+        fetch("/api/notifications/unread-count", { credentials: "same-origin" })
+          .then(function (r) { return r.ok ? r.json() : { count: 0 }; })
+          .then(function (data) {
+            unreadCount = data.count || 0;
+            updateBadge();
+          })
+          .catch(function () {});
+      }
+
+      /* --- Toggle dropdown --- */
+      function openDropdown() {
+        dropdown.classList.remove("hidden");
+        isOpen = true;
+        fetchNotifications();
+      }
+
+      function closeDropdown() {
+        dropdown.classList.add("hidden");
+        isOpen = false;
+      }
+
+      bell.addEventListener("click", function (e) {
+        e.stopPropagation();
+        if (isOpen) {
+          closeDropdown();
+        } else {
+          openDropdown();
+        }
+      });
+
+      // Close on outside click
+      document.addEventListener("click", function (e) {
+        if (isOpen && container && !container.contains(e.target)) {
+          closeDropdown();
+        }
+      });
+
+      // Close on Escape
+      document.addEventListener("keydown", function (e) {
+        if (e.key === "Escape" && isOpen) closeDropdown();
+      });
+
+      /* --- Click notification: navigate + mark read --- */
+      listEl.addEventListener("click", function (e) {
+        var item = e.target.closest("[data-notif-id]");
+        if (!item) return;
+        var notifId = item.getAttribute("data-notif-id");
+        // Mark as read
+        fetch("/api/notifications/" + notifId + "/read", {
+          method: "PUT",
+          credentials: "same-origin"
+        }).then(function () {
+          // Update local state
+          for (var i = 0; i < notifications.length; i++) {
+            if (notifications[i].id === notifId && !notifications[i].read) {
+              notifications[i].read = true;
+              unreadCount = Math.max(0, unreadCount - 1);
+              break;
+            }
+          }
+          updateBadge();
+          renderList();
+        }).catch(function () {});
+
+        // Navigate if <a> tag — browser handles it
+        // For non-link items, just mark as read
+      });
+
+      /* --- Mark all as read --- */
+      if (markAllBtn) {
+        markAllBtn.addEventListener("click", function () {
+          fetch("/api/notifications/read-all", {
+            method: "POST",
+            credentials: "same-origin"
+          }).then(function () {
+            notifications.forEach(function (n) { n.read = true; });
+            unreadCount = 0;
+            updateBadge();
+            renderList();
+          }).catch(function () {});
+        });
+      }
+
+      /* --- WebSocket real-time updates --- */
+      function setupWebSocket() {
+        try {
+          var proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+          var wsUrl = proto + "//" + window.location.host + "/api/ws";
+          var ws = new WebSocket(wsUrl);
+
+          ws.addEventListener("open", function () {
+            ws.send(JSON.stringify({ type: "subscribe", channel: "notifications" }));
+          });
+
+          ws.addEventListener("message", function (event) {
+            try {
+              var msg = JSON.parse(event.data);
+              if (msg.channel === "notifications" && msg.type === "notification_created") {
+                var p = msg.payload || msg;
+                var newNotif = {
+                  id: p.id,
+                  type: p.notification_type || p.type,
+                  title: p.title,
+                  message: p.message,
+                  entity_type: p.entity_type,
+                  entity_id: p.entity_id,
+                  read: false,
+                  created_at: p.created_at
+                };
+                notifications.unshift(newNotif);
+                if (notifications.length > 20) notifications = notifications.slice(0, 20);
+                unreadCount++;
+                updateBadge();
+                if (isOpen) renderList();
+              }
+            } catch (_) {}
+          });
+
+          ws.addEventListener("close", function () {
+            // Reconnect after delay
+            setTimeout(setupWebSocket, 5000);
+          });
+
+          ws.addEventListener("error", function () {
+            ws.close();
+          });
+        } catch (_) {
+          // WebSocket not available, fall back to polling
+        }
+      }
+
+      /* --- Init --- */
+      fetchUnreadCount();
+      setupWebSocket();
+      // Poll unread count as fallback every 30s
+      setInterval(fetchUnreadCount, 30000);
     })();
   </script>
 </BaseLayout>
