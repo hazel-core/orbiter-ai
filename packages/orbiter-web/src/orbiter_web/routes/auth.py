@@ -202,6 +202,74 @@ async def me(
     return user
 
 
+# ---------------------------------------------------------------------------
+# Profile endpoints
+# ---------------------------------------------------------------------------
+
+
+class ProfileUpdateRequest(BaseModel):
+    email: str = Field(..., min_length=1)
+
+
+@router.get("/profile", response_model=UserResponse)
+async def get_profile(
+    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+) -> dict[str, Any]:
+    """Return the full profile for the current authenticated user."""
+    return user
+
+
+@router.put("/profile", response_model=UserResponse)
+async def update_profile(
+    body: ProfileUpdateRequest,
+    request: Request,
+    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+) -> dict[str, Any]:
+    """Update the current user's profile (email)."""
+    user_id = user["id"]
+    new_email = body.email.strip()
+
+    if not new_email:
+        raise HTTPException(status_code=422, detail="Email must not be empty")
+
+    # Check email uniqueness.
+    async with get_db() as db:
+        cursor = await db.execute(
+            "SELECT id FROM users WHERE email = ? AND id != ?",
+            (new_email, user_id),
+        )
+        existing = await cursor.fetchone()
+
+    if existing:
+        raise HTTPException(status_code=409, detail="Email already in use")
+
+    # Update email.
+    async with get_db() as db:
+        await db.execute(
+            "UPDATE users SET email = ? WHERE id = ?",
+            (new_email, user_id),
+        )
+        await db.commit()
+
+    ip = request.client.host if request.client else None
+    await audit_log(
+        user_id,
+        "update_profile",
+        "user",
+        user_id,
+        details={"old_email": user["email"], "new_email": new_email},
+        ip_address=ip,
+    )
+
+    # Session is preserved — no session invalidation on email change.
+    return {
+        "id": user_id,
+        "email": new_email,
+        "role": user["role"],
+        "created_at": user["created_at"],
+    }
+
+
 class PasswordChangeRequest(BaseModel):
     current_password: str = Field(..., min_length=1)
     new_password: str = Field(..., min_length=8)
