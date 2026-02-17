@@ -7,6 +7,7 @@ import ConditionalConfig from "./ConditionalConfig";
 import CodeNodeConfig from "./CodeNodeConfig";
 import HttpRequestConfig from "./HttpRequestConfig";
 import KnowledgeRetrievalConfig from "./KnowledgeRetrievalConfig";
+import ApprovalGateConfig from "./ApprovalGateConfig";
 
 /* ------------------------------------------------------------------ */
 /* Types                                                                */
@@ -134,6 +135,19 @@ function renderTypeConfig(
           similarity_threshold: node.data.similarity_threshold as number | undefined,
         }}
         onChange={onDataChange}
+      />
+    );
+  }
+
+  if (nodeType === "approval_gate") {
+    return (
+      <ApprovalGateConfig
+        data={{
+          timeout_minutes: node.data.timeout_minutes as number | undefined,
+          approval_message: node.data.approval_message as string | undefined,
+        }}
+        onChange={onDataChange}
+        nodeId={node.id}
       />
     );
   }

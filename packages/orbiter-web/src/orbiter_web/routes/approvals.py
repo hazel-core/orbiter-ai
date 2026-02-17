@@ -127,6 +127,46 @@ async def respond_to_approval(
 
 
 # ---------------------------------------------------------------------------
+# GET /api/approvals/count — count of pending approvals (for badge)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/count")
+async def count_pending_approvals(
+    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+) -> dict[str, int]:
+    """Return the count of pending approvals for the current user."""
+    async with get_db() as db:
+        cursor = await db.execute(
+            "SELECT COUNT(*) as cnt FROM workflow_approvals WHERE user_id = ? AND status = 'pending'",
+            (user["id"],),
+        )
+        row = await cursor.fetchone()
+    return {"count": row["cnt"] if row else 0}
+
+
+# ---------------------------------------------------------------------------
+# GET /api/approvals/history — approval history for a specific node
+# ---------------------------------------------------------------------------
+
+
+@router.get("/history", response_model=list[ApprovalResponse])
+async def approval_history(
+    node_id: str = Query(),
+    limit: int = Query(default=50, le=200),
+    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+) -> list[dict[str, Any]]:
+    """Return approval history for a specific node across all runs."""
+    async with get_db() as db:
+        cursor = await db.execute(
+            "SELECT * FROM workflow_approvals WHERE node_id = ? AND user_id = ? ORDER BY requested_at DESC LIMIT ?",
+            (node_id, user["id"], limit),
+        )
+        rows = await cursor.fetchall()
+    return [_parse_approval_row(row) for row in rows]
+
+
+# ---------------------------------------------------------------------------
 # Engine-facing helpers (called from engine.py, not HTTP routes)
 # ---------------------------------------------------------------------------
 

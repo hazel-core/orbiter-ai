@@ -68,6 +68,7 @@ const moonIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="c
 const userIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
 const hamburgerIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>';
 const closeIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+const bellIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
 ---
 
 <BaseLayout title={title} description={description}>
@@ -178,6 +179,19 @@ const closeIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="
           >
             <span id="theme-icon-light" set:html={sunIcon} />
             <span id="theme-icon-dark" class="hidden" set:html={moonIcon} />
+          </button>
+
+          <!-- Approvals notification bell -->
+          <button
+            id="approvals-bell"
+            class="relative flex items-center justify-center rounded-lg p-2 text-muted hover:bg-dark/5 hover:text-dark transition-colors cursor-pointer"
+            title="Pending approvals"
+          >
+            <span set:html={bellIcon} />
+            <span
+              id="approvals-badge"
+              class="hidden absolute -top-0.5 -right-0.5 flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-coral text-white text-[10px] font-bold leading-none px-1"
+            ></span>
           </button>
 
           <!-- User menu -->
@@ -515,6 +529,149 @@ const closeIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="
           }
         })
         .catch(function () {});
+    })();
+  </script>
+
+  <!-- Approval gate modal -->
+  <dialog id="approval-modal" class="backdrop:bg-dark/40 rounded-xl border border-dark/[0.08] bg-paper shadow-xl p-0 w-full max-w-md">
+    <div class="p-6">
+      <div class="flex items-center gap-3 mb-4">
+        <div class="flex items-center justify-center w-10 h-10 rounded-xl bg-amber-100 text-amber-600">
+          <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>
+        </div>
+        <div>
+          <h3 class="text-sm font-semibold text-dark">Approval Required</h3>
+          <p id="approval-modal-node" class="text-xs text-muted"></p>
+        </div>
+      </div>
+
+      <div id="approval-modal-context" class="mb-4 rounded-lg bg-subtle/50 border border-dark/[0.06] p-3 text-xs text-muted hidden">
+      </div>
+
+      <div class="mb-4">
+        <label for="approval-comment" class="block text-[11px] font-semibold text-muted uppercase tracking-wide mb-1">Comment</label>
+        <textarea id="approval-comment" rows="3" placeholder="Optional for approve, required for reject..." class="w-full rounded-lg border border-dark/[0.08] bg-paper px-3 py-2 text-sm text-dark placeholder-muted/60 outline-none focus:border-coral transition-colors resize-none"></textarea>
+      </div>
+
+      <div class="flex items-center gap-2 justify-end">
+        <button id="approval-reject-btn" class="rounded-lg border border-dark/[0.08] px-4 py-2 text-sm font-medium text-muted hover:bg-dark/5 transition-colors cursor-pointer">Reject</button>
+        <button id="approval-approve-btn" class="rounded-lg bg-zen-green px-4 py-2 text-sm font-semibold text-dark hover:opacity-90 transition-opacity cursor-pointer">Approve</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Approval notification badge + modal script -->
+  <script is:inline>
+    (function () {
+      var bell = document.getElementById("approvals-bell");
+      var badge = document.getElementById("approvals-badge");
+      var modal = document.getElementById("approval-modal");
+      var modalNode = document.getElementById("approval-modal-node");
+      var modalContext = document.getElementById("approval-modal-context");
+      var commentEl = document.getElementById("approval-comment");
+      var approveBtn = document.getElementById("approval-approve-btn");
+      var rejectBtn = document.getElementById("approval-reject-btn");
+      if (!bell || !badge || !modal) return;
+
+      var pendingApprovals = [];
+      var currentApprovalIdx = 0;
+
+      function updateBadge(count) {
+        if (count > 0) {
+          badge.textContent = count > 99 ? "99+" : String(count);
+          badge.classList.remove("hidden");
+          badge.classList.add("flex");
+        } else {
+          badge.classList.add("hidden");
+          badge.classList.remove("flex");
+        }
+      }
+
+      function fetchPending() {
+        fetch("/api/approvals/pending?limit=20", { credentials: "same-origin" })
+          .then(function (r) { return r.ok ? r.json() : []; })
+          .then(function (data) {
+            pendingApprovals = data || [];
+            updateBadge(pendingApprovals.length);
+          })
+          .catch(function () {});
+      }
+
+      function showApproval(idx) {
+        if (idx >= pendingApprovals.length) {
+          modal.close();
+          return;
+        }
+        currentApprovalIdx = idx;
+        var a = pendingApprovals[idx];
+        modalNode.textContent = "Node: " + a.node_id + " | Run: " + a.run_id.slice(0, 8) + "...";
+        if (a.approval_message) {
+          modalContext.textContent = a.approval_message;
+          modalContext.classList.remove("hidden");
+        } else {
+          modalContext.classList.add("hidden");
+        }
+        commentEl.value = "";
+        modal.showModal();
+      }
+
+      function respondToApproval(approved) {
+        var a = pendingApprovals[currentApprovalIdx];
+        if (!a) return;
+        var comment = commentEl.value.trim();
+        if (!approved && !comment) {
+          commentEl.style.borderColor = "#F76F53";
+          commentEl.setAttribute("placeholder", "Comment required for rejection");
+          commentEl.focus();
+          return;
+        }
+        var body = { approved: approved };
+        if (comment) body.comment = comment;
+
+        fetch("/api/approvals/" + a.id + "/respond", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        })
+          .then(function (r) {
+            if (!r.ok) return r.json().then(function (d) { throw new Error(d.detail || "Failed"); });
+            // Remove from list and show next or close
+            pendingApprovals.splice(currentApprovalIdx, 1);
+            updateBadge(pendingApprovals.length);
+            if (pendingApprovals.length > 0) {
+              showApproval(0);
+            } else {
+              modal.close();
+            }
+          })
+          .catch(function (err) {
+            alert("Error: " + err.message);
+          });
+      }
+
+      bell.addEventListener("click", function () {
+        if (pendingApprovals.length > 0) {
+          showApproval(0);
+        }
+      });
+
+      if (approveBtn) approveBtn.addEventListener("click", function () { respondToApproval(true); });
+      if (rejectBtn) rejectBtn.addEventListener("click", function () { respondToApproval(false); });
+
+      // Close on backdrop click
+      modal.addEventListener("click", function (e) {
+        if (e.target === modal) modal.close();
+      });
+
+      // Reset comment border on focus
+      if (commentEl) commentEl.addEventListener("focus", function () {
+        commentEl.style.borderColor = "";
+      });
+
+      // Initial fetch + poll every 30s
+      fetchPending();
+      setInterval(fetchPending, 30000);
     })();
   </script>
 </BaseLayout>
