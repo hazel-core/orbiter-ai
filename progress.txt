@@ -2930,3 +2930,18 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Role dropdown change fires PUT immediately (no save button needed) — follows the pricing table auto-save pattern
   - 204 responses from DELETE don't have body — must handle `.json()` error gracefully; use `res.ok` check before parsing
 ---
+
+## 2026-02-17 - US-138
+- What was implemented: Agent template schema and REST API — full CRUD, versioning, import/export, instantiation
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/migrations/063_create_agent_templates.sql (new — agent_templates + agent_template_versions tables)
+  - packages/orbiter-web/src/orbiter_web/routes/agent_templates.py (new — 11 endpoints: list/create/get/update/delete, from-agent, export, import, instantiate, versions list/get)
+  - packages/orbiter-web/src/orbiter_web/app.py (updated — register agent_templates_router)
+- **Learnings for future iterations:**
+  - Ruff B008 only triggers for `Depends()` in function defaults, NOT for `Query(...)` with keyword args — don't add unnecessary noqa comments on Query params
+  - Template versioning pattern: auto-create version on config change via `_create_version()` helper; COALESCE(MAX(version_number), 0) + 1
+  - Credential stripping: use a frozenset of known credential key names and filter them out when saving agent config as template
+  - `_extract_agent_config()` captures the reusable subset of agent columns (instructions, model settings, hooks) — avoids copying project_id or user_id into templates
+  - Import endpoint uses `UploadFile` for JSON file upload; parse with `json.loads(await file.read())`
+  - Instantiate copies template config back into agents table columns — need to map config dict keys to agent column names
+---
