@@ -30,6 +30,7 @@ from orbiter_web.routes.audit_log import router as audit_log_router
 from orbiter_web.routes.auth import router as auth_router
 from orbiter_web.routes.benchmarks import router as benchmarks_router
 from orbiter_web.routes.checkpoints import router as checkpoints_router
+from orbiter_web.routes.ci import api_keys_router, ci_router
 from orbiter_web.routes.config_versions import router as config_versions_router
 from orbiter_web.routes.context_state import router as context_state_router
 from orbiter_web.routes.conversations import router as conversations_router
@@ -132,7 +133,7 @@ if settings.cors_origins:
         allow_origins=settings.cors_origins,
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        allow_headers=["Content-Type", "Authorization", "X-CSRF-Token"],
+        allow_headers=["Content-Type", "Authorization", "X-CSRF-Token", "X-API-Key"],
     )
 
 app.include_router(agent_templates_router)
@@ -143,6 +144,8 @@ app.include_router(annotations_router)
 app.include_router(artifacts_router)
 app.include_router(audit_log_router)
 app.include_router(approvals_router)
+app.include_router(ci_router)
+app.include_router(api_keys_router)
 app.include_router(checkpoints_router)
 app.include_router(neuron_pipelines_router)
 app.include_router(plans_router)

@@ -19,6 +19,9 @@ _EXEMPT_PATHS = {
     "/api/health",
 }
 
+# Path prefixes exempt from CSRF (CI endpoints use API key auth, not cookies).
+_EXEMPT_PREFIXES = ("/api/v1/ci/",)
+
 
 class CSRFMiddleware(BaseHTTPMiddleware):
     """Validate X-CSRF-Token header on state-changing requests.
@@ -27,13 +30,14 @@ class CSRFMiddleware(BaseHTTPMiddleware):
     row. GET/HEAD/OPTIONS requests and exempt paths are always allowed through.
     """
 
-    async def dispatch(
-        self, request: Request, call_next: RequestResponseEndpoint
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         if request.method not in _UNSAFE_METHODS:
             return await call_next(request)
 
         if request.url.path in _EXEMPT_PATHS:
+            return await call_next(request)
+
+        if any(request.url.path.startswith(p) for p in _EXEMPT_PREFIXES):
             return await call_next(request)
 
         # WebSocket upgrades don't need CSRF.
