@@ -3367,3 +3367,14 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Chat WebSocket has a takeover protocol for human-in-the-loop: takeover → inject/stop/resume flow
   - `get_ws_user()` in websocket.py is the shared auth helper for all WS endpoints
 ---
+
+## 2026-02-17 - US-199
+- Created `docs/guides/plugin-development.md` — comprehensive plugin development guide
+- Covers: plugin.json manifest format (all required/optional fields), plugin types, lifecycle states, isolation model (subprocess + timeout), Load from Directory workflow, tool plugin tutorial (web search), model provider plugin tutorial (local LLM), testing checklist, REST API reference, best practices
+- Files changed: `docs/guides/plugin-development.md` (new, 574 lines)
+- **Learnings for future iterations:**
+  - Plugin system has two implementations: Web (REST API, SQLite, subprocess isolation) and CLI (Python API, in-memory, in-process) — the web guide focuses on the REST/dashboard system
+  - Marketplace catalog is static in `routes/plugins.py` (`MARKETPLACE_CATALOG` list) — 12 example plugins
+  - Plugin validation runs entry point with `--validate` flag in subprocess with 10s timeout
+  - Permissions are declared in manifest: `network`, `api_keys`, `sandbox`, `file_system`
+---

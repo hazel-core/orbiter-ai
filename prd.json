@@ -3490,7 +3490,7 @@
         "Covers: testing plugins before publishing"
       ],
       "priority": 160,
-      "passes": false,
+      "passes": true,
       "notes": "Documentation: plugin development guide for community contributors"
     },
     {
