@@ -17,6 +17,15 @@ from orbiter_web.routes.costs import check_budget
 _log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
+# Node error-handling config defaults
+# ---------------------------------------------------------------------------
+
+_DEFAULT_RETRY_COUNT = 0
+_DEFAULT_RETRY_DELAY_MS = 1000
+_DEFAULT_ON_ERROR = "fail"  # "fail" | "skip" | "fallback"
+_DEFAULT_TIMEOUT_MS = 30000
+
+# ---------------------------------------------------------------------------
 # Topological sort
 # ---------------------------------------------------------------------------
 
@@ -506,6 +515,148 @@ async def _execute_node(
 
 
 # ---------------------------------------------------------------------------
+# Retry / error-handling / timeout wrapper
+# ---------------------------------------------------------------------------
+
+
+def _get_node_error_config(node: dict[str, Any]) -> dict[str, Any]:
+    """Extract retry/error/timeout config from node data."""
+    data = node.get("data", {})
+    return {
+        "retry_count": min(max(int(data.get("retry_count", _DEFAULT_RETRY_COUNT)), 0), 5),
+        "retry_delay_ms": int(data.get("retry_delay_ms", _DEFAULT_RETRY_DELAY_MS)),
+        "on_error": data.get("on_error", _DEFAULT_ON_ERROR),
+        "fallback_value": data.get("fallback_value", ""),
+        "timeout_ms": int(data.get("timeout_ms", _DEFAULT_TIMEOUT_MS)),
+    }
+
+
+async def _execute_node_with_retry(
+    node: dict[str, Any],
+    edges: list[dict[str, Any]],
+    variables: dict[str, Any],
+    event_callback: Any | None = None,
+    *,
+    run_id: str = "",
+    user_id: str = "",
+    cancel_event: asyncio.Event | None = None,
+) -> dict[str, Any]:
+    """Execute a node with retry logic, timeout, and on_error strategies.
+
+    Returns the node result dict. For ``on_error='skip'``, returns a result
+    with status 'skipped'. For ``on_error='fallback'``, returns a result
+    using the configured fallback_value.
+
+    Raises on ``on_error='fail'`` after exhausting retries.
+    """
+    cfg = _get_node_error_config(node)
+    retry_count = cfg["retry_count"]
+    retry_delay_ms = cfg["retry_delay_ms"]
+    on_error = cfg["on_error"]
+    fallback_value = cfg["fallback_value"]
+    timeout_ms = cfg["timeout_ms"]
+
+    node_id = node["id"]
+    node_data = node.get("data", {})
+    node_type = node_data.get("nodeType", node.get("type", "unknown"))
+
+    last_error: Exception | None = None
+
+    for attempt in range(retry_count + 1):
+        try:
+            # Apply per-node timeout
+            timeout_s = timeout_ms / 1000.0
+            result = await asyncio.wait_for(
+                _execute_node(
+                    node,
+                    edges=edges,
+                    variables=variables,
+                    event_callback=event_callback,
+                    run_id=run_id,
+                    user_id=user_id,
+                    cancel_event=cancel_event,
+                ),
+                timeout=timeout_s,
+            )
+            # Tag result with retry info for logging
+            result["_retry_attempt"] = attempt
+            result["_max_retries"] = retry_count
+            result["_on_error"] = on_error
+            return result
+
+        except TimeoutError:
+            last_error = TimeoutError(
+                f"Node {node_id} timed out after {timeout_ms}ms (attempt {attempt + 1}/{retry_count + 1})"
+            )
+            _log.warning("Node %s timed out (attempt %d/%d)", node_id, attempt + 1, retry_count + 1)
+
+        except asyncio.CancelledError:
+            raise  # Don't retry on cancellation
+
+        except Exception as exc:
+            last_error = exc
+            _log.warning(
+                "Node %s failed (attempt %d/%d): %s",
+                node_id, attempt + 1, retry_count + 1, exc,
+            )
+
+        # Log the retry attempt
+        if attempt < retry_count:
+            delay_s = (retry_delay_ms / 1000.0) * (2 ** attempt)  # Exponential backoff
+            _log.info(
+                "Retrying node %s in %.1fs (attempt %d/%d)",
+                node_id, delay_s, attempt + 2, retry_count + 1,
+            )
+
+            if event_callback is not None:
+                with contextlib.suppress(Exception):
+                    await event_callback({
+                        "type": "node_retry",
+                        "node_id": node_id,
+                        "attempt": attempt + 2,
+                        "max_attempts": retry_count + 1,
+                        "delay_ms": int(delay_s * 1000),
+                        "error": str(last_error),
+                    })
+
+            await asyncio.sleep(delay_s)
+
+    # All retries exhausted — apply on_error strategy
+    error_msg = str(last_error)
+
+    if on_error == "skip":
+        _log.info("Node %s: on_error=skip — marking as skipped", node_id)
+        return {
+            "node_id": node_id,
+            "node_type": node_type,
+            "label": node_data.get("label", ""),
+            "result": None,
+            "logs": f"Skipped after {retry_count + 1} attempt(s): {error_msg}",
+            "_retry_attempt": retry_count,
+            "_max_retries": retry_count,
+            "_on_error": on_error,
+            "_skipped": True,
+        }
+
+    if on_error == "fallback":
+        _log.info("Node %s: on_error=fallback — using fallback_value", node_id)
+        return {
+            "node_id": node_id,
+            "node_type": node_type,
+            "label": node_data.get("label", ""),
+            "result": fallback_value,
+            "logs": f"Fallback after {retry_count + 1} attempt(s): {error_msg}\nfallback_value: {fallback_value}",
+            "_retry_attempt": retry_count,
+            "_max_retries": retry_count,
+            "_on_error": on_error,
+            "_fallback": True,
+        }
+
+    # on_error == "fail" (default) — re-raise the last error
+    raise last_error  # type: ignore[misc]
+
+
+# ---------------------------------------------------------------------------
 # Single-node execution
 # ---------------------------------------------------------------------------
 
@@ -706,16 +857,17 @@ async def execute_workflow(
             log_id = str(uuid.uuid4())
             started = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
             input_snapshot = json.dumps(node.get("data", {}))
+            cfg = _get_node_error_config(node)
             async with get_db() as db:
                 await db.execute(
-                    "INSERT INTO workflow_run_logs (id, run_id, node_id, status, started_at, input_json) VALUES (?, ?, ?, 'running', ?, ?)",
-                    (log_id, run_id, nid, started, input_snapshot),
+                    "INSERT INTO workflow_run_logs (id, run_id, node_id, status, started_at, input_json, retry_attempt, max_retries, on_error) VALUES (?, ?, ?, 'running', ?, ?, 0, ?, ?)",
+                    (log_id, run_id, nid, started, input_snapshot, cfg["retry_count"], cfg["on_error"]),
                 )
                 await db.commit()
 
             await emit({"type": "node_started", "node_id": nid})
             tasks[nid] = asyncio.create_task(
-                _execute_node(
+                _execute_node_with_retry(
                     node, edges=edges, variables=variables, event_callback=emit,
                     run_id=run_id, user_id=user_id, cancel_event=cancel_event,
                 )
@@ -735,28 +887,48 @@ async def execute_workflow(
                 logs_text = output.pop("logs", None)
                 token_usage = output.pop("token_usage", None)
                 token_usage_json = json.dumps(token_usage) if token_usage else None
+                retry_attempt = output.pop("_retry_attempt", 0)
+                max_retries = output.pop("_max_retries", 0)
+                on_error = output.pop("_on_error", "fail")
+                is_skipped = output.pop("_skipped", False)
+                is_fallback = output.pop("_fallback", False)
+
+                if is_skipped:
+                    node_status = "skipped"
+                elif is_fallback:
+                    node_status = "completed"
+                else:
+                    node_status = "completed"
 
                 async with get_db() as db:
                     await db.execute(
-                        "UPDATE workflow_run_logs SET status = 'completed', output_json = ?, logs_text = ?, token_usage_json = ?, completed_at = ? WHERE run_id = ? AND node_id = ?",
+                        "UPDATE workflow_run_logs SET status = ?, output_json = ?, logs_text = ?, token_usage_json = ?, completed_at = ?, retry_attempt = ?, max_retries = ?, on_error = ? WHERE run_id = ? AND node_id = ?",
                         (
+                            node_status,
                             json.dumps(output),
                             logs_text,
                             token_usage_json,
                             completed_at,
+                            retry_attempt,
+                            max_retries,
+                            on_error,
                             run_id,
                             nid,
                         ),
                     )
                     await db.commit()
 
-                variables[nid] = output.get("result", "")
+                # For skipped nodes, pass None as value to downstream
+                variables[nid] = output.get("result", "") if not is_skipped else None
+
+                event_type = "node_skipped" if is_skipped else "node_completed"
                 await emit(
                     {
-                        "type": "node_completed",
+                        "type": event_type,
                         "node_id": nid,
                         "output": output,
                         "variables": variables,
+                        **({"retry_attempts": retry_attempt} if retry_attempt > 0 else {}),
                     }
                 )
 
@@ -782,7 +954,7 @@ async def execute_workflow(
 
                 await emit({"type": "node_failed", "node_id": nid, "error": error_msg})
                 final_status = "failed"
-                break  # Stop on first failure
+                break  # Stop on first failure (on_error='fail' after retries exhausted)
 
         if final_status in ("failed", "cancelled"):
             break
@@ -936,17 +1108,18 @@ async def execute_workflow_debug(
         log_id = str(uuid.uuid4())
         started = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
         input_snapshot = json.dumps(node.get("data", {}))
+        cfg = _get_node_error_config(node)
         async with get_db() as db:
             await db.execute(
-                "INSERT INTO workflow_run_logs (id, run_id, node_id, status, started_at, input_json) VALUES (?, ?, ?, 'running', ?, ?)",
-                (log_id, run_id, nid, started, input_snapshot),
+                "INSERT INTO workflow_run_logs (id, run_id, node_id, status, started_at, input_json, retry_attempt, max_retries, on_error) VALUES (?, ?, ?, 'running', ?, ?, 0, ?, ?)",
+                (log_id, run_id, nid, started, input_snapshot, cfg["retry_count"], cfg["on_error"]),
             )
             await db.commit()
 
         await emit({"type": "node_started", "node_id": nid})
 
         try:
-            output = await _execute_node(
+            output = await _execute_node_with_retry(
                 node, edges=edges, variables=variables, event_callback=emit,
                 run_id=run_id, user_id=user_id, cancel_event=cancel_event,
             )
@@ -955,23 +1128,32 @@ async def execute_workflow_debug(
             logs_text = output.pop("logs", None)
             token_usage = output.pop("token_usage", None)
             token_usage_json = json.dumps(token_usage) if token_usage else None
+            retry_attempt = output.pop("_retry_attempt", 0)
+            max_retries = output.pop("_max_retries", 0)
+            on_error = output.pop("_on_error", "fail")
+            is_skipped = output.pop("_skipped", False)
+            output.pop("_fallback", False)
+
+            node_status = "skipped" if is_skipped else "completed"
 
             async with get_db() as db:
                 await db.execute(
-                    "UPDATE workflow_run_logs SET status = 'completed', output_json = ?, logs_text = ?, token_usage_json = ?, completed_at = ? WHERE run_id = ? AND node_id = ?",
-                    (json.dumps(output), logs_text, token_usage_json, completed_at, run_id, nid),
+                    "UPDATE workflow_run_logs SET status = ?, output_json = ?, logs_text = ?, token_usage_json = ?, completed_at = ?, retry_attempt = ?, max_retries = ?, on_error = ? WHERE run_id = ? AND node_id = ?",
+                    (node_status, json.dumps(output), logs_text, token_usage_json, completed_at, retry_attempt, max_retries, on_error, run_id, nid),
                 )
                 await db.commit()
 
             # Store node output in variables for downstream inspection.
-            variables[nid] = output.get("result", "")
+            variables[nid] = output.get("result", "") if not is_skipped else None
 
+            event_type = "node_skipped" if is_skipped else "node_completed"
             await emit(
                 {
-                    "type": "node_completed",
+                    "type": event_type,
                     "node_id": nid,
                     "output": output,
                     "variables": variables,
+                    **({"retry_attempts": retry_attempt} if retry_attempt > 0 else {}),
                 }
             )
 
