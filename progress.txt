@@ -2,6 +2,8 @@
 Started: Mon Feb 17 2026
 
 ## Codebase Patterns
+- New packages follow hatchling pattern: `packages = ["src/orbiter"]` in pyproject.toml, no top-level `orbiter/__init__.py` needed (orbiter-core's `pkgutil.extend_path()` handles namespace)
+- Add new packages to root pyproject.toml in 3 places: `[tool.uv.workspace] members`, `[dependency-groups] dev`, and `[tool.uv.sources]`
 - Streaming event types are frozen Pydantic BaseModels in `packages/orbiter-core/src/orbiter/types.py`
 - Use `model_config = {"frozen": True}` for all event types
 - `StreamEvent` is a Union type alias at the bottom of `types.py` — all new event types must be added to it
@@ -112,4 +114,23 @@ Started: Mon Feb 17 2026
   - All event types have a `.type` string attribute (e.g., `"text"`, `"tool_call"`, `"status"`) which is the discriminator used for filtering
   - The `_passes_filter` helper pattern: `event_types is None or event.type in event_types` is clean and reusable
   - Total orbiter-core tests now: 750 (45 runner + 32 streaming + 62 swarm + 611 other)
+---
+
+## 2026-02-17 - US-007
+- Created `orbiter-distributed` package scaffold at `packages/orbiter-distributed/`
+- `pyproject.toml` follows hatchling pattern from orbiter-observability: `packages = ["src/orbiter"]`
+- Dependencies: `orbiter-core`, `redis[hiredis]>=5.0`
+- Optional deps: `[temporal]` with `temporalio>=1.7`, `[test]` with `pytest`, `pytest-asyncio`, `fakeredis[lua]`
+- Created `src/orbiter/distributed/__init__.py` with `__all__` placeholder
+- No separate `orbiter/__init__.py` needed — orbiter-core's `pkgutil.extend_path()` handles namespace sharing
+- Created `README.md` placeholder (required by hatchling)
+- Added to root `pyproject.toml`: workspace member, dev dependency, uv source, and `fakeredis[lua]` to dev deps
+- Created `tests/` directory for future test files
+- Package installs cleanly with `uv sync`, pyright passes, ruff passes, all 750 existing tests pass
+- Files changed: `packages/orbiter-distributed/pyproject.toml`, `packages/orbiter-distributed/src/orbiter/distributed/__init__.py`, `packages/orbiter-distributed/README.md`, `pyproject.toml`
+- **Learnings for future iterations:**
+  - Namespace packages in this monorepo work via hatchling's `packages = ["src/orbiter"]` — no top-level `orbiter/__init__.py` needed in sub-packages
+  - `orbiter-core`'s `orbiter/__init__.py` has `pkgutil.extend_path()` which enables namespace package splitting across packages
+  - Root `pyproject.toml` needs updates in 3 sections when adding a new package: `[tool.uv.workspace] members`, `[dependency-groups] dev`, `[tool.uv.sources]`
+  - `fakeredis[lua]` added to root dev deps since it's needed for Redis Stream tests (Streams use Lua scripting internally)
 ---

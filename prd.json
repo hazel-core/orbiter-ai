@@ -116,7 +116,7 @@
         "Pyright passes"
       ],
       "priority": 7,
-      "passes": false,
+      "passes": true,
       "notes": "Follow exact same pyproject.toml pattern as packages/orbiter-observability/pyproject.toml. Use hatchling with packages = ['src/orbiter']. temporalio is optional dep group [temporal], not in base deps. Add fakeredis[lua] to test deps for Redis Stream support. Pattern: orbiter/__init__.py has pkgutil.extend_path(), orbiter/distributed/__init__.py is the sub-namespace."
     },
     {
