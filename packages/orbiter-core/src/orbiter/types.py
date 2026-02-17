@@ -228,4 +228,32 @@ class StepEvent(BaseModel):
     usage: Usage | None = None
 
 
-StreamEvent = TextEvent | ToolCallEvent | StepEvent
+class ToolResultEvent(BaseModel):
+    """Streaming event emitted after each tool execution.
+
+    Args:
+        type: Discriminator literal, always ``"tool_result"``.
+        tool_name: Name of the tool that was executed.
+        tool_call_id: Identifier linking back to the originating tool call.
+        arguments: The arguments passed to the tool.
+        result: The string result from the tool.
+        error: Error message if the tool failed (None on success).
+        success: Whether the tool execution succeeded.
+        duration_ms: How long the tool execution took in milliseconds.
+        agent_name: Name of the agent that invoked this tool.
+    """
+
+    model_config = {"frozen": True}
+
+    type: Literal["tool_result"] = "tool_result"
+    tool_name: str
+    tool_call_id: str
+    arguments: dict[str, Any] = Field(default_factory=dict)
+    result: str = ""
+    error: str | None = None
+    success: bool = True
+    duration_ms: float = 0.0
+    agent_name: str = ""
+
+
+StreamEvent = TextEvent | ToolCallEvent | StepEvent | ToolResultEvent
