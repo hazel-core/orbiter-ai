@@ -3154,3 +3154,19 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - The optimize endpoint stores results immediately, then accept/reject updates the record
   - FastAPI route ordering: `/optimize/history` is 2-segment path that doesn't conflict with `/{template_id}` (1-segment)
 ---
+
+## 2026-02-17 - US-145
+- Implemented MCP client backend: full CRUD for MCP server connections + tool discovery + health monitoring
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/migrations/067_create_mcp_servers.sql (new — mcp_servers table with id, name, url, auth_config_json, status, last_check_at, error_message, project_id, user_id)
+  - packages/orbiter-web/src/orbiter_web/routes/integrations.py (new — GET/POST/PUT/DELETE /api/v1/integrations/mcp, POST /:id/discover, GET /:id/status)
+  - packages/orbiter-web/src/orbiter_web/services/mcp_health.py (new — background polling loop every 60s, updates server status)
+  - packages/orbiter-web/src/orbiter_web/app.py (added integrations_router import/registration, mcp_health start/stop in lifespan)
+- **Learnings for future iterations:**
+  - MCP uses JSON-RPC 2.0 protocol — tools/list method returns `result.tools` array
+  - Discovered MCP tools stored in existing `tools` table with `tool_type='mcp'` (already supported) and server_id in `code` column as source reference
+  - S608 (SQL injection) rule is NOT enabled in this project's ruff config — don't add noqa: S608 comments
+  - Background health services follow scheduler.py pattern: global _task sentinel, start/stop functions, asyncio.create_task + polling loop
+  - Auth config for MCP supports bearer tokens and API keys — stored as JSON in auth_config_json column
+  - Lazy-import httpx inside async functions to avoid overhead on module load (same pattern as providers.py)
+---
