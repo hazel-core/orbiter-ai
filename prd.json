@@ -410,7 +410,7 @@
         "Shows environment variable configuration"
       ],
       "priority": 24,
-      "passes": false,
+      "passes": true,
       "notes": "Update the placeholder README.md created in US-007 with full content. Include code examples for: basic agent distributed execution, swarm distributed execution, worker startup via CLI, environment variables (ORBITER_REDIS_URL, TEMPORAL_HOST, TEMPORAL_NAMESPACE)."
     },
     {

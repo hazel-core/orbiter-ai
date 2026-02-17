@@ -45,6 +45,11 @@ Started: Mon Feb 17 2026
 - Streaming event metric constants also in `semconv.py` (prefixed `METRIC_STREAM_*` and `STREAM_*`), recording in `events.py` and `runner.py`
 - `time.monotonic()` for measuring durations (not `time.time()`) — monotonic clock can't go backwards
 - Event counting in `_stream()` is integrated into `_passes_filter()` — avoids modifying every yield point
+- Optional deps use `try/except ImportError` with `HAS_X` flag pattern (e.g., `HAS_TEMPORAL` in temporal.py, `HAS_OTEL` in observability) — guard constructors with `if not HAS_X: raise ImportError(msg)`
+- `temporalio` imports need `# pyright: ignore[reportMissingImports]` since pyright can't resolve optional deps in try/except blocks
+- For multi-line imports with `# pyright: ignore`, put the comment on the `from` line (not the imported name line) — ruff I001 reformats single-name imports to multi-line
+- Worker `executor` param: `Literal["local", "temporal"]` — `"local"` for direct execution, `"temporal"` delegates to `TemporalExecutor`
+- Temporal workflow/activity pattern: `@workflow.defn` class with `@workflow.run` method, `@activity.defn` async function with `activity.heartbeat()` for liveness
 
 ---
 
@@ -498,4 +503,54 @@ Started: Mon Feb 17 2026
   - Worker count is not a recorded metric — it needs to be evaluated externally (e.g., by counting active workers via `get_worker_fleet_status()`)
   - Alert rules use default `cooldown_seconds=300.0` — tests in the alert module use `cooldown_seconds=0` to avoid timing issues, but distributed alert registration uses the default
   - Total tests: 3463 (all passing)
+---
+
+## 2026-02-17 - US-018
+- Created `TemporalExecutor` class in `orbiter/distributed/temporal.py` as alternative execution backend
+- Temporal workflow wraps agent execution: `AgentExecutionWorkflow` (`@workflow.defn`) delegates to `execute_agent_activity` (`@activity.defn`)
+- Activity runs `run.stream()` with periodic heartbeating (every 10 events) for Temporal liveness detection
+- Activity reconstructs Agent/Swarm from serialized config (same `"agents"` key detection as Worker)
+- Workflow reads `timeout_seconds` from payload for `start_to_close_timeout`, with 30s `heartbeat_timeout`
+- `HAS_TEMPORAL` flag via `try/except ImportError` — same pattern as `HAS_OTEL` in orbiter-observability
+- `TemporalExecutor.__init__` raises `ImportError` with install instructions when temporalio not available
+- `TemporalExecutor.connect()` creates Temporal client, `execute_task()` starts workflow and waits for result
+- `TemporalExecutor.start_temporal_worker()` / `stop_temporal_worker()` for running Temporal worker process
+- Updated `Worker.__init__` with `executor: Literal["local", "temporal"] = "local"` parameter
+- When `executor="temporal"`: creates `TemporalExecutor`, connects/disconnects in `start()`, delegates `_execute_task` to `executor.execute_task()`
+- When `executor="temporal"` and `HAS_TEMPORAL=False`: raises clear `ImportError` immediately
+- Added `temporalio>=1.7` to root dev dependencies in `pyproject.toml`
+- Updated `orbiter.distributed.__init__` to export `HAS_TEMPORAL` and `TemporalExecutor`
+- Added 30 tests across 9 test classes: `TestHasTemporal` (2), `TestTemporalEnvHelpers` (4), `TestTemporalExecutorInit` (5), `TestTemporalExecutorLifecycle` (2), `TestTemporalExecutorExecuteTask` (4), `TestTemporalExecutorWorkerManagement` (3), `TestExecuteAgentActivity` (3), `TestAgentExecutionWorkflow` (2), `TestWorkerExecutorParam` (5)
+- Files changed: `packages/orbiter-distributed/src/orbiter/distributed/temporal.py` (new), `packages/orbiter-distributed/src/orbiter/distributed/worker.py`, `packages/orbiter-distributed/src/orbiter/distributed/__init__.py`, `packages/orbiter-distributed/tests/test_temporal.py` (new), `pyproject.toml`, `uv.lock`
+- **Learnings for future iterations:**
+  - `temporalio` optional dep: use `try/except ImportError` + `HAS_TEMPORAL` flag, same as OTel pattern
+  - Guard `TemporalExecutor.__init__` on `HAS_TEMPORAL` so error is raised at construction time, not at method call
+  - Temporal workflow/activity are only defined inside `if HAS_TEMPORAL:` block — they reference `activity.defn`/`workflow.defn` decorators that don't exist otherwise
+  - `TemporalClient` and `TemporalWorker` set to `None` in ImportError fallback — methods on `TemporalExecutor` that use them need `# pyright: ignore[reportOptionalMemberAccess]` or `# pyright: ignore[reportOptionalCall]`
+  - For multi-line imports, pyright comment must be on the `from` line: `from module import (  # pyright: ignore[reportMissingImports]` — ruff reformats single imports to multi-line, moving the comment
+  - `activity.heartbeat(detail)` sends heartbeat with arbitrary detail — useful for progress tracking
+  - `workflow.execute_activity()` takes `start_to_close_timeout` and `heartbeat_timeout` as `timedelta`
+  - Worker `executor` parameter uses `Literal["local", "temporal"]` type — clean API for switching backends
+  - Tests mock `TemporalClient` at `orbiter.distributed.temporal.TemporalClient` for Worker creation with temporal executor
+  - Total tests: 1287 across key packages (all passing) — 231 distributed, 786 orbiter-core, 80+ CLI
+---
+
+## 2026-02-17 - US-024
+- Updated placeholder `packages/orbiter-distributed/README.md` with full content
+- Package description, installation instructions (base + temporal optional)
+- Quick start guide: Redis setup, worker startup, task submission
+- Agent execution example with `distributed()` API
+- Swarm execution example with workflow mode
+- Live streaming events example with pattern matching on all event types
+- Task management: status checking, cancellation, result waiting
+- CLI commands reference: `orbiter start worker`, `orbiter task list/status/cancel`, `orbiter worker list`
+- Environment variables table: `ORBITER_REDIS_URL`, `TEMPORAL_HOST`, `TEMPORAL_NAMESPACE`
+- Temporal integration section with durable execution explanation
+- ASCII architecture diagram showing data flow: Client → Redis Stream → Workers → Events → Client
+- Component descriptions: TaskBroker, Worker, EventPublisher/Subscriber, TaskStore, TaskHandle
+- Files changed: `packages/orbiter-distributed/README.md`
+- **Learnings for future iterations:**
+  - README is a documentation-only change — no pyright/ruff/test impact
+  - Pre-existing pyright errors (9 `reportMissingImports` in test_temporal.py) are unrelated to README changes
+  - All 231 distributed tests continue to pass
 ---
