@@ -2347,3 +2347,18 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - search_entities() doesn't filter by user_id — the route handles user scoping for knowledge_bases but FTS results are unscoped
   - _URL_TEMPLATES pattern maps entity types to frontend URL paths — extend when adding new searchable types
 ---
+
+## 2026-02-17 - US-123
+- What was implemented: Annotation UI — thumbs up/down + annotate buttons on every playground agent response, full annotation management page at /annotations with list/search/create/edit/delete, bulk CSV import dialog, match threshold slider, cost savings display
+- Files changed:
+  - packages/orbiter-web/src/pages/playground.astro (updated — added annotation buttons to finishStream and addRestoredAgentMessage, annotation dialog, lastUserQuery tracking)
+  - packages/orbiter-web/src/pages/annotations.astro (new — full annotation management page with stats, CRUD, CSV import, threshold slider)
+  - packages/orbiter-web/src/layouts/PageLayout.astro (updated — added "pen" icon and "Annotations" nav item)
+- **Learnings for future iterations:**
+  - Annotation backend was already complete from US-122 (routes/annotations.py, migration 043) — only UI needed
+  - In playground.astro, `finishStream()` is the right injection point for adding buttons after streaming — `wrapper` is the parent of the bubble
+  - `addRestoredAgentMessage()` handles history restoration — needs query param passed from `restoreMessages()` by tracking prev user message
+  - Two separate restore paths exist: `restoreMessages()` for WebSocket conversation_loaded and thread message loading — both need prevQuery tracking
+  - Annotation dialog pattern: store context in `dataset` attributes on the save button, read back in click handler
+  - Stats are computed client-side from the fetched annotations list — no separate API endpoint needed
+---
