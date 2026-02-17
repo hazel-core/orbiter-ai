@@ -2362,3 +2362,21 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Annotation dialog pattern: store context in `dataset` attributes on the save button, read back in click handler
   - Stats are computed client-side from the fetched annotations list — no separate API endpoint needed
 ---
+
+## 2026-02-17 - US-124
+- What was implemented: Message editing and replay for conversations in the Playground
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/migrations/044_create_message_edits.sql (new — message_edits table for edit history)
+  - packages/orbiter-web/src/orbiter_web/routes/conversations.py (updated — added PUT edit, DELETE message, GET edits, POST replay endpoints + MessageEditRequest/Response models)
+  - packages/orbiter-web/src/orbiter_web/routes/playground.py (updated — _load_conversation_messages returns message IDs, WebSocket emits message_saved events)
+  - packages/orbiter-web/src/pages/playground.astro (updated — hover menu with edit/delete/copy/replay, inline editor, edit history tooltip, replay-from-here flow)
+- **Learnings for future iterations:**
+  - Messages loaded via WebSocket `conversation_loaded` now include `id` field — update any code that depends on the message shape
+  - WebSocket emits `message_saved` events with `{type: "message_saved", message_id: "...", role: "user"|"assistant"}` — use to track DOM↔DB message ID mapping
+  - `connectWebSocket(agentId, conversationId, replayText)` supports auto-replay: loads conversation then auto-sends the message
+  - `createMessageActions()` replaces `createCopyButton()` — provides hover menu with copy/edit/delete/replay actions
+  - `data-role` and `data-message-id` attributes on message wrapper elements enable DOM↔API operations
+  - `.msg-content` class marks the content element within a message for inline editing
+  - Replay flow: call POST /replay API to truncate → reconnect WebSocket → reload conversation → auto-send last message
+  - Edit history stored in `message_edits` table with CASCADE delete — automatically cleaned up when message/conversation deleted
+---
