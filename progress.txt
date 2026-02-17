@@ -3265,3 +3265,24 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Compact agent selector on mobile: hide "Agent:" label, use shorter max-width, smaller gaps
   - Smooth scrolling: add `scroll-smooth` class to message container + optional `smooth` param to scrollToBottom()
 ---
+
+## 2026-02-17 - US-152
+- What was implemented: Full in-app documentation system with Astro content collections, searchable docs pages, help panel, keyboard shortcut reference, and contextual help tooltips
+- Files changed:
+  - packages/orbiter-web/src/content.config.ts (NEW — Astro content collection config for docs)
+  - packages/orbiter-web/src/content/docs/ (NEW — 8 markdown docs: getting-started, agents, workflows, tools, knowledge-base, monitoring, deployments, api-reference)
+  - packages/orbiter-web/src/pages/docs/index.astro (NEW — searchable docs index page with section grid)
+  - packages/orbiter-web/src/pages/docs/[...slug].astro (NEW — individual doc page with prose styling)
+  - packages/orbiter-web/src/components/HelpTooltip.astro (NEW — reusable contextual help ? icon with optional link)
+  - packages/orbiter-web/src/layouts/PageLayout.astro (added: "Docs" nav item with ? icon, help trigger button in top bar, keyboard shortcuts dialog with Cmd+/, help slide-out panel with search, G+X navigation shortcuts)
+  - packages/orbiter-web/src/pages/agents/[id]/edit.astro (added HelpTooltip on System Prompt, Provider, and Tools labels)
+  - packages/orbiter-web/src/pages/settings.astro (added HelpTooltip on Model Providers heading)
+  - packages/orbiter-web/src/pages/knowledge/index.astro (added HelpTooltip on Knowledge Base heading)
+- **Learnings for future iterations:**
+  - Astro content collections: create `src/content.config.ts` (not `src/content/config.ts`) for Astro 5.x; use `defineCollection` with `type: "content"` for markdown
+  - Content collection pages: use `getStaticPaths()` with `getCollection("docs")` and `render(doc)` for individual doc pages
+  - Dialog pattern for panels: use `<dialog>` with `.showModal()` for modal-style panels (keyboard shortcuts); use `fixed` overlay with slide transform for side panels (help)
+  - Help tooltip pattern: small ? icon using title attribute for native tooltip; link via href for contextual docs navigation
+  - Navigation shortcuts: "G then X" pattern uses a timer-based two-key chord — set gPressed flag and clear after 1s timeout
+  - Prose styling: use a `.prose-orbiter` class with explicit CSS rules for markdown content; include dark mode overrides for code blocks, tables, and borders
+---
