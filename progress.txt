@@ -2041,3 +2041,18 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - `fmtNumber()` helper formats large numbers with K/M suffixes for metric cards
   - Range buttons use CSS class toggling (bg-white, shadow-sm) for active state
 ---
+
+## 2026-02-17 - US-111
+- What was implemented: Unified runs schema (migration 035) and REST API with WebSocket streaming
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/migrations/035_create_runs.sql (new — runs table with agent_id, workflow_id, status, steps_json, total_tokens, total_cost, start_time, end_time, finish_reason, created_at)
+  - packages/orbiter-web/src/orbiter_web/routes/runs.py (new — APIRouter at /api/runs with list, get, WebSocket stream endpoints)
+  - packages/orbiter-web/src/orbiter_web/app.py (updated — include runs_router)
+- **Learnings for future iterations:**
+  - Unified runs table tracks both agent and workflow executions — agent_id and workflow_id are both nullable foreign keys
+  - `publish_run_event()` function exported from runs.py for execution engines to push real-time updates to WebSocket subscribers
+  - WebSocket stream uses dual approach: subscriber queue for push events + DB polling fallback (1s interval)
+  - `_run_subscribers` dict tracks active WebSocket connections per run_id; cleanup on disconnect
+  - Ruff S608 (SQL injection) is not enabled in this project — no need for noqa comments on f-string SQL
+  - Import sorting: `runs` goes alphabetically after `providers`, not after `projects`
+---
