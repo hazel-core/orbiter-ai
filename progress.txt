@@ -2585,3 +2585,17 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Use `history.replaceState` to clean up `?expired=true` query param after showing the toast (prevents re-showing on refresh)
   - Connection status banner is a fixed top banner with z-[90] — sits above content but below modals
 ---
+
+## 2026-02-17 - US-128
+- What was implemented: Artifact schema (migration 051) and REST API with 4 endpoints (list with filters, get metadata, download file, delete with file cleanup)
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/migrations/051_create_artifacts.sql (new — artifacts table with indexes)
+  - packages/orbiter-web/src/orbiter_web/routes/artifacts.py (new — APIRouter with list/get/download/delete endpoints)
+  - packages/orbiter-web/src/orbiter_web/config.py (updated — added artifact_dir setting via ORBITER_ARTIFACT_DIR env var)
+  - packages/orbiter-web/src/orbiter_web/app.py (updated — registered artifacts_router)
+- **Learnings for future iterations:**
+  - Use `FileResponse` from `fastapi.responses` for file download endpoints — set `media_type="application/octet-stream"` and `filename` for proper download behavior
+  - Artifact dir uses `Path.mkdir(parents=True, exist_ok=True)` for lazy creation
+  - When inserting new imports in app.py, ruff requires strict alphabetical sorting — use `ruff check --fix` to auto-sort
+  - DELETE with file cleanup: remove from DB first (inside context manager), then delete file outside (best-effort) to avoid orphaned DB records
+---
