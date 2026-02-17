@@ -201,4 +201,31 @@ class ToolCallEvent(BaseModel):
     agent_name: str = ""
 
 
-StreamEvent = TextEvent | ToolCallEvent
+class StepEvent(BaseModel):
+    """Streaming event for step start/completion.
+
+    Emitted at the start and end of each agent step so consumers
+    can show step-by-step progress.
+
+    Args:
+        type: Discriminator literal, always ``"step"``.
+        step_number: The step index (1-based).
+        agent_name: Name of the agent executing this step.
+        status: Whether the step is starting or has completed.
+        started_at: Timestamp when the step started.
+        completed_at: Timestamp when the step completed (None if still running).
+        usage: Token usage for this step (None if not yet available).
+    """
+
+    model_config = {"frozen": True}
+
+    type: Literal["step"] = "step"
+    step_number: int
+    agent_name: str
+    status: Literal["started", "completed"]
+    started_at: float
+    completed_at: float | None = None
+    usage: Usage | None = None
+
+
+StreamEvent = TextEvent | ToolCallEvent | StepEvent
