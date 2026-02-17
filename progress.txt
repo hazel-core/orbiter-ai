@@ -3,8 +3,9 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
 ---
 
 ## Codebase Patterns
+- **API versioning**: All API routes use `/api/v1/` prefix. Health check at `/api/health` is unversioned. Legacy `/api/...` paths 301-redirect to `/api/v1/...` via `APIVersionRedirectMiddleware`. Frontend calls all use `/api/v1/`. Vite proxy uses `/api` which matches both.
 - Node error handling: `_get_node_error_config(node)` reads retry_count, retry_delay_ms, on_error, fallback_value, timeout_ms from `node.data`; `_execute_node_with_retry()` wraps `_execute_node` with timeout + exponential backoff + on_error strategy
-- Schedules: CRUD at `/api/schedules`, background polling in `services/scheduler.py` using `croniter`; fires workflow runs with `trigger_type='schedule'`; starts/stops via app lifespan
+- Schedules: CRUD at `/api/v1/schedules`, background polling in `services/scheduler.py` using `croniter`; fires workflow runs with `trigger_type='schedule'`; starts/stops via app lifespan
 - Sandbox execution: `execute_code(code, config)` in `services/sandbox.py` — runs Python in isolated subprocess with import allowlist, filesystem restriction, and timeout; returns SandboxResult with stdout/stderr/files
 - Sandbox import restriction: don't block exec/eval/compile from builtins (breaks importlib); use explicit import allowlist + safe stdlib set instead
 - Built-in tools: add to `BUILTIN_TOOLS` list in `routes/tools.py` — they get merged into list_tools endpoint automatically
@@ -2944,4 +2945,24 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - `_extract_agent_config()` captures the reusable subset of agent columns (instructions, model settings, hooks) — avoids copying project_id or user_id into templates
   - Import endpoint uses `UploadFile` for JSON file upload; parse with `json.loads(await file.read())`
   - Instantiate copies template config back into agents table columns — need to map config dict keys to agent column names
+---
+
+## 2026-02-17 - US-187
+- What was implemented: API versioning prefix — all API routes now use /api/v1/ prefix with 301 redirect middleware for legacy /api/ paths
+- Files changed:
+  - 43 route files in packages/orbiter-web/src/orbiter_web/routes/ (prefix updated from /api/ to /api/v1/)
+  - packages/orbiter-web/src/orbiter_web/websocket.py (WS endpoint /api/ws → /api/v1/ws)
+  - packages/orbiter-web/src/orbiter_web/app.py (added APIVersionRedirectMiddleware)
+  - packages/orbiter-web/src/orbiter_web/middleware/versioning.py (NEW — redirect /api/ → /api/v1/)
+  - packages/orbiter-web/src/orbiter_web/middleware/csrf.py (exempt paths updated)
+  - packages/orbiter-web/src/orbiter_web/middleware/rate_limit.py (auth/exec paths updated)
+  - 48 frontend files (.astro, .ts, .tsx) — all /api/ calls updated to /api/v1/
+  - packages/orbiter-web/src/utils/websocket.ts (WS URL updated)
+  - packages/orbiter-web/src/utils/csrf.ts (CSRF fetch URL updated)
+- **Learnings for future iterations:**
+  - Vite proxy at `/api` catches both `/api/v1/` and `/api/health` — no config change needed
+  - Starlette middleware added last runs first (outermost) — add redirect middleware after others
+  - Playground and websocket.py use absolute WS paths (not relative to router prefix) — need manual update
+  - `/api/health` stays unversioned as infrastructure endpoint
+  - Ollama URLs like `/api/generate` and `/api/chat` are external API calls, not our routes — don't touch them
 ---
