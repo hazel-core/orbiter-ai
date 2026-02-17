@@ -19,6 +19,12 @@ from orbiter_web.pagination import paginate
 from orbiter_web.routes.auth import get_current_user
 from orbiter_web.sanitize import sanitize_html
 from orbiter_web.services.evaluators import EVALUATORS, run_evaluator
+from orbiter_web.services.safety import (
+    DEFAULT_POLICY,
+    SAFETY_CATEGORIES,
+    generate_redteam_cases,
+    judge_safety,
+)
 
 router = APIRouter(prefix="/api/evaluations", tags=["evaluations"])
 
@@ -62,6 +68,26 @@ class EvalResultResponse(BaseModel):
     results_json: str
     overall_score: float
     pass_rate: float
+
+
+class SafetyRunCreate(BaseModel):
+    categories: list[str] | None = None
+    mode: str = Field("preset", pattern="^(preset|redteam)$")
+    policy: dict[str, Any] | None = None
+
+
+class SafetyRunResponse(BaseModel):
+    id: str
+    evaluation_id: str
+    run_at: str
+    mode: str
+    policy_json: str
+    results_json: str
+    category_scores_json: str
+    overall_score: float
+    pass_rate: float
+    flagged_count: int
+    total_count: int
 
 
 # ---------------------------------------------------------------------------
@@ -166,6 +192,18 @@ async def create_evaluation(
         )
         row = await cursor.fetchone()
         return _row_to_dict(row)
+
+
+@router.get("/safety/categories")
+async def list_safety_categories(
+    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+) -> dict[str, Any]:
+    """Return the list of safety categories and default policy."""
+    categories = {
+        key: {"label": val["label"], "description": val["description"], "case_count": len(val["test_cases"])}
+        for key, val in SAFETY_CATEGORIES.items()
+    }
+    return {"categories": categories, "default_policy": DEFAULT_POLICY}
 
 
 @router.get("/{evaluation_id}", response_model=EvaluationResponse)
@@ -371,6 +409,201 @@ async def run_evaluation(
         )
         row = await cursor.fetchone()
         return _row_to_dict(row)
+
+
+# ---------------------------------------------------------------------------
+# Safety evaluation
+# ---------------------------------------------------------------------------
+
+
+@router.post("/{evaluation_id}/safety-run", response_model=SafetyRunResponse)
+async def run_safety_evaluation(
+    evaluation_id: str,
+    body: SafetyRunCreate | None = None,
+    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+) -> dict[str, Any]:
+    """Run safety evaluation against the agent with adversarial test cases.
+
+    Supports two modes:
+    - preset: Uses built-in adversarial test cases per category.
+    - redteam: Uses an LLM to generate novel adversarial inputs.
+    """
+    if body is None:
+        body = SafetyRunCreate()
+
+    async with get_db() as db:
+        cursor = await db.execute(
+            "SELECT * FROM evaluations WHERE id = ? AND user_id = ?",
+            (evaluation_id, user["id"]),
+        )
+        row = await cursor.fetchone()
+
+    if row is None:
+        raise HTTPException(status_code=404, detail="Evaluation not found")
+
+    evaluation = _row_to_dict(row)
+    agent_id = evaluation["agent_id"]
+
+    # Resolve policy
+    policy = body.policy if body.policy else DEFAULT_POLICY
+    pass_threshold = policy.get("pass_threshold", 0.7)
+    category_thresholds = policy.get("category_thresholds", {})
+    rules: list[str] = policy.get("rules", DEFAULT_POLICY["rules"])
+
+    # Resolve provider for LLM judging
+    provider = None
+    model_name = ""
+    try:
+        from orbiter_web.services.agent_runtime import _load_agent_row, _resolve_provider
+
+        agent_row = await _load_agent_row(agent_id)
+        provider_type = agent_row.get("model_provider", "")
+        model_name = agent_row.get("model_name", "")
+        if provider_type and model_name:
+            provider = await _resolve_provider(provider_type, model_name, user["id"])
+    except Exception:
+        pass
+
+    # Determine which categories to test
+    selected_categories = body.categories if body.categories else list(SAFETY_CATEGORIES.keys())
+    selected_categories = [c for c in selected_categories if c in SAFETY_CATEGORIES]
+
+    if not selected_categories:
+        raise HTTPException(status_code=422, detail="No valid safety categories selected")
+
+    # Gather test cases
+    all_results: list[dict[str, Any]] = []
+    category_scores: dict[str, dict[str, Any]] = {}
+
+    for cat_key in selected_categories:
+        cat_info = SAFETY_CATEGORIES[cat_key]
+
+        # Get test cases: preset or redteam-generated
+        if body.mode == "redteam":
+            test_cases = await generate_redteam_cases(
+                cat_key, count=5, provider=provider, model_name=model_name
+            )
+        else:
+            test_cases = cat_info["test_cases"]
+
+        cat_total = 0.0
+        cat_passed = 0
+        cat_results: list[dict[str, Any]] = []
+
+        for tc in test_cases:
+            user_input = tc["input"]
+            concern = tc["concern"]
+
+            # Send adversarial input to agent
+            actual = await _send_to_agent(agent_id, user["id"], user_input)
+
+            # Judge the response
+            judgment = await judge_safety(
+                category=cat_key,
+                concern=concern,
+                user_input=user_input,
+                agent_response=actual,
+                rules=rules,
+                provider=provider,
+                model_name=model_name,
+            )
+
+            result_entry = {
+                "category": cat_key,
+                "category_label": cat_info["label"],
+                "input": user_input,
+                "concern": concern,
+                "response": actual,
+                "score": judgment["score"],
+                "passed": judgment["passed"],
+                "explanation": judgment["explanation"],
+            }
+            cat_results.append(result_entry)
+            cat_total += judgment["score"]
+            if judgment["passed"]:
+                cat_passed += 1
+
+        cat_count = len(cat_results)
+        cat_avg = round(cat_total / cat_count, 4) if cat_count else 0.0
+        cat_threshold = category_thresholds.get(cat_key, pass_threshold)
+        category_scores[cat_key] = {
+            "label": cat_info["label"],
+            "score": cat_avg,
+            "passed": cat_avg >= cat_threshold,
+            "threshold": cat_threshold,
+            "total": cat_count,
+            "passed_count": cat_passed,
+        }
+        all_results.extend(cat_results)
+
+    # Compute overall metrics
+    total_count = len(all_results)
+    flagged_count = sum(1 for r in all_results if not r["passed"])
+    overall_score = round(
+        sum(r["score"] for r in all_results) / total_count, 4
+    ) if total_count else 0.0
+    overall_pass_rate = round(
+        sum(1 for r in all_results if r["passed"]) / total_count, 4
+    ) if total_count else 0.0
+
+    # Persist the safety run
+    run_id = str(uuid.uuid4())
+    now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
+
+    async with get_db() as db:
+        await db.execute(
+            """
+            INSERT INTO safety_runs
+                (id, evaluation_id, run_at, mode, policy_json, results_json,
+                 category_scores_json, overall_score, pass_rate, flagged_count, total_count)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                run_id,
+                evaluation_id,
+                now,
+                body.mode,
+                json.dumps(policy),
+                json.dumps(all_results),
+                json.dumps(category_scores),
+                overall_score,
+                overall_pass_rate,
+                flagged_count,
+                total_count,
+            ),
+        )
+        await db.commit()
+
+        cursor = await db.execute(
+            "SELECT * FROM safety_runs WHERE id = ?", (run_id,)
+        )
+        row = await cursor.fetchone()
+        return _row_to_dict(row)
+
+
+@router.get(
+    "/{evaluation_id}/safety-results",
+    response_model=list[SafetyRunResponse],
+)
+async def list_safety_results(
+    evaluation_id: str,
+    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+) -> list[dict[str, Any]]:
+    """Return all safety run results for an evaluation suite."""
+    async with get_db() as db:
+        cursor = await db.execute(
+            "SELECT id FROM evaluations WHERE id = ? AND user_id = ?",
+            (evaluation_id, user["id"]),
+        )
+        if await cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Evaluation not found")
+
+        cursor = await db.execute(
+            "SELECT * FROM safety_runs WHERE evaluation_id = ? ORDER BY run_at DESC",
+            (evaluation_id,),
+        )
+        rows = await cursor.fetchall()
+        return [_row_to_dict(r) for r in rows]
 
 
 # ---------------------------------------------------------------------------

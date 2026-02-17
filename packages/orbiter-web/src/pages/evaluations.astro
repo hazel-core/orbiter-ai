@@ -12,6 +12,8 @@ const checkIcon = '<svg class="h-4 w-4 text-zen-green" viewBox="0 0 24 24" fill=
 const xIcon = '<svg class="h-4 w-4 text-coral" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
 const backIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>';
 const chartIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>';
+const shieldIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>';
+const alertIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
 ---
 
 <PageLayout
@@ -66,6 +68,10 @@ const chartIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="
         <button id="run-btn" class="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg bg-zen-green text-dark hover:bg-zen-green/80 transition-colors cursor-pointer">
           <span set:html={playIcon} />
           Run Evaluation
+        </button>
+        <button id="safety-run-btn" class="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg bg-zen-blue text-white hover:bg-zen-blue/80 transition-colors cursor-pointer">
+          <span set:html={shieldIcon} />
+          Safety Test
         </button>
         <button id="delete-eval-btn" class="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-coral/30 text-coral hover:bg-coral/5 transition-colors cursor-pointer">
           <span set:html={trashIcon} />
@@ -139,6 +145,56 @@ const chartIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="
           </table>
         </div>
       </div>
+
+      <!-- Safety Results section -->
+      <div id="safety-section" class="hidden mt-6">
+        <div class="flex items-center gap-2 mb-3">
+          <span set:html={shieldIcon} />
+          <h3 class="text-sm font-semibold text-dark">Safety Evaluation</h3>
+        </div>
+
+        <!-- Safety running indicator -->
+        <div id="safety-running" class="hidden mb-4 rounded-xl border border-zen-blue/20 bg-zen-blue/5 px-5 py-3">
+          <div class="flex items-center gap-3">
+            <div class="h-4 w-4 border-2 border-zen-blue border-t-transparent rounded-full animate-spin"></div>
+            <p class="text-sm font-medium text-zen-blue">Running safety evaluation... Testing adversarial inputs.</p>
+          </div>
+        </div>
+
+        <!-- Safety metrics -->
+        <div id="safety-metrics" class="hidden mb-4">
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div class="bg-paper border border-dark/[0.08] rounded-xl p-3">
+              <p class="text-xs text-muted mb-0.5">Safety Score</p>
+              <p id="safety-score" class="text-xl font-semibold text-dark">-</p>
+            </div>
+            <div class="bg-paper border border-dark/[0.08] rounded-xl p-3">
+              <p class="text-xs text-muted mb-0.5">Pass Rate</p>
+              <p id="safety-pass-rate" class="text-xl font-semibold text-dark">-</p>
+            </div>
+            <div class="bg-paper border border-dark/[0.08] rounded-xl p-3">
+              <p class="text-xs text-muted mb-0.5">Flagged</p>
+              <p id="safety-flagged" class="text-xl font-semibold text-coral">-</p>
+            </div>
+            <div class="bg-paper border border-dark/[0.08] rounded-xl p-3">
+              <p class="text-xs text-muted mb-0.5">Total Tests</p>
+              <p id="safety-total" class="text-xl font-semibold text-dark">-</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Category scores -->
+        <div id="safety-categories" class="hidden mb-4">
+          <h4 class="text-xs font-semibold text-muted uppercase tracking-wide mb-2">Category Scores</h4>
+          <div id="safety-cat-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
+        </div>
+
+        <!-- Flagged responses -->
+        <div id="safety-flagged-section" class="hidden">
+          <h4 class="text-xs font-semibold text-muted uppercase tracking-wide mb-2">Flagged Responses</h4>
+          <div id="safety-flagged-list" class="flex flex-col gap-2"></div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -177,6 +233,72 @@ const chartIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="
     </div>
   </dialog>
 
+  <!-- ============= SAFETY CONFIG DIALOG ============= -->
+  <dialog
+    id="safety-dialog"
+    class="rounded-xl border border-dark/[0.08] shadow-xl p-0 backdrop:bg-dark/40 max-w-lg w-full"
+  >
+    <div class="p-6">
+      <h3 class="text-base font-medium text-dark mb-1">Safety Evaluation</h3>
+      <p class="text-xs text-muted mb-4">Run adversarial tests to evaluate agent safety</p>
+      <div id="safety-error" class="hidden mb-3 rounded-lg bg-coral/10 border border-coral/20 text-coral text-sm px-3 py-2"></div>
+      <div class="space-y-4">
+        <div>
+          <label class="block text-xs font-medium text-muted mb-1.5">Mode</label>
+          <div class="flex gap-2">
+            <label class="flex items-center gap-2 px-3 py-2 rounded-lg border border-dark/[0.08] cursor-pointer has-[:checked]:border-zen-blue has-[:checked]:bg-zen-blue/5 flex-1">
+              <input type="radio" name="safety-mode" value="preset" checked class="accent-zen-blue" />
+              <div>
+                <span class="text-sm font-medium text-dark">Preset</span>
+                <p class="text-[11px] text-muted">Built-in adversarial tests</p>
+              </div>
+            </label>
+            <label class="flex items-center gap-2 px-3 py-2 rounded-lg border border-dark/[0.08] cursor-pointer has-[:checked]:border-zen-blue has-[:checked]:bg-zen-blue/5 flex-1">
+              <input type="radio" name="safety-mode" value="redteam" class="accent-zen-blue" />
+              <div>
+                <span class="text-sm font-medium text-dark">Red Team</span>
+                <p class="text-[11px] text-muted">AI-generated attacks</p>
+              </div>
+            </label>
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-muted mb-1.5">Categories</label>
+          <div id="safety-cat-checkboxes" class="flex flex-col gap-1.5"></div>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-muted mb-1.5">Pass Threshold</label>
+          <input
+            type="range"
+            id="safety-threshold"
+            min="0"
+            max="100"
+            value="70"
+            class="w-full accent-zen-blue"
+          />
+          <div class="flex justify-between text-[11px] text-muted">
+            <span>0%</span>
+            <span id="safety-threshold-label">70%</span>
+            <span>100%</span>
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-muted mb-1.5">Safety Rules</label>
+          <textarea
+            id="safety-rules"
+            rows="4"
+            class="w-full bg-paper border border-dark/[0.08] rounded-lg px-3 py-2 text-xs text-dark placeholder:text-muted/60 outline-none focus:border-zen-blue focus:ring-2 focus:ring-zen-blue/20 font-mono"
+            placeholder="One rule per line..."
+          ></textarea>
+        </div>
+      </div>
+      <div class="flex items-center gap-2 justify-end mt-5">
+        <button id="safety-cancel" class="rounded-lg border border-dark/[0.08] px-4 py-2 text-sm font-medium text-muted hover:bg-dark/5 transition-colors cursor-pointer">Cancel</button>
+        <button id="safety-submit" class="rounded-lg bg-zen-blue px-4 py-2 text-sm font-semibold text-white hover:bg-zen-blue/90 transition-colors cursor-pointer">Run Safety Test</button>
+      </div>
+    </div>
+  </dialog>
+
   <!-- ============= DELETE CONFIRM DIALOG ============= -->
   <dialog
     id="delete-dialog"
@@ -199,6 +321,8 @@ const chartIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="
       var agents = {};
       var currentEval = null;
       var currentResults = [];
+      var currentSafetyResults = [];
+      var safetyCategories = {};
 
       /* ---------- DOM refs ---------- */
       var listView = document.getElementById("list-view");
@@ -232,6 +356,28 @@ const chartIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="
       var addCaseBtn = document.getElementById("add-case-btn");
       var resultsSection = document.getElementById("results-section");
       var resultsBody = document.getElementById("results-body");
+
+      /* Safety DOM refs */
+      var safetyRunBtn = document.getElementById("safety-run-btn");
+      var safetyDialog = document.getElementById("safety-dialog");
+      var safetyError = document.getElementById("safety-error");
+      var safetyCancel = document.getElementById("safety-cancel");
+      var safetySubmit = document.getElementById("safety-submit");
+      var safetyThreshold = document.getElementById("safety-threshold");
+      var safetyThresholdLabel = document.getElementById("safety-threshold-label");
+      var safetyRules = document.getElementById("safety-rules");
+      var safetyCatCheckboxes = document.getElementById("safety-cat-checkboxes");
+      var safetySection = document.getElementById("safety-section");
+      var safetyRunning = document.getElementById("safety-running");
+      var safetyMetrics = document.getElementById("safety-metrics");
+      var safetyScoreEl = document.getElementById("safety-score");
+      var safetyPassRateEl = document.getElementById("safety-pass-rate");
+      var safetyFlaggedEl = document.getElementById("safety-flagged");
+      var safetyTotalEl = document.getElementById("safety-total");
+      var safetyCategoriesEl = document.getElementById("safety-categories");
+      var safetyCatGrid = document.getElementById("safety-cat-grid");
+      var safetyFlaggedSection = document.getElementById("safety-flagged-section");
+      var safetyFlaggedList = document.getElementById("safety-flagged-list");
 
       var EVALUATOR_TYPES = ["exact_match", "contains", "regex_match", "semantic_similarity", "llm_as_judge"];
 
@@ -304,6 +450,118 @@ const chartIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="
           .catch(function () { currentResults = []; renderResults(); });
       }
 
+      function fetchSafetyCategories() {
+        fetch("/api/evaluations/safety/categories", { credentials: "same-origin" })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            safetyCategories = data.categories || {};
+            var defaultPolicy = data.default_policy || {};
+            /* Populate category checkboxes */
+            safetyCatCheckboxes.innerHTML = "";
+            Object.keys(safetyCategories).forEach(function (key) {
+              var cat = safetyCategories[key];
+              var label = document.createElement("label");
+              label.className = "flex items-center gap-2 text-sm text-dark cursor-pointer";
+              label.innerHTML = '<input type="checkbox" class="safety-cat-cb accent-zen-blue" value="' + key + '" checked />'
+                + '<span>' + escapeHtml(cat.label) + '</span>'
+                + '<span class="text-[11px] text-muted">(' + cat.case_count + ' tests)</span>';
+              safetyCatCheckboxes.appendChild(label);
+            });
+            /* Populate default rules */
+            var rules = defaultPolicy.rules || [];
+            safetyRules.value = rules.join("\n");
+          })
+          .catch(function () {});
+      }
+
+      function fetchSafetyResults(evalId) {
+        fetch("/api/evaluations/" + evalId + "/safety-results", { credentials: "same-origin" })
+          .then(function (r) { return r.json(); })
+          .then(function (results) {
+            currentSafetyResults = results || [];
+            renderSafetyResults();
+          })
+          .catch(function () { currentSafetyResults = []; renderSafetyResults(); });
+      }
+
+      /* ---------- Safety Rendering ---------- */
+      function renderSafetyResults() {
+        if (currentSafetyResults.length === 0) {
+          safetySection.classList.add("hidden");
+          return;
+        }
+        safetySection.classList.remove("hidden");
+
+        var latest = currentSafetyResults[0];
+        /* Metrics */
+        safetyMetrics.classList.remove("hidden");
+        safetyScoreEl.textContent = pct(latest.overall_score);
+        safetyPassRateEl.textContent = pct(latest.pass_rate);
+        safetyFlaggedEl.textContent = String(latest.flagged_count);
+        safetyTotalEl.textContent = String(latest.total_count);
+
+        /* Category scores */
+        var catScores = {};
+        try { catScores = JSON.parse(latest.category_scores_json || "{}"); } catch (_) {}
+
+        if (Object.keys(catScores).length > 0) {
+          safetyCategoriesEl.classList.remove("hidden");
+          safetyCatGrid.innerHTML = "";
+          Object.keys(catScores).forEach(function (key) {
+            var cs = catScores[key];
+            var card = document.createElement("div");
+            var borderColor = cs.passed ? "border-zen-green/30" : "border-coral/30";
+            var bgColor = cs.passed ? "bg-zen-green/5" : "bg-coral/5";
+            card.className = "rounded-xl border " + borderColor + " " + bgColor + " p-3";
+            card.innerHTML =
+              '<div class="flex items-center justify-between mb-1">'
+              + '<span class="text-xs font-semibold text-dark">' + escapeHtml(cs.label) + '</span>'
+              + '<span class="text-[11px] font-mono ' + (cs.passed ? 'text-zen-green' : 'text-coral') + '">' + pct(cs.score) + '</span>'
+              + '</div>'
+              + '<div class="w-full h-1.5 rounded-full bg-dark/[0.06]">'
+              + '<div class="h-full rounded-full ' + (cs.passed ? 'bg-zen-green' : 'bg-coral') + '" style="width: ' + (cs.score * 100) + '%"></div>'
+              + '</div>'
+              + '<div class="flex justify-between mt-1">'
+              + '<span class="text-[10px] text-muted">' + cs.passed_count + '/' + cs.total + ' passed</span>'
+              + '<span class="text-[10px] text-muted">Threshold: ' + pct(cs.threshold) + '</span>'
+              + '</div>';
+            safetyCatGrid.appendChild(card);
+          });
+        } else {
+          safetyCategoriesEl.classList.add("hidden");
+        }
+
+        /* Flagged responses */
+        var results = [];
+        try { results = JSON.parse(latest.results_json || "[]"); } catch (_) {}
+        var flagged = results.filter(function (r) { return !r.passed; });
+
+        if (flagged.length > 0) {
+          safetyFlaggedSection.classList.remove("hidden");
+          safetyFlaggedList.innerHTML = "";
+          flagged.forEach(function (r) {
+            var item = document.createElement("div");
+            item.className = "bg-coral/5 border border-coral/20 rounded-lg p-3";
+            item.innerHTML =
+              '<div class="flex items-start gap-2">'
+              + '<span class="shrink-0 mt-0.5 text-coral">' + '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>' + '</span>'
+              + '<div class="flex-1 min-w-0">'
+              + '<div class="flex items-center gap-2 mb-1">'
+              + '<span class="inline-block rounded bg-coral/10 px-1.5 py-0.5 text-[11px] font-medium text-coral">' + escapeHtml(r.category_label) + '</span>'
+              + '<span class="text-[11px] text-muted font-mono">' + pct(r.score) + '</span>'
+              + '</div>'
+              + '<p class="text-xs text-dark mb-1"><strong>Input:</strong> ' + escapeHtml(truncate(r.input, 120)) + '</p>'
+              + '<p class="text-xs text-muted mb-1"><strong>Response:</strong> ' + escapeHtml(truncate(r.response, 120)) + '</p>'
+              + '<p class="text-xs text-coral"><strong>Concern:</strong> ' + escapeHtml(r.explanation) + '</p>'
+              + '</div>'
+              + '</div>';
+            safetyFlaggedList.appendChild(item);
+          });
+        } else {
+          safetyFlaggedSection.classList.add("hidden");
+        }
+      }
+
       /* ---------- List Rendering ---------- */
       function renderList() {
         evalList.innerHTML = "";
@@ -342,16 +600,19 @@ const chartIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="
         detailAgent.textContent = "Agent: " + (agents[ev.agent_id] || ev.agent_id);
         renderTestCases();
         fetchResults(evalId);
+        fetchSafetyResults(evalId);
       }
 
       function showList() {
         currentEval = null;
         currentResults = [];
+        currentSafetyResults = [];
         detailView.classList.add("hidden");
         listView.classList.remove("hidden");
         resultsSection.classList.add("hidden");
         metricsSection.classList.add("hidden");
         historySection.classList.add("hidden");
+        safetySection.classList.add("hidden");
         fetchEvaluations();
       }
 
@@ -671,9 +932,78 @@ const chartIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="
           });
       });
 
+      /* ---------- Safety dialog events ---------- */
+      safetyRunBtn.addEventListener("click", function () {
+        safetyError.classList.add("hidden");
+        safetyDialog.showModal();
+      });
+      safetyCancel.addEventListener("click", function () { safetyDialog.close(); });
+      safetyDialog.addEventListener("click", function (e) { if (e.target === safetyDialog) safetyDialog.close(); });
+
+      safetyThreshold.addEventListener("input", function () {
+        safetyThresholdLabel.textContent = safetyThreshold.value + "%";
+      });
+
+      safetySubmit.addEventListener("click", function () {
+        if (!currentEval) return;
+
+        /* Gather selected categories */
+        var selectedCats = [];
+        safetyCatCheckboxes.querySelectorAll(".safety-cat-cb:checked").forEach(function (cb) {
+          selectedCats.push(cb.value);
+        });
+        if (selectedCats.length === 0) {
+          safetyError.textContent = "Select at least one category.";
+          safetyError.classList.remove("hidden");
+          return;
+        }
+
+        /* Gather mode */
+        var mode = "preset";
+        var modeRadio = document.querySelector('input[name="safety-mode"]:checked');
+        if (modeRadio) mode = modeRadio.value;
+
+        /* Gather rules */
+        var rulesArr = safetyRules.value.split("\n").map(function (l) { return l.trim(); }).filter(Boolean);
+
+        /* Gather threshold */
+        var threshold = parseInt(safetyThreshold.value, 10) / 100;
+
+        safetyDialog.close();
+        safetyRunBtn.disabled = true;
+        safetySection.classList.remove("hidden");
+        safetyRunning.classList.remove("hidden");
+
+        fetch("/api/evaluations/" + currentEval.id + "/safety-run", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            categories: selectedCats,
+            mode: mode,
+            policy: { pass_threshold: threshold, rules: rulesArr },
+          }),
+        })
+          .then(function (r) {
+            if (!r.ok) return r.json().then(function (d) { throw new Error(d.detail || "Safety run failed"); });
+            return r.json();
+          })
+          .then(function () {
+            fetchSafetyResults(currentEval.id);
+          })
+          .catch(function (err) {
+            alert("Safety test error: " + err.message);
+          })
+          .finally(function () {
+            safetyRunBtn.disabled = false;
+            safetyRunning.classList.add("hidden");
+          });
+      });
+
       /* ---------- Init ---------- */
       fetchAgents();
       fetchEvaluations();
+      fetchSafetyCategories();
     })();
   </script>
 </PageLayout>
