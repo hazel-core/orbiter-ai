@@ -42,6 +42,7 @@ async def _run_retention_cleanup() -> None:
 
     Order: artifacts first (since they reference runs), then runs, then logs.
     Cascade: when deleting a run, first delete its artifacts and related logs.
+    Note: audit_log is intentionally exempt — entries are never deleted.
     """
     retention = await _get_retention_days()
     deleted_artifacts = 0
@@ -67,9 +68,7 @@ async def _run_retention_cleanup() -> None:
                 except OSError:
                     _log.warning("Failed to remove artifact file: %s", path)
             # Delete artifact_versions (cascade via FK) and the artifact record
-            await db.execute(
-                "DELETE FROM artifact_versions WHERE artifact_id = ?", (row["id"],)
-            )
+            await db.execute("DELETE FROM artifact_versions WHERE artifact_id = ?", (row["id"],))
             await db.execute("DELETE FROM artifacts WHERE id = ?", (row["id"],))
             deleted_artifacts += 1
 
@@ -130,9 +129,7 @@ async def _run_cleanup() -> None:
     async with get_db() as db:
         # 1. Delete expired sessions (expires_at < now)
         now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
-        cursor = await db.execute(
-            "DELETE FROM sessions WHERE expires_at < ?", (now,)
-        )
+        cursor = await db.execute("DELETE FROM sessions WHERE expires_at < ?", (now,))
         expired_sessions = cursor.rowcount
 
         # 2. Delete used or expired password reset tokens
@@ -192,9 +189,7 @@ async def start_cleanup() -> None:
     global _cleanup_task
     if _cleanup_task is not None:
         return
-    _log.info(
-        "Starting cleanup task (every %dh)", settings.cleanup_interval_hours
-    )
+    _log.info("Starting cleanup task (every %dh)", settings.cleanup_interval_hours)
     _cleanup_task = asyncio.create_task(_cleanup_loop())
 
 

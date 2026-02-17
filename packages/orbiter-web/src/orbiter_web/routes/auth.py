@@ -9,11 +9,12 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import bcrypt
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Response
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from orbiter_web.config import settings
 from orbiter_web.database import get_db
+from orbiter_web.services.audit import audit_log
 
 logger = logging.getLogger("orbiter_web")
 
@@ -121,7 +122,7 @@ def require_role(min_role: str):
 
 
 @router.post("/login", response_model=UserResponse)
-async def login(body: LoginRequest, response: Response) -> dict[str, Any]:
+async def login(body: LoginRequest, request: Request, response: Response) -> dict[str, Any]:
     """Authenticate with email + password and set a session cookie."""
     async with get_db() as db:
         cursor = await db.execute(
@@ -136,9 +137,9 @@ async def login(body: LoginRequest, response: Response) -> dict[str, Any]:
     # Create session with CSRF token.
     session_id = str(uuid.uuid4())
     csrf_token = secrets.token_urlsafe(32)
-    expires_at = (
-        datetime.now(UTC) + timedelta(hours=settings.session_expiry_hours)
-    ).strftime("%Y-%m-%d %H:%M:%S")
+    expires_at = (datetime.now(UTC) + timedelta(hours=settings.session_expiry_hours)).strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
 
     async with get_db() as db:
         await db.execute(
@@ -156,19 +157,39 @@ async def login(body: LoginRequest, response: Response) -> dict[str, Any]:
         path="/",
     )
 
-    return {"id": user["id"], "email": user["email"], "role": user["role"], "created_at": user["created_at"]}
+    ip = request.client.host if request.client else None
+    await audit_log(user["id"], "login", "user", user["id"], ip_address=ip)
+
+    return {
+        "id": user["id"],
+        "email": user["email"],
+        "role": user["role"],
+        "created_at": user["created_at"],
+    }
 
 
 @router.post("/logout", status_code=204)
 async def logout(
+    request: Request,
     response: Response,
     orbiter_session: str | None = Cookie(None),
 ) -> None:
     """Clear the session cookie and delete the session."""
+    user_id: str | None = None
     if orbiter_session:
         async with get_db() as db:
+            cursor = await db.execute(
+                "SELECT user_id FROM sessions WHERE id = ?", (orbiter_session,)
+            )
+            row = await cursor.fetchone()
+            if row:
+                user_id = row["user_id"]
             await db.execute("DELETE FROM sessions WHERE id = ?", (orbiter_session,))
             await db.commit()
+
+    if user_id:
+        ip = request.client.host if request.client else None
+        await audit_log(user_id, "logout", "user", user_id, ip_address=ip)
 
     response.delete_cookie(key=SESSION_COOKIE, path="/")
 
@@ -287,9 +308,7 @@ async def forgot_password(body: ForgotPasswordRequest) -> dict[str, str]:
     token = str(uuid.uuid4())
     token_hash = bcrypt.hashpw(token.encode(), bcrypt.gensalt()).decode()
     reset_id = str(uuid.uuid4())
-    expires_at = (datetime.now(UTC) + timedelta(hours=1)).strftime(
-        "%Y-%m-%d %H:%M:%S"
-    )
+    expires_at = (datetime.now(UTC) + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
 
     async with get_db() as db:
         await db.execute(
@@ -327,9 +346,7 @@ async def reset_password(body: ResetPasswordRequest) -> dict[str, str]:
             break
 
     if matched_reset is None:
-        raise HTTPException(
-            status_code=400, detail="Invalid or expired reset token"
-        )
+        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
 
     # Update password, mark token as used, and invalidate all sessions.
     new_hash = _hash_password(body.new_password)

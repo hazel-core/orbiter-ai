@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from orbiter_web.crypto import decrypt_api_key, encrypt_api_key
 from orbiter_web.database import get_db
 from orbiter_web.routes.auth import require_role
+from orbiter_web.services.audit import audit_log
 
 router = APIRouter(prefix="/api/providers", tags=["provider-keys"])
 
@@ -146,6 +147,14 @@ async def create_key(
         )
         await db.commit()
 
+        await audit_log(
+            user["id"],
+            "add_provider_key",
+            "provider_key",
+            key_id,
+            details={"provider_id": provider_id, "label": body.label},
+        )
+
         cursor = await db.execute("SELECT * FROM provider_keys WHERE id = ?", (key_id,))
         row = await cursor.fetchone()
         return _row_to_key_response(row)
@@ -170,6 +179,14 @@ async def delete_key(
 
         await db.execute("DELETE FROM provider_keys WHERE id = ?", (key_id,))
         await db.commit()
+
+    await audit_log(
+        user["id"],
+        "delete_provider_key",
+        "provider_key",
+        key_id,
+        details={"provider_id": provider_id},
+    )
 
 
 # ---------------------------------------------------------------------------

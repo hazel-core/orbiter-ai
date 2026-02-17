@@ -24,6 +24,7 @@ from orbiter_web.routes.annotations import router as annotations_router
 from orbiter_web.routes.applications import router as applications_router
 from orbiter_web.routes.approvals import router as approvals_router
 from orbiter_web.routes.artifacts import router as artifacts_router
+from orbiter_web.routes.audit_log import router as audit_log_router
 from orbiter_web.routes.auth import router as auth_router
 from orbiter_web.routes.benchmarks import router as benchmarks_router
 from orbiter_web.routes.checkpoints import router as checkpoints_router
@@ -77,13 +78,9 @@ def _validate_startup() -> None:
     db_path = Path(_DB_PATH)
     db_dir = db_path.parent
     if db_dir.exists() and not os.access(db_dir, os.W_OK):
-        logger.error(
-            "Database directory is not writable: %s", db_dir
-        )
+        logger.error("Database directory is not writable: %s", db_dir)
     elif not db_dir.exists():
-        logger.error(
-            "Database directory does not exist: %s", db_dir
-        )
+        logger.error("Database directory does not exist: %s", db_dir)
 
     # Log startup config summary (no secrets)
     logger.info(
@@ -136,6 +133,7 @@ app.include_router(agents_router)
 app.include_router(alerts_router)
 app.include_router(annotations_router)
 app.include_router(artifacts_router)
+app.include_router(audit_log_router)
 app.include_router(approvals_router)
 app.include_router(checkpoints_router)
 app.include_router(neuron_pipelines_router)
@@ -210,14 +208,16 @@ async def health_check() -> dict[str, Any]:
                 total = r["total_runs"] or 0
                 failed = r["failed_runs"] or 0
                 error_rate = round(failed / total * 100, 2) if total > 0 else 0.0
-                agents.append({
-                    "id": r["id"],
-                    "name": r["name"],
-                    "status": "degraded" if error_rate > 50 else "healthy",
-                    "error_rate": error_rate,
-                    "avg_latency_ms": round(r["avg_latency_ms"] or 0, 2),
-                    "recent_runs": total,
-                })
+                agents.append(
+                    {
+                        "id": r["id"],
+                        "name": r["name"],
+                        "status": "degraded" if error_rate > 50 else "healthy",
+                        "error_rate": error_rate,
+                        "avg_latency_ms": round(r["avg_latency_ms"] or 0, 2),
+                        "recent_runs": total,
+                    }
+                )
 
             # Per-provider health: check if keys are configured
             cursor = await db.execute(
@@ -232,13 +232,15 @@ async def health_check() -> dict[str, Any]:
             )
             for row in await cursor.fetchall():
                 r = dict(row)
-                providers.append({
-                    "id": r["id"],
-                    "name": r["name"],
-                    "provider_type": r["provider_type"],
-                    "status": "configured" if r["key_count"] > 0 else "no_keys",
-                    "key_count": r["key_count"],
-                })
+                providers.append(
+                    {
+                        "id": r["id"],
+                        "name": r["name"],
+                        "provider_type": r["provider_type"],
+                        "status": "configured" if r["key_count"] > 0 else "no_keys",
+                        "key_count": r["key_count"],
+                    }
+                )
 
     except Exception:
         return {"status": "degraded", "agents": [], "providers": []}

@@ -14,6 +14,7 @@ from orbiter_web.database import get_db
 from orbiter_web.pagination import paginate
 from orbiter_web.routes.auth import get_current_user
 from orbiter_web.sanitize import sanitize_html
+from orbiter_web.services.audit import audit_log
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 
@@ -664,6 +665,8 @@ async def create_agent(
         )
         await db.commit()
 
+        await audit_log(user["id"], "create_agent", "agent", agent_id, details={"name": name})
+
         cursor = await db.execute("SELECT * FROM agents WHERE id = ?", (agent_id,))
         row = await cursor.fetchone()
         return _row_to_dict(row)
@@ -691,7 +694,14 @@ async def update_agent(
         raise HTTPException(status_code=422, detail="No fields to update")
 
     # Sanitize user-provided text fields.
-    for field in ("name", "description", "instructions", "persona_role", "persona_goal", "persona_backstory"):
+    for field in (
+        "name",
+        "description",
+        "instructions",
+        "persona_role",
+        "persona_goal",
+        "persona_backstory",
+    ):
         if field in updates and isinstance(updates[field], str):
             updates[field] = sanitize_html(updates[field])
 
@@ -726,9 +736,10 @@ async def delete_agent(
 ) -> None:
     """Delete an agent."""
     async with get_db() as db:
-        await _verify_ownership(db, agent_id, user["id"])
+        agent = await _verify_ownership(db, agent_id, user["id"])
         await db.execute("DELETE FROM agents WHERE id = ?", (agent_id,))
         await db.commit()
+    await audit_log(user["id"], "delete_agent", "agent", agent_id, details={"name": agent["name"]})
 
 
 # ---------------------------------------------------------------------------

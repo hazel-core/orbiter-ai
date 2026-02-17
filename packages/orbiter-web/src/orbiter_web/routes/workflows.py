@@ -15,6 +15,7 @@ from orbiter_web.database import get_db
 from orbiter_web.pagination import paginate
 from orbiter_web.routes.auth import get_current_user
 from orbiter_web.sanitize import sanitize_html
+from orbiter_web.services.audit import audit_log
 
 router = APIRouter(prefix="/api/workflows", tags=["workflows"])
 
@@ -158,6 +159,14 @@ async def create_workflow(
         )
         await db.commit()
 
+        await audit_log(
+            user["id"],
+            "create_workflow",
+            "workflow",
+            workflow_id,
+            details={"name": sanitize_html(body.name)},
+        )
+
         cursor = await db.execute("SELECT * FROM workflows WHERE id = ?", (workflow_id,))
         row = await cursor.fetchone()
         return _row_to_dict(row)
@@ -267,9 +276,12 @@ async def delete_workflow(
 ) -> None:
     """Delete a workflow."""
     async with get_db() as db:
-        await _verify_ownership(db, workflow_id, user["id"])
+        wf = await _verify_ownership(db, workflow_id, user["id"])
         await db.execute("DELETE FROM workflows WHERE id = ?", (workflow_id,))
         await db.commit()
+    await audit_log(
+        user["id"], "delete_workflow", "workflow", workflow_id, details={"name": wf["name"]}
+    )
 
 
 @router.post("/{workflow_id}/export")

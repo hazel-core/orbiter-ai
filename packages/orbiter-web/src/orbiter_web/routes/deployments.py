@@ -17,6 +17,7 @@ from orbiter_web.database import get_db
 from orbiter_web.pagination import paginate
 from orbiter_web.routes.auth import get_current_user
 from orbiter_web.sanitize import sanitize_html
+from orbiter_web.services.audit import audit_log
 
 router = APIRouter(prefix="/api/deployments", tags=["deployments"])
 
@@ -121,6 +122,18 @@ async def create_deployment(
         )
         await db.commit()
 
+        await audit_log(
+            user["id"],
+            "create_deployment",
+            "deployment",
+            deployment_id,
+            details={
+                "name": body.name,
+                "entity_type": body.entity_type,
+                "entity_id": body.entity_id,
+            },
+        )
+
         return DeploymentCreateResponse(
             id=deployment_id,
             name=body.name,
@@ -158,9 +171,7 @@ async def list_deployments(
         # Resolve entity names
         for dep in data.get("data", []):
             if dep["entity_type"] == "agent":
-                cur = await db.execute(
-                    "SELECT name FROM agents WHERE id = ?", (dep["entity_id"],)
-                )
+                cur = await db.execute("SELECT name FROM agents WHERE id = ?", (dep["entity_id"],))
             else:
                 cur = await db.execute(
                     "SELECT name FROM workflows WHERE id = ?", (dep["entity_id"],)
@@ -189,13 +200,9 @@ async def get_deployment(
         dep = dict(row)
         # Resolve entity name
         if dep["entity_type"] == "agent":
-            cur2 = await db.execute(
-                "SELECT name FROM agents WHERE id = ?", (dep["entity_id"],)
-            )
+            cur2 = await db.execute("SELECT name FROM agents WHERE id = ?", (dep["entity_id"],))
         else:
-            cur2 = await db.execute(
-                "SELECT name FROM workflows WHERE id = ?", (dep["entity_id"],)
-            )
+            cur2 = await db.execute("SELECT name FROM workflows WHERE id = ?", (dep["entity_id"],))
         entity_row = await cur2.fetchone()
         dep["entity_name"] = entity_row["name"] if entity_row else "(deleted)"
 
@@ -249,9 +256,7 @@ async def update_deployment(
         )
         await db.commit()
 
-        cur2 = await db.execute(
-            "SELECT * FROM deployments WHERE id = ?", (deployment_id,)
-        )
+        cur2 = await db.execute("SELECT * FROM deployments WHERE id = ?", (deployment_id,))
         return dict(await cur2.fetchone())  # type: ignore[arg-type]
 
 
@@ -263,16 +268,23 @@ async def delete_deployment(
     """Delete a deployment."""
     async with get_db() as db:
         cur = await db.execute(
-            "SELECT id FROM deployments WHERE id = ? AND user_id = ?",
+            "SELECT id, name FROM deployments WHERE id = ? AND user_id = ?",
             (deployment_id, user["id"]),
         )
-        if await cur.fetchone() is None:
+        row = await cur.fetchone()
+        if row is None:
             raise HTTPException(status_code=404, detail="Deployment not found")
 
-        await db.execute(
-            "DELETE FROM deployments WHERE id = ?", (deployment_id,)
-        )
+        await db.execute("DELETE FROM deployments WHERE id = ?", (deployment_id,))
         await db.commit()
+
+    await audit_log(
+        user["id"],
+        "delete_deployment",
+        "deployment",
+        deployment_id,
+        details={"name": row["name"]},
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -282,9 +294,7 @@ async def delete_deployment(
 deployed_router = APIRouter(prefix="/api/deployed", tags=["deployed"])
 
 
-async def _authenticate_deployment(
-    deployment_id: str, request: Request
-) -> dict[str, Any]:
+async def _authenticate_deployment(deployment_id: str, request: Request) -> dict[str, Any]:
     """Validate API key from Authorization header and return deployment row."""
     auth_header = request.headers.get("Authorization", "")
     if not auth_header.startswith("Bearer "):
@@ -303,9 +313,7 @@ async def _authenticate_deployment(
 
         deployment = dict(row)
         if deployment["status"] != "active":
-            raise HTTPException(
-                status_code=403, detail="Deployment is inactive"
-            )
+            raise HTTPException(status_code=403, detail="Deployment is inactive")
 
         # Increment usage count
         await db.execute(
@@ -342,9 +350,7 @@ async def run_deployed(
     return await _run_workflow_deployment(deployment, body)
 
 
-async def _run_agent_deployment(
-    deployment: dict[str, Any], body: DeployedRunRequest
-) -> Any:
+async def _run_agent_deployment(deployment: dict[str, Any], body: DeployedRunRequest) -> Any:
     """Run an agent deployment, with optional SSE streaming."""
     from orbiter.types import UserMessage
     from orbiter_web.services.agent_runtime import AgentRuntimeError, AgentService
@@ -356,34 +362,24 @@ async def _run_agent_deployment(
 
         async def _sse_generator() -> Any:
             try:
-                async for chunk in service.stream_agent(
-                    deployment["entity_id"], messages
-                ):
-                    data = json.dumps(
-                        {"type": "token", "content": chunk.content or ""}
-                    )
+                async for chunk in service.stream_agent(deployment["entity_id"], messages):
+                    data = json.dumps({"type": "token", "content": chunk.content or ""})
                     yield f"data: {data}\n\n"
                 yield f"data: {json.dumps({'type': 'done'})}\n\n"
             except AgentRuntimeError as exc:
                 yield f"data: {json.dumps({'type': 'error', 'error': str(exc)})}\n\n"
 
-        return StreamingResponse(
-            _sse_generator(), media_type="text/event-stream"
-        )
+        return StreamingResponse(_sse_generator(), media_type="text/event-stream")
 
     # Non-streaming
     try:
-        result = await service.run_agent(
-            deployment["entity_id"], messages
-        )
+        result = await service.run_agent(deployment["entity_id"], messages)
         return {"output": result.content, "usage": result.usage}
     except AgentRuntimeError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
-async def _run_workflow_deployment(
-    deployment: dict[str, Any], body: DeployedRunRequest
-) -> Any:
+async def _run_workflow_deployment(deployment: dict[str, Any], body: DeployedRunRequest) -> Any:
     """Run a workflow deployment, with optional SSE streaming."""
     import asyncio
 
@@ -393,9 +389,7 @@ async def _run_workflow_deployment(
 
     # Load workflow nodes/edges
     async with get_db() as db:
-        cur = await db.execute(
-            "SELECT * FROM workflows WHERE id = ?", (workflow_id,)
-        )
+        cur = await db.execute("SELECT * FROM workflows WHERE id = ?", (workflow_id,))
         row = await cur.fetchone()
         if row is None:
             raise HTTPException(status_code=404, detail="Workflow not found")
@@ -416,8 +410,12 @@ async def _run_workflow_deployment(
             async def _run() -> str:
                 try:
                     return await execute_workflow(
-                        run_id, workflow_id, deployment["user_id"],
-                        nodes, edges, event_callback=_event_callback,
+                        run_id,
+                        workflow_id,
+                        deployment["user_id"],
+                        nodes,
+                        edges,
+                        event_callback=_event_callback,
                     )
                 finally:
                     await queue.put(None)
@@ -434,15 +432,16 @@ async def _run_workflow_deployment(
             except Exception as exc:
                 yield f"data: {json.dumps({'type': 'error', 'error': str(exc)})}\n\n"
 
-        return StreamingResponse(
-            _sse_generator(), media_type="text/event-stream"
-        )
+        return StreamingResponse(_sse_generator(), media_type="text/event-stream")
 
     # Non-streaming
     try:
         result = await execute_workflow(
-            run_id, workflow_id, deployment["user_id"],
-            nodes, edges,
+            run_id,
+            workflow_id,
+            deployment["user_id"],
+            nodes,
+            edges,
         )
         return {"output": result}
     except Exception as exc:
