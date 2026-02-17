@@ -7,6 +7,7 @@ import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,6 +19,7 @@ from orbiter_web.middleware.csrf import CSRFMiddleware
 from orbiter_web.middleware.rate_limit import RateLimitMiddleware
 from orbiter_web.middleware.security import SecurityHeadersMiddleware
 from orbiter_web.routes.agents import router as agents_router
+from orbiter_web.routes.alerts import router as alerts_router
 from orbiter_web.routes.applications import router as applications_router
 from orbiter_web.routes.auth import router as auth_router
 from orbiter_web.routes.checkpoints import router as checkpoints_router
@@ -110,6 +112,7 @@ if settings.cors_origins:
     )
 
 app.include_router(agents_router)
+app.include_router(alerts_router)
 app.include_router(checkpoints_router)
 app.include_router(neuron_pipelines_router)
 app.include_router(plans_router)
@@ -139,6 +142,74 @@ app.include_router(ws_router)
 
 
 @app.get("/api/health")
-async def health_check() -> dict[str, str]:
-    """Health check endpoint."""
-    return {"status": "ok"}
+async def health_check() -> dict[str, Any]:
+    """Health check with per-agent and per-provider status."""
+    from orbiter_web.database import get_db
+
+    agents: list[dict[str, Any]] = []
+    providers: list[dict[str, Any]] = []
+
+    try:
+        async with get_db() as db:
+            # Per-agent health: recent error rate and latency from runs
+            cursor = await db.execute(
+                """
+                SELECT
+                    a.id, a.name,
+                    COUNT(r.id) AS total_runs,
+                    SUM(CASE WHEN r.status = 'failed' THEN 1 ELSE 0 END) AS failed_runs,
+                    AVG(
+                        CASE WHEN r.end_time IS NOT NULL AND r.start_time IS NOT NULL
+                        THEN (julianday(r.end_time) - julianday(r.start_time)) * 86400000
+                        END
+                    ) AS avg_latency_ms
+                FROM agents a
+                LEFT JOIN runs r ON r.agent_id = a.id
+                    AND r.created_at >= datetime('now', '-1 hour')
+                GROUP BY a.id, a.name
+                ORDER BY a.name
+                """
+            )
+            for row in await cursor.fetchall():
+                r = dict(row)
+                total = r["total_runs"] or 0
+                failed = r["failed_runs"] or 0
+                error_rate = round(failed / total * 100, 2) if total > 0 else 0.0
+                agents.append({
+                    "id": r["id"],
+                    "name": r["name"],
+                    "status": "degraded" if error_rate > 50 else "healthy",
+                    "error_rate": error_rate,
+                    "avg_latency_ms": round(r["avg_latency_ms"] or 0, 2),
+                    "recent_runs": total,
+                })
+
+            # Per-provider health: check if keys are configured
+            cursor = await db.execute(
+                """
+                SELECT p.id, p.name, p.provider_type,
+                    COUNT(pk.id) AS key_count
+                FROM providers p
+                LEFT JOIN provider_keys pk ON pk.provider_id = p.id
+                GROUP BY p.id, p.name, p.provider_type
+                ORDER BY p.name
+                """
+            )
+            for row in await cursor.fetchall():
+                r = dict(row)
+                providers.append({
+                    "id": r["id"],
+                    "name": r["name"],
+                    "provider_type": r["provider_type"],
+                    "status": "configured" if r["key_count"] > 0 else "no_keys",
+                    "key_count": r["key_count"],
+                })
+
+    except Exception:
+        return {"status": "degraded", "agents": [], "providers": []}
+
+    return {
+        "status": "ok",
+        "agents": agents,
+        "providers": providers,
+    }
