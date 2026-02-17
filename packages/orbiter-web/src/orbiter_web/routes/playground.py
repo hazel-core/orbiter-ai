@@ -56,11 +56,11 @@ async def _load_conversation_messages(conversation_id: str) -> list[dict[str, st
     """Load all messages from a conversation for the history."""
     async with get_db() as db:
         cursor = await db.execute(
-            "SELECT role, content FROM messages WHERE conversation_id = ? ORDER BY created_at ASC",
+            "SELECT id, role, content FROM messages WHERE conversation_id = ? ORDER BY created_at ASC",
             (conversation_id,),
         )
         rows = await cursor.fetchall()
-    return [{"role": row["role"], "content": row["content"]} for row in rows]
+    return [{"id": row["id"], "role": row["role"], "content": row["content"]} for row in rows]
 
 
 class _TokenCollector:
@@ -920,7 +920,10 @@ async def playground_chat(websocket: WebSocket, agent_id: str) -> None:
 
             # Add user message to history and persist
             history.append({"role": "user", "content": content})
-            await _save_message(conversation_id, "user", content)
+            user_msg_id = await _save_message(conversation_id, "user", content)
+            await websocket.send_json(
+                {"type": "message_saved", "message_id": user_msg_id, "role": "user"}
+            )
 
             # Stream response — run in background to allow takeover
             cancel_event = asyncio.Event()
@@ -965,7 +968,12 @@ async def playground_chat(websocket: WebSocket, agent_id: str) -> None:
                 assistant_content = collector.collected or "(empty response)"
                 history.append({"role": "assistant", "content": assistant_content})
                 usage_str = json.dumps(collector.usage) if collector.usage else None
-                await _save_message(conversation_id, "assistant", assistant_content, usage_str)
+                asst_msg_id = await _save_message(
+                    conversation_id, "assistant", assistant_content, usage_str
+                )
+                await websocket.send_json(
+                    {"type": "message_saved", "message_id": asst_msg_id, "role": "assistant"}
+                )
                 stream_task = None
 
     except WebSocketDisconnect:

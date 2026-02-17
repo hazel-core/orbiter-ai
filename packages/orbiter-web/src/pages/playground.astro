@@ -454,6 +454,7 @@ let userScrolledUp = false;
 let tracePanelOpen = false;
 let traceCounter = 0;
 let lastUserQuery = "";
+let pendingReplayText: string | null = null;
 
 /* Annotation dialog elements */
 const annotationDialog = document.getElementById("annotation-dialog") as HTMLDialogElement;
@@ -588,6 +589,262 @@ const CHEVRON_RIGHT = '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" 
 
 const COPY_ICON = '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
 const CHECK_ICON = '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+const EDIT_ICON = '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
+const DELETE_ICON = '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
+const REPLAY_ICON = '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>';
+const HISTORY_ICON = '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
+
+/* Queue of pending message IDs from server — used to assign IDs to DOM elements */
+let pendingUserMsgId: string | null = null;
+let pendingAssistantMsgId: string | null = null;
+
+/* ---- Message hover menu ---- */
+function createMessageActions(
+  messageEl: HTMLElement,
+  role: "user" | "assistant",
+  getText: () => string,
+): HTMLElement {
+  const menu = document.createElement("div");
+  menu.className = "msg-actions absolute -top-8 right-0 flex items-center gap-0.5 px-1 py-0.5 rounded-lg bg-paper border border-dark/[0.08] shadow-sm opacity-0 group-hover:opacity-100 transition-opacity z-10";
+
+  function makeBtn(icon: string, title: string, handler: () => void): HTMLButtonElement {
+    const btn = document.createElement("button");
+    btn.className = "p-1 rounded text-muted hover:text-dark hover:bg-subtle transition-colors";
+    btn.title = title;
+    btn.innerHTML = icon;
+    btn.addEventListener("click", handler);
+    return btn;
+  }
+
+  /* Copy */
+  const copyBtn = makeBtn(COPY_ICON, "Copy", function() {
+    navigator.clipboard.writeText(getText()).then(function() {
+      copyBtn.innerHTML = CHECK_ICON;
+      copyBtn.classList.add("text-zen-green");
+      setTimeout(function() {
+        copyBtn.innerHTML = COPY_ICON;
+        copyBtn.classList.remove("text-zen-green");
+      }, 1500);
+    });
+  });
+  menu.appendChild(copyBtn);
+
+  /* Edit (user messages only) */
+  if (role === "user") {
+    menu.appendChild(makeBtn(EDIT_ICON, "Edit message", function() {
+      startInlineEdit(messageEl);
+    }));
+  }
+
+  /* Edit history (show on hover if edits exist) */
+  if (role === "user") {
+    const historyBtn = makeBtn(HISTORY_ICON, "Edit history", function() {
+      showEditHistory(messageEl);
+    });
+    historyBtn.classList.add("edit-history-btn", "hidden");
+    menu.appendChild(historyBtn);
+  }
+
+  /* Replay from here (user messages only) */
+  if (role === "user") {
+    menu.appendChild(makeBtn(REPLAY_ICON, "Replay from here", function() {
+      replayFromMessage(messageEl);
+    }));
+  }
+
+  /* Delete */
+  menu.appendChild(makeBtn(DELETE_ICON, "Delete message", function() {
+    deleteMessage(messageEl);
+  }));
+
+  return menu;
+}
+
+/* ---- Inline edit ---- */
+function startInlineEdit(messageEl: HTMLElement) {
+  const contentEl = messageEl.querySelector(".msg-content") as HTMLElement | null;
+  if (!contentEl || messageEl.querySelector(".inline-editor")) return;
+
+  const original = contentEl.textContent || "";
+  contentEl.classList.add("hidden");
+
+  const editor = document.createElement("div");
+  editor.className = "inline-editor flex flex-col gap-2 w-full";
+
+  const textarea = document.createElement("textarea");
+  textarea.className = "w-full px-3 py-2 text-sm border border-dark/[0.08] rounded-lg bg-paper text-dark focus:outline-none focus:ring-2 focus:ring-coral/20 focus:border-coral resize-none";
+  textarea.value = original;
+  textarea.rows = Math.max(2, original.split("\n").length);
+
+  const btnRow = document.createElement("div");
+  btnRow.className = "flex items-center gap-2 justify-end";
+
+  const cancelBtn = document.createElement("button");
+  cancelBtn.className = "px-3 py-1 text-xs text-muted hover:text-dark rounded-lg hover:bg-subtle transition-colors";
+  cancelBtn.textContent = "Cancel";
+  cancelBtn.addEventListener("click", function() {
+    editor.remove();
+    contentEl.classList.remove("hidden");
+  });
+
+  const saveBtn = document.createElement("button");
+  saveBtn.className = "px-3 py-1 text-xs font-medium bg-coral text-white rounded-lg hover:bg-coral/90 transition-colors";
+  saveBtn.textContent = "Save";
+  saveBtn.addEventListener("click", function() {
+    const newContent = textarea.value.trim();
+    if (!newContent) return;
+    saveMessageEdit(messageEl, newContent).then(function() {
+      contentEl.textContent = newContent;
+      contentEl.classList.remove("hidden");
+      editor.remove();
+      /* Show the edit history button */
+      const histBtn = messageEl.closest(".group")?.querySelector(".edit-history-btn");
+      if (histBtn) histBtn.classList.remove("hidden");
+    });
+  });
+
+  const replayBtn = document.createElement("button");
+  replayBtn.className = "px-3 py-1 text-xs font-medium bg-zen-blue text-white rounded-lg hover:bg-zen-blue/90 transition-colors";
+  replayBtn.textContent = "Save & Replay";
+  replayBtn.addEventListener("click", function() {
+    const newContent = textarea.value.trim();
+    if (!newContent) return;
+    saveMessageEdit(messageEl, newContent).then(function() {
+      contentEl.textContent = newContent;
+      contentEl.classList.remove("hidden");
+      editor.remove();
+      replayFromMessage(messageEl);
+    });
+  });
+
+  btnRow.appendChild(cancelBtn);
+  btnRow.appendChild(saveBtn);
+  btnRow.appendChild(replayBtn);
+  editor.appendChild(textarea);
+  editor.appendChild(btnRow);
+
+  contentEl.parentElement!.insertBefore(editor, contentEl.nextSibling);
+  textarea.focus();
+  textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+}
+
+/* ---- Save edit via API ---- */
+async function saveMessageEdit(messageEl: HTMLElement, newContent: string) {
+  const msgId = messageEl.dataset.messageId;
+  if (!msgId || !currentConversationId) return;
+
+  const resp = await fetch(
+    "/api/conversations/" + currentConversationId + "/messages/" + msgId,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: newContent }),
+    }
+  );
+  if (!resp.ok) {
+    appendError("Failed to save edit");
+  }
+}
+
+/* ---- Show edit history tooltip ---- */
+async function showEditHistory(messageEl: HTMLElement) {
+  const msgId = messageEl.dataset.messageId;
+  if (!msgId || !currentConversationId) return;
+
+  const resp = await fetch(
+    "/api/conversations/" + currentConversationId + "/messages/" + msgId + "/edits"
+  );
+  if (!resp.ok) return;
+  const edits: Array<{ original_content: string; edited_at: string }> = await resp.json();
+  if (edits.length === 0) {
+    appendError("No edit history");
+    return;
+  }
+
+  /* Show a simple tooltip with past versions */
+  const existing = messageEl.querySelector(".edit-history-tooltip");
+  if (existing) { existing.remove(); return; }
+
+  const tooltip = document.createElement("div");
+  tooltip.className = "edit-history-tooltip absolute top-full left-0 mt-1 w-72 max-h-48 overflow-y-auto bg-paper border border-dark/[0.08] rounded-lg shadow-lg z-20 p-3";
+  tooltip.innerHTML = '<div class="text-xs font-medium text-dark mb-2">Edit History</div>';
+  edits.forEach(function(e) {
+    const row = document.createElement("div");
+    row.className = "text-xs text-muted mb-2 pb-2 border-b border-dark/[0.04] last:border-0 last:mb-0 last:pb-0";
+    row.innerHTML = '<div class="text-[10px] text-muted/60 mb-0.5">' + e.edited_at + '</div><div class="whitespace-pre-wrap break-words">' + escapeHtml(e.original_content) + '</div>';
+    tooltip.appendChild(row);
+  });
+
+  /* Close on click outside */
+  function close(ev: MouseEvent) {
+    if (!tooltip.contains(ev.target as Node)) {
+      tooltip.remove();
+      document.removeEventListener("click", close);
+    }
+  }
+  setTimeout(function() { document.addEventListener("click", close); }, 0);
+
+  messageEl.style.position = "relative";
+  messageEl.appendChild(tooltip);
+}
+
+/* ---- Delete message via API ---- */
+async function deleteMessage(messageEl: HTMLElement) {
+  const msgId = messageEl.dataset.messageId;
+  if (!msgId || !currentConversationId) return;
+
+  if (!confirm("Delete this message?")) return;
+
+  const resp = await fetch(
+    "/api/conversations/" + currentConversationId + "/messages/" + msgId,
+    { method: "DELETE" }
+  );
+  if (!resp.ok) {
+    appendError("Failed to delete message");
+    return;
+  }
+
+  /* Remove from DOM — find the row (flex justify-start/end) */
+  const row = messageEl.closest(".flex.justify-start, .flex.justify-end");
+  if (row) row.remove();
+}
+
+/* ---- Replay from here ---- */
+async function replayFromMessage(messageEl: HTMLElement) {
+  const msgId = messageEl.dataset.messageId;
+  if (!msgId || !currentConversationId || !ws || ws.readyState !== WebSocket.OPEN) return;
+
+  const contentEl = messageEl.querySelector(".msg-content") as HTMLElement | null;
+  const messageText = contentEl?.textContent || "";
+  if (!messageText) return;
+
+  /* Call replay API — truncates messages after this one */
+  const resp = await fetch(
+    "/api/conversations/" + currentConversationId + "/messages/" + msgId + "/replay",
+    { method: "POST" }
+  );
+  if (!resp.ok) {
+    appendError("Failed to replay");
+    return;
+  }
+
+  /* Clear chat and reconnect to reload truncated conversation, then re-send */
+  const agentId = currentAgentId;
+  const convId = currentConversationId;
+  if (!agentId) return;
+
+  /* Clear UI */
+  const children = Array.from(messagesEl.children);
+  children.forEach(function(c) {
+    if ((c as HTMLElement).id !== "empty-state") messagesEl.removeChild(c);
+  });
+  currentStreamBubble = null;
+  streamedContent = "";
+  clearTraceEntries();
+
+  /* Reconnect and reload conversation, then auto-send the message for replay */
+  connectWebSocket(agentId, convId, messageText);
+}
 
 /* ---- Trace panel ---- */
 function toggleTracePanel() {
@@ -1525,7 +1782,7 @@ injectInput.addEventListener("keydown", function(e) {
 });
 
 /* ---- WebSocket management ---- */
-function connectWebSocket(agentId: string, conversationId?: string) {
+function connectWebSocket(agentId: string, conversationId?: string, replayText?: string) {
   if (ws) {
     ws.close();
     ws = null;
@@ -1549,6 +1806,10 @@ function connectWebSocket(agentId: string, conversationId?: string) {
     // Load existing conversation if specified
     if (conversationId && ws) {
       ws.send(JSON.stringify({ type: "load_conversation", conversation_id: conversationId }));
+      /* If replaying, auto-send the message after conversation loads */
+      if (replayText) {
+        pendingReplayText = replayText;
+      }
     }
   };
 
@@ -1607,6 +1868,38 @@ function connectWebSocket(agentId: string, conversationId?: string) {
     } else if (data.type === "conversation_loaded") {
       currentConversationId = data.conversation_id;
       restoreMessages(data.messages);
+      /* Auto-send replay text if pending */
+      if (pendingReplayText && ws && ws.readyState === WebSocket.OPEN) {
+        const text = pendingReplayText;
+        pendingReplayText = null;
+        lastUserQuery = text;
+        addUserMessage(text);
+        ws.send(JSON.stringify({ content: text }));
+        isStreaming = true;
+        messageInput.disabled = true;
+        sendBtn.disabled = true;
+        setAgentStatus("running");
+        userScrolledUp = false;
+        startAgentMessage();
+      }
+    } else if (data.type === "message_saved") {
+      /* Assign server-generated message ID to the most recent DOM element */
+      if (data.role === "user" && pendingUserMsgId === null) {
+        pendingUserMsgId = data.message_id;
+        const rows = messagesEl.querySelectorAll("[data-role='user']");
+        const last = rows[rows.length - 1] as HTMLElement | undefined;
+        if (last && !last.dataset.messageId) {
+          last.dataset.messageId = data.message_id;
+          /* Show edit history button if edits exist */
+        }
+      } else if (data.role === "assistant") {
+        pendingAssistantMsgId = data.message_id;
+        const rows = messagesEl.querySelectorAll("[data-role='assistant']");
+        const last = rows[rows.length - 1] as HTMLElement | undefined;
+        if (last && !last.dataset.messageId) {
+          last.dataset.messageId = data.message_id;
+        }
+      }
     } else if (data.type === "context_state") {
       /* Context state snapshot from agent runtime */
       if (data.tree) {
@@ -1652,59 +1945,42 @@ function showStatus(msg: string) {
   connectionStatus.classList.remove("hidden");
 }
 
-/* ---- Copy button helper ---- */
-function createCopyButton(getText: () => string): HTMLButtonElement {
-  const btn = document.createElement("button");
-  btn.className = "copy-msg-btn absolute top-2 right-2 p-1 rounded bg-subtle/80 text-muted hover:text-dark opacity-0 group-hover:opacity-100 transition-opacity";
-  btn.title = "Copy message";
-  btn.innerHTML = COPY_ICON;
-  btn.addEventListener("click", function() {
-    navigator.clipboard.writeText(getText()).then(function() {
-      btn.innerHTML = CHECK_ICON;
-      btn.classList.add("text-zen-green");
-      setTimeout(function() {
-        btn.innerHTML = COPY_ICON;
-        btn.classList.remove("text-zen-green");
-      }, 1500);
-    });
-  });
-  return btn;
-}
-
 /* ---- Restore saved messages ---- */
-function restoreMessages(messages: Array<{ role: string; content: string }>) {
+function restoreMessages(messages: Array<{ id?: string; role: string; content: string }>) {
   let prevUserQuery = "";
   messages.forEach(function(m) {
     if (m.role === "user") {
       prevUserQuery = m.content;
-      addUserMessage(m.content);
+      addUserMessage(m.content, m.id);
     } else if (m.role === "assistant") {
-      addRestoredAgentMessage(m.content, prevUserQuery);
+      addRestoredAgentMessage(m.content, prevUserQuery, m.id);
     }
     // Skip system messages — they're not displayed
   });
 }
 
-function addRestoredAgentMessage(text: string, query?: string) {
+function addRestoredAgentMessage(text: string, query?: string, messageId?: string) {
   hideEmptyState();
   const row = document.createElement("div");
   row.className = "flex justify-start";
 
   const wrapper = document.createElement("div");
   wrapper.className = "max-w-[75%] sm:max-w-[60%] flex gap-2 relative group";
+  wrapper.dataset.role = "assistant";
+  if (messageId) wrapper.dataset.messageId = messageId;
 
   const avatar = document.createElement("div");
   avatar.className = "flex-shrink-0 w-7 h-7 rounded-full bg-coral/10 text-coral flex items-center justify-center mt-1";
   avatar.innerHTML = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/><line x1="8" y1="16" x2="8" y2="16"/><line x1="16" y1="16" x2="16" y2="16"/></svg>';
 
   const bubble = document.createElement("div");
-  bubble.className = "px-4 py-2.5 rounded-2xl rounded-bl-sm bg-paper border border-dark/[0.06] text-dark text-sm break-words chat-prose min-w-0";
+  bubble.className = "msg-content px-4 py-2.5 rounded-2xl rounded-bl-sm bg-paper border border-dark/[0.06] text-dark text-sm break-words chat-prose min-w-0";
   bubble.innerHTML = renderMarkdown(text);
 
-  const copyBtn = createCopyButton(() => text);
+  const actions = createMessageActions(wrapper, "assistant", () => text);
   wrapper.appendChild(avatar);
   wrapper.appendChild(bubble);
-  wrapper.appendChild(copyBtn);
+  wrapper.appendChild(actions);
 
   const annotBtns = createAnnotationButtons(query || "", text);
   wrapper.appendChild(annotBtns);
@@ -1727,21 +2003,23 @@ function renderMarkdown(text: string): string {
   return marked.parse(text) as string;
 }
 
-function addUserMessage(text: string) {
+function addUserMessage(text: string, messageId?: string) {
   hideEmptyState();
   const row = document.createElement("div");
   row.className = "flex justify-end";
 
   const bubble = document.createElement("div");
   bubble.className = "max-w-[75%] sm:max-w-[60%] relative group";
+  bubble.dataset.role = "user";
+  if (messageId) bubble.dataset.messageId = messageId;
 
   const inner = document.createElement("div");
-  inner.className = "px-4 py-2.5 rounded-2xl rounded-br-sm bg-subtle text-dark text-sm whitespace-pre-wrap break-words";
+  inner.className = "msg-content px-4 py-2.5 rounded-2xl rounded-br-sm bg-subtle text-dark text-sm whitespace-pre-wrap break-words";
   inner.textContent = text;
 
-  const copyBtn = createCopyButton(() => text);
+  const actions = createMessageActions(bubble, "user", () => inner.textContent || "");
   bubble.appendChild(inner);
-  bubble.appendChild(copyBtn);
+  bubble.appendChild(actions);
   row.appendChild(bubble);
   messagesEl.appendChild(row);
   scrollToBottom();
@@ -1904,13 +2182,15 @@ function finishStream(data: { usage?: { prompt_tokens?: number; completion_token
     // Render markdown now that streaming is complete
     const rawText = streamedContent;
     currentStreamBubble.textContent = "";
-    currentStreamBubble.className = "px-4 py-2.5 rounded-2xl rounded-bl-sm bg-paper border border-dark/[0.06] text-dark text-sm break-words chat-prose min-w-0";
+    currentStreamBubble.className = "msg-content px-4 py-2.5 rounded-2xl rounded-bl-sm bg-paper border border-dark/[0.06] text-dark text-sm break-words chat-prose min-w-0";
     currentStreamBubble.innerHTML = renderMarkdown(rawText);
 
-    // Add copy button to the wrapper (which is the parent of bubble)
+    // Add data attributes and hover menu to wrapper
     const wrapper = currentStreamBubble.parentElement!;
-    const copyBtn = createCopyButton(() => rawText);
-    wrapper.appendChild(copyBtn);
+    wrapper.dataset.role = "assistant";
+
+    const actions = createMessageActions(wrapper, "assistant", () => rawText);
+    wrapper.appendChild(actions);
 
     // Add annotation buttons (thumbs up/down + annotate)
     const annotBtns = createAnnotationButtons(lastUserQuery, rawText);
