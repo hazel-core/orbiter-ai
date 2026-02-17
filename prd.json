@@ -434,7 +434,7 @@
         "Includes Docker and docker-compose examples for worker deployment"
       ],
       "priority": 26,
-      "passes": false,
+      "passes": true,
       "notes": "Create docs/distributed/workers.md. Include docker-compose.yml snippet with Redis + workers. Document all CLI options and env vars."
     },
     {
