@@ -146,6 +146,55 @@ async def me(
     return user
 
 
+class PasswordChangeRequest(BaseModel):
+    current_password: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=8)
+
+
+class MessageResponse(BaseModel):
+    message: str
+
+
+@router.put("/password", response_model=MessageResponse)
+async def change_password(
+    body: PasswordChangeRequest,
+    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+    orbiter_session: str | None = Cookie(None),
+) -> dict[str, str]:
+    """Change the current user's password."""
+    user_id = user["id"]
+
+    # Fetch current password hash.
+    async with get_db() as db:
+        cursor = await db.execute(
+            "SELECT password_hash FROM users WHERE id = ?",
+            (user_id,),
+        )
+        row = await cursor.fetchone()
+
+    if row is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if not _verify_password(body.current_password, row["password_hash"]):
+        raise HTTPException(status_code=401, detail="Current password is incorrect")
+
+    # Hash and store new password, then invalidate other sessions.
+    new_hash = _hash_password(body.new_password)
+    async with get_db() as db:
+        await db.execute(
+            "UPDATE users SET password_hash = ? WHERE id = ?",
+            (new_hash, user_id),
+        )
+        # Invalidate all sessions except the current one.
+        await db.execute(
+            "DELETE FROM sessions WHERE user_id = ? AND id != ?",
+            (user_id, orbiter_session),
+        )
+        await db.commit()
+
+    return {"message": "Password updated"}
+
+
 class CsrfResponse(BaseModel):
     token: str
 
