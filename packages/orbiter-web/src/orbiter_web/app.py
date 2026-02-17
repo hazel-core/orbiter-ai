@@ -33,6 +33,7 @@ from orbiter_web.routes.knowledge_bases import router as knowledge_bases_router
 from orbiter_web.routes.logs import router as logs_router
 from orbiter_web.routes.metrics import router as metrics_router
 from orbiter_web.routes.models import router as models_router
+from orbiter_web.routes.notifications import router as notifications_router
 from orbiter_web.routes.neuron_pipelines import router as neuron_pipelines_router
 from orbiter_web.routes.plans import router as plans_router
 from orbiter_web.routes.playground import router as playground_router
@@ -131,6 +132,7 @@ app.include_router(logs_router)
 app.include_router(auth_router)
 app.include_router(metrics_router)
 app.include_router(models_router)
+app.include_router(notifications_router)
 app.include_router(playground_router)
 app.include_router(plugins_router)
 app.include_router(projects_router)
