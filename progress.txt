@@ -2966,3 +2966,14 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - `/api/health` stays unversioned as infrastructure endpoint
   - Ollama URLs like `/api/generate` and `/api/chat` are external API calls, not our routes — don't touch them
 ---
+
+## 2026-02-17 - US-188
+- What was implemented: User profile endpoints (GET and PUT /api/v1/auth/profile)
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/routes/auth.py (added profile endpoints)
+- **Learnings for future iterations:**
+  - Auth routes already have GET /me which returns the same data — profile endpoint is a parallel path for settings UI
+  - Email uniqueness check uses `AND id != ?` to exclude the current user from the check
+  - Session is deliberately preserved on email change (no session invalidation)
+  - audit_log() already exists in services/audit.py — use it for all security-sensitive actions
+---
