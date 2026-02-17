@@ -66,36 +66,41 @@ async def list_runs(
     user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
 ) -> dict[str, Any]:
     """Return paginated runs with optional filters."""
-    where_clauses = ["user_id = ?"]
+    where_clauses = ["r.user_id = ?"]
     params: list[Any] = [user["id"]]
 
     if agent_id:
-        where_clauses.append("agent_id = ?")
+        where_clauses.append("r.agent_id = ?")
         params.append(agent_id)
     if status:
-        where_clauses.append("status = ?")
+        where_clauses.append("r.status = ?")
         params.append(status)
     if start_date:
-        where_clauses.append("created_at >= ?")
+        where_clauses.append("r.created_at >= ?")
         params.append(start_date)
     if end_date:
-        where_clauses.append("created_at <= ?")
+        where_clauses.append("r.created_at <= ?")
         params.append(end_date)
     if min_cost is not None:
-        where_clauses.append("total_cost >= ?")
+        where_clauses.append("r.total_cost >= ?")
         params.append(min_cost)
 
     where_sql = " AND ".join(where_clauses)
 
     async with get_db() as db:
         cursor = await db.execute(
-            f"SELECT COUNT(*) as cnt FROM runs WHERE {where_sql}",
+            f"""SELECT COUNT(*) as cnt FROM runs r WHERE {where_sql}""",
             params,
         )
         total = (await cursor.fetchone())["cnt"]
 
         cursor = await db.execute(
-            f"SELECT * FROM runs WHERE {where_sql} ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            f"""SELECT r.*, a.name as agent_name, w.name as workflow_name
+            FROM runs r
+            LEFT JOIN agents a ON r.agent_id = a.id
+            LEFT JOIN workflows w ON r.workflow_id = w.id
+            WHERE {where_sql}
+            ORDER BY r.created_at DESC LIMIT ? OFFSET ?""",
             [*params, limit, offset],
         )
         rows = await cursor.fetchall()
@@ -121,7 +126,11 @@ async def get_run(
     """Return full run detail including steps."""
     async with get_db() as db:
         cursor = await db.execute(
-            "SELECT * FROM runs WHERE id = ? AND user_id = ?",
+            """SELECT r.*, a.name as agent_name, w.name as workflow_name
+            FROM runs r
+            LEFT JOIN agents a ON r.agent_id = a.id
+            LEFT JOIN workflows w ON r.workflow_id = w.id
+            WHERE r.id = ? AND r.user_id = ?""",
             (run_id, user["id"]),
         )
         row = await cursor.fetchone()

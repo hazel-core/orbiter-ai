@@ -1,0 +1,361 @@
+---
+import PageLayout from "../../../layouts/PageLayout.astro";
+
+const { id } = Astro.params;
+
+const breadcrumbs = [
+  { label: "Monitoring", href: "/monitoring" },
+  { label: "Runs", href: "/monitoring/runs" },
+  { label: "Run Detail" },
+];
+
+/* Icons */
+const backIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>';
+const chevronDown = '<svg class="h-4 w-4 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
+const cpuIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/></svg>';
+const wrenchIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>';
+const arrowRightIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>';
+const liveIcon = '<svg class="h-3 w-3" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="6"/></svg>';
+---
+
+<PageLayout
+  title="Run Detail"
+  description="View execution trace detail"
+  activeSection="monitoring"
+  breadcrumbs={breadcrumbs}
+>
+  <div class="p-6 max-w-5xl mx-auto">
+    <!-- Back link -->
+    <a href="/monitoring/runs" class="inline-flex items-center gap-1.5 text-sm text-muted hover:text-dark transition-colors mb-6">
+      <span set:html={backIcon} />
+      Back to Runs
+    </a>
+
+    <!-- Run summary header -->
+    <div id="run-header" class="bg-white rounded-xl border border-dark/[0.06] shadow-sm p-6 mb-6">
+      <div class="flex items-start justify-between gap-4 mb-4">
+        <div>
+          <div class="flex items-center gap-3">
+            <h1 id="run-name" class="text-xl font-semibold text-dark">Loading...</h1>
+            <span id="run-status-badge"></span>
+            <span id="live-indicator" class="hidden items-center gap-1.5 text-xs text-red-500 font-medium">
+              <span set:html={liveIcon} class="animate-pulse" />
+              LIVE
+            </span>
+          </div>
+          <p id="run-id-label" class="text-xs text-muted mt-1 font-mono"></p>
+        </div>
+        <span id="run-type-badge" class="text-xs font-medium text-muted bg-dark/[0.05] px-2.5 py-1 rounded-full"></span>
+      </div>
+
+      <!-- Summary stats -->
+      <div class="grid grid-cols-2 sm:grid-cols-5 gap-4">
+        <div>
+          <p class="text-xs text-muted font-medium uppercase tracking-wide mb-1">Steps</p>
+          <p id="stat-steps" class="text-lg font-semibold text-dark tabular-nums">—</p>
+        </div>
+        <div>
+          <p class="text-xs text-muted font-medium uppercase tracking-wide mb-1">Tokens</p>
+          <p id="stat-tokens" class="text-lg font-semibold text-dark tabular-nums">—</p>
+        </div>
+        <div>
+          <p class="text-xs text-muted font-medium uppercase tracking-wide mb-1">Cost</p>
+          <p id="stat-cost" class="text-lg font-semibold text-dark tabular-nums">—</p>
+        </div>
+        <div>
+          <p class="text-xs text-muted font-medium uppercase tracking-wide mb-1">Duration</p>
+          <p id="stat-duration" class="text-lg font-semibold text-dark tabular-nums">—</p>
+        </div>
+        <div>
+          <p class="text-xs text-muted font-medium uppercase tracking-wide mb-1">Finish Reason</p>
+          <p id="stat-finish" class="text-lg font-semibold text-dark">—</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Steps timeline -->
+    <div class="bg-white rounded-xl border border-dark/[0.06] shadow-sm overflow-hidden">
+      <div class="px-6 py-4 border-b border-dark/[0.06] flex items-center justify-between">
+        <h2 class="text-sm font-semibold text-dark">Execution Timeline</h2>
+        <button id="expand-all-btn" class="text-xs text-muted hover:text-dark transition-colors cursor-pointer">Expand All</button>
+      </div>
+      <div id="steps-container" class="divide-y divide-dark/[0.04]">
+        <div class="px-6 py-12 text-center text-muted text-sm">Loading steps...</div>
+      </div>
+    </div>
+  </div>
+</PageLayout>
+
+<script is:inline define:vars={{ id }}>
+(function () {
+  var runId = id;
+  var ws = null;
+  var allExpanded = false;
+
+  // DOM refs
+  var runName = document.getElementById("run-name");
+  var runStatusBadge = document.getElementById("run-status-badge");
+  var runIdLabel = document.getElementById("run-id-label");
+  var runTypeBadge = document.getElementById("run-type-badge");
+  var liveIndicator = document.getElementById("live-indicator");
+  var statSteps = document.getElementById("stat-steps");
+  var statTokens = document.getElementById("stat-tokens");
+  var statCost = document.getElementById("stat-cost");
+  var statDuration = document.getElementById("stat-duration");
+  var statFinish = document.getElementById("stat-finish");
+  var stepsContainer = document.getElementById("steps-container");
+  var expandAllBtn = document.getElementById("expand-all-btn");
+
+  // Helpers
+  function fmtNumber(n) {
+    if (n == null) return "—";
+    if (n >= 1000000) return (n / 1000000).toFixed(1) + "M";
+    if (n >= 1000) return (n / 1000).toFixed(1) + "K";
+    return n.toLocaleString();
+  }
+
+  function fmtCost(n) {
+    if (n == null || n === 0) return "—";
+    return "$" + n.toFixed(4);
+  }
+
+  function fmtDuration(start, end) {
+    if (!start) return "—";
+    var s = new Date(start + "Z");
+    var e = end ? new Date(end + "Z") : new Date();
+    var ms = e - s;
+    if (ms < 1000) return ms + "ms";
+    if (ms < 60000) return (ms / 1000).toFixed(1) + "s";
+    return Math.floor(ms / 60000) + "m " + Math.round((ms % 60000) / 1000) + "s";
+  }
+
+  function escapeHtml(str) {
+    if (!str) return "";
+    var div = document.createElement("div");
+    div.textContent = typeof str === "string" ? str : JSON.stringify(str, null, 2);
+    return div.innerHTML;
+  }
+
+  function statusBadge(status) {
+    var colors = {
+      pending: "bg-yellow-100 text-yellow-800 border-yellow-200",
+      running: "bg-blue-100 text-blue-800 border-blue-200",
+      completed: "bg-green-100 text-green-800 border-green-200",
+      failed: "bg-red-100 text-red-800 border-red-200",
+      cancelled: "bg-gray-100 text-gray-600 border-gray-200",
+    };
+    var dots = {
+      running: '<span class="inline-block w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse mr-1.5"></span>',
+    };
+    var cls = colors[status] || colors.pending;
+    var dot = dots[status] || "";
+    return '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ' + cls + '">' + dot + status + '</span>';
+  }
+
+  function stepTypeIcon(type) {
+    var icons = {
+      llm: '<span class="w-7 h-7 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold">LLM</span>',
+      tool: '<span class="w-7 h-7 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center"><svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></span>',
+      handoff: '<span class="w-7 h-7 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center"><svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></span>',
+    };
+    return icons[type] || '<span class="w-7 h-7 rounded-lg bg-gray-100 text-gray-600 flex items-center justify-center text-xs font-bold">?</span>';
+  }
+
+  // Render run data
+  function renderRun(run) {
+    var name = run.agent_name || run.workflow_name || "Run";
+    runName.textContent = name;
+    runIdLabel.textContent = run.id;
+    runStatusBadge.innerHTML = statusBadge(run.status);
+    runTypeBadge.textContent = run.agent_id ? "Agent" : run.workflow_id ? "Workflow" : "";
+
+    var steps = run.steps_json || [];
+    statSteps.textContent = steps.length;
+    statTokens.textContent = fmtNumber(run.total_tokens);
+    statCost.textContent = fmtCost(run.total_cost);
+    statDuration.textContent = fmtDuration(run.start_time, run.end_time);
+    statFinish.textContent = run.finish_reason || "—";
+
+    renderSteps(steps);
+
+    // Show live indicator and connect WS for running runs
+    if (run.status === "running" || run.status === "pending") {
+      liveIndicator.classList.remove("hidden");
+      liveIndicator.classList.add("inline-flex");
+      connectWebSocket();
+    }
+  }
+
+  function renderSteps(steps) {
+    if (!steps.length) {
+      stepsContainer.innerHTML = '<div class="px-6 py-12 text-center text-muted text-sm">No steps recorded</div>';
+      return;
+    }
+
+    stepsContainer.innerHTML = steps.map(function (step, i) {
+      var stepNum = i + 1;
+      var type = step.type || "unknown";
+      var duration = step.duration ? (step.duration < 1000 ? step.duration + "ms" : (step.duration / 1000).toFixed(1) + "s") : "—";
+      var tokens = step.tokens ? fmtNumber(step.tokens) : "—";
+      var hasError = !!step.error;
+
+      // Tool calls within a step
+      var toolCalls = step.tool_calls || [];
+      var toolCallsHtml = "";
+      if (toolCalls.length) {
+        toolCallsHtml = '<div class="mt-3 space-y-2">'
+          + '<p class="text-xs font-medium text-muted uppercase tracking-wide">Tool Calls</p>'
+          + toolCalls.map(function (tc) {
+            return '<div class="bg-amber-50 border border-amber-200/60 rounded-lg px-3 py-2">'
+              + '<div class="flex items-center gap-2 text-xs">'
+              + '<span class="font-mono font-medium text-amber-800">' + escapeHtml(tc.name || tc.function || "unknown") + '</span>'
+              + (tc.duration ? '<span class="text-muted">' + tc.duration + 'ms</span>' : '')
+              + '</div>'
+              + (tc.arguments ? '<pre class="mt-1 text-xs text-dark/70 overflow-x-auto whitespace-pre-wrap break-all max-h-32 overflow-y-auto">' + escapeHtml(typeof tc.arguments === "string" ? tc.arguments : JSON.stringify(tc.arguments, null, 2)) + '</pre>' : '')
+              + (tc.result ? '<pre class="mt-1 text-xs text-dark/70 overflow-x-auto whitespace-pre-wrap break-all max-h-32 overflow-y-auto border-t border-amber-200/40 pt-1">' + escapeHtml(typeof tc.result === "string" ? tc.result : JSON.stringify(tc.result, null, 2)) + '</pre>' : '')
+              + '</div>';
+          }).join("")
+          + '</div>';
+      }
+
+      // Input/output detail (collapsed by default)
+      var detailHtml = '<div class="step-detail hidden mt-3 space-y-3">';
+      if (step.input) {
+        detailHtml += '<div>'
+          + '<p class="text-xs font-medium text-muted uppercase tracking-wide mb-1">Input</p>'
+          + '<pre class="bg-dark/[0.03] rounded-lg p-3 text-xs text-dark overflow-x-auto whitespace-pre-wrap break-all max-h-48 overflow-y-auto">' + escapeHtml(step.input) + '</pre>'
+          + '</div>';
+      }
+      if (step.output) {
+        detailHtml += '<div>'
+          + '<p class="text-xs font-medium text-muted uppercase tracking-wide mb-1">Output</p>'
+          + '<pre class="bg-dark/[0.03] rounded-lg p-3 text-xs text-dark overflow-x-auto whitespace-pre-wrap break-all max-h-48 overflow-y-auto">' + escapeHtml(step.output) + '</pre>'
+          + '</div>';
+      }
+      if (step.error) {
+        detailHtml += '<div>'
+          + '<p class="text-xs font-medium text-red-600 uppercase tracking-wide mb-1">Error</p>'
+          + '<pre class="bg-red-50 border border-red-200/60 rounded-lg p-3 text-xs text-red-800 overflow-x-auto whitespace-pre-wrap break-all max-h-48 overflow-y-auto">' + escapeHtml(step.error) + '</pre>'
+          + '</div>';
+      }
+      detailHtml += toolCallsHtml;
+      detailHtml += '</div>';
+
+      return '<div class="step-row px-6 py-4 hover:bg-dark/[0.01] cursor-pointer transition-colors" data-step="' + i + '">'
+        + '<div class="flex items-center gap-4">'
+        // Step number + type icon
+        + '<div class="flex items-center gap-3 min-w-0">'
+        + '<span class="text-xs text-muted tabular-nums w-6 text-right shrink-0">#' + stepNum + '</span>'
+        + stepTypeIcon(type)
+        + '<div class="min-w-0">'
+        + '<span class="text-sm font-medium text-dark capitalize">' + type + '</span>'
+        + (step.model ? '<span class="text-xs text-muted ml-2">' + escapeHtml(step.model) + '</span>' : '')
+        + (step.name ? '<span class="text-xs text-muted ml-2">— ' + escapeHtml(step.name) + '</span>' : '')
+        + '</div>'
+        + '</div>'
+        // Stats
+        + '<div class="flex items-center gap-6 ml-auto shrink-0">'
+        + '<span class="text-xs tabular-nums text-dark w-16 text-right">' + tokens + ' tok</span>'
+        + '<span class="text-xs tabular-nums text-muted w-16 text-right">' + duration + '</span>'
+        + (hasError ? '<span class="w-2 h-2 rounded-full bg-red-500 shrink-0"></span>' : '<span class="w-2 shrink-0"></span>')
+        + '<span class="step-chevron text-muted transition-transform">'
+        + '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>'
+        + '</span>'
+        + '</div>'
+        + '</div>'
+        + detailHtml
+        + '</div>';
+    }).join("");
+
+    // Toggle step details on click
+    stepsContainer.querySelectorAll(".step-row").forEach(function (row) {
+      row.addEventListener("click", function () {
+        var detail = row.querySelector(".step-detail");
+        var chevron = row.querySelector(".step-chevron");
+        if (detail) {
+          detail.classList.toggle("hidden");
+          if (chevron) chevron.classList.toggle("rotate-180");
+        }
+      });
+    });
+  }
+
+  // Expand/Collapse all
+  expandAllBtn.addEventListener("click", function () {
+    allExpanded = !allExpanded;
+    expandAllBtn.textContent = allExpanded ? "Collapse All" : "Expand All";
+    stepsContainer.querySelectorAll(".step-detail").forEach(function (d) {
+      if (allExpanded) {
+        d.classList.remove("hidden");
+      } else {
+        d.classList.add("hidden");
+      }
+    });
+    stepsContainer.querySelectorAll(".step-chevron").forEach(function (c) {
+      if (allExpanded) {
+        c.classList.add("rotate-180");
+      } else {
+        c.classList.remove("rotate-180");
+      }
+    });
+  });
+
+  // WebSocket for live streaming
+  function connectWebSocket() {
+    var proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+    var url = proto + "//" + window.location.host + "/api/runs/" + encodeURIComponent(runId) + "/stream";
+    ws = new WebSocket(url);
+
+    ws.onmessage = function (e) {
+      var event;
+      try { event = JSON.parse(e.data); } catch (_) { return; }
+
+      if (event.type === "run_completed") {
+        liveIndicator.classList.add("hidden");
+        liveIndicator.classList.remove("inline-flex");
+        runStatusBadge.innerHTML = statusBadge(event.status || "completed");
+        if (event.total_tokens) statTokens.textContent = fmtNumber(event.total_tokens);
+        if (event.total_cost) statCost.textContent = fmtCost(event.total_cost);
+        if (event.finish_reason) statFinish.textContent = event.finish_reason;
+        // Reload full data to get final steps
+        loadRun();
+      } else if (event.type === "step_completed" || event.type === "step_started") {
+        // Reload to pick up new steps
+        loadRun();
+      }
+    };
+
+    ws.onclose = function () {
+      liveIndicator.classList.add("hidden");
+      liveIndicator.classList.remove("inline-flex");
+    };
+  }
+
+  // Load run data
+  async function loadRun() {
+    try {
+      var res = await fetch("/api/runs/" + encodeURIComponent(runId));
+      if (!res.ok) {
+        if (res.status === 404) {
+          stepsContainer.innerHTML = '<div class="px-6 py-12 text-center text-muted text-sm">Run not found</div>';
+          runName.textContent = "Not Found";
+          return;
+        }
+        throw new Error("API error " + res.status);
+      }
+      var run = await res.json();
+      renderRun(run);
+    } catch (err) {
+      stepsContainer.innerHTML = '<div class="px-6 py-12 text-center text-red-500 text-sm">Failed to load run: ' + escapeHtml(err.message) + '</div>';
+    }
+  }
+
+  // Cleanup on page leave
+  window.addEventListener("beforeunload", function () {
+    if (ws) ws.close();
+  });
+
+  // Init
+  loadRun();
+})();
+</script>
