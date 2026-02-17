@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from orbiter_web.database import get_db
+from orbiter_web.routes.costs import check_budget
 
 _log = logging.getLogger(__name__)
 
@@ -550,6 +551,23 @@ async def execute_workflow(
         if event_callback is not None:
             with contextlib.suppress(Exception):
                 await event_callback(event)
+
+    # Budget check — warn at threshold, pause at 100%.
+    budget_result = await check_budget(user_id)
+    if budget_result is not None:
+        if budget_result.status == "exceeded":
+            error = f"Budget exceeded ({budget_result.percent_used:.1f}% of ${budget_result.budget_amount:.2f})"
+            await _update_run_status(run_id, "failed", error=error)
+            await emit({"type": "execution_completed", "status": "failed", "error": error})
+            _unregister_run(run_id)
+            return "failed"
+        if budget_result.status == "warning":
+            await emit({
+                "type": "budget_warning",
+                "percent_used": budget_result.percent_used,
+                "budget_amount": budget_result.budget_amount,
+                "spent": budget_result.spent,
+            })
 
     try:
         layers = topological_sort(nodes, edges)
