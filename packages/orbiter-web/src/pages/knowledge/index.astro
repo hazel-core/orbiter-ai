@@ -3,6 +3,7 @@ import PageLayout from "../../layouts/PageLayout.astro";
 import Button from "../../components/Button.astro";
 import Modal from "../../components/Modal.astro";
 import Input from "../../components/Input.astro";
+import HelpTooltip from "../../components/HelpTooltip.astro";
 
 const breadcrumbs = [{ label: "Knowledge Base" }];
 
@@ -21,7 +22,7 @@ const bookIcon = '<svg class="h-12 w-12 text-muted/40" viewBox="0 0 24 24" fill=
     <!-- Header -->
     <div class="flex items-center justify-between mb-6">
       <div>
-        <h1 class="text-2xl font-semibold text-dark">Knowledge Base</h1>
+        <h1 class="text-2xl font-semibold text-dark inline-flex items-center gap-2">Knowledge Base <HelpTooltip text="Upload documents and give agents access via RAG retrieval." href="/docs/knowledge-base" /></h1>
         <p class="text-sm text-muted mt-1">Create and manage knowledge bases for retrieval-augmented generation</p>
       </div>
       <Button variant="primary" id="create-kb-btn">

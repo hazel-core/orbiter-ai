@@ -2,6 +2,7 @@
 import PageLayout from "../../../layouts/PageLayout.astro";
 import Button from "../../../components/Button.astro";
 import Modal from "../../../components/Modal.astro";
+import HelpTooltip from "../../../components/HelpTooltip.astro";
 
 const { id } = Astro.params;
 
@@ -277,7 +278,7 @@ const historyIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke
             <!-- Editor column -->
             <div class="flex-1 flex flex-col gap-1.5 min-w-0">
               <div class="flex items-center justify-between">
-                <label for="agent-instructions" class="text-sm font-medium text-dark">Instructions (System Prompt)</label>
+                <label for="agent-instructions" class="text-sm font-medium text-dark inline-flex items-center gap-1.5">Instructions (System Prompt) <HelpTooltip text="Define the agent's behavior, personality, and constraints. This prompt is sent with every request." href="/docs/agents" /></label>
                 <div class="flex items-center gap-2">
                   <button type="button" id="save-template-btn" class="flex items-center gap-1 rounded-md bg-subtle px-2 py-1 text-[11px] font-medium text-muted hover:bg-dark/[0.08] hover:text-dark transition-colors cursor-pointer" title="Save as template">
                     <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
@@ -438,7 +439,7 @@ const historyIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke
         <div class="flex flex-col gap-5">
           <!-- Provider selector -->
           <div class="flex flex-col gap-1.5">
-            <label for="model-provider" class="text-sm font-medium text-dark">Provider</label>
+            <label for="model-provider" class="text-sm font-medium text-dark inline-flex items-center gap-1.5">Provider <HelpTooltip text="Configure providers in Settings. Each provider needs an API key." href="/docs/agents" /></label>
             <select
               id="model-provider"
               name="model_provider"
@@ -514,7 +515,7 @@ const historyIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke
         <div class="flex flex-col gap-5">
           <div class="flex items-center justify-between">
             <div>
-              <h3 class="text-sm font-medium text-dark">Assigned Tools</h3>
+              <h3 class="text-sm font-medium text-dark inline-flex items-center gap-1.5">Assigned Tools <HelpTooltip text="Tools let agents take actions like searching the web, running code, or calling APIs." href="/docs/tools" /></h3>
               <p class="text-xs text-muted mt-0.5">Tools this agent can use. Drag to reorder priority.</p>
             </div>
             <button

@@ -42,6 +42,7 @@ const navSections = [
   { id: "annotations", label: "Annotations", href: "/annotations", icon: "pen" },
   { id: "templates", label: "Templates", href: "/templates", icon: "template" },
   { id: "plugins", label: "Plugins", href: "/plugins", icon: "puzzle" },
+  { id: "docs", label: "Docs", href: "/docs", icon: "help" },
   { id: "settings", label: "Settings", href: "/settings", icon: "gear" },
 ];
 
@@ -66,6 +67,7 @@ const icons: Record<string, string> = {
   template: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>',
   puzzle: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19.439 7.85c-.049.322.059.648.289.878l1.568 1.568c.47.47.706 1.087.706 1.704s-.235 1.233-.706 1.704l-1.611 1.611a.98.98 0 0 1-.837.276c-.47-.07-.802-.48-.968-.925a2.501 2.501 0 1 0-3.214 3.214c.446.166.855.497.925.968a.979.979 0 0 1-.276.837l-1.61 1.61a2.404 2.404 0 0 1-1.705.707 2.402 2.402 0 0 1-1.704-.706l-1.568-1.568a1.026 1.026 0 0 0-.877-.29c-.493.074-.84.504-1.02.968a2.5 2.5 0 1 1-3.237-3.237c.464-.18.894-.527.967-1.02a1.026 1.026 0 0 0-.289-.877l-1.568-1.568A2.402 2.402 0 0 1 1.998 12c0-.617.236-1.234.706-1.704L4.315 8.685a.98.98 0 0 1 .837-.276c.47.07.802.48.968.925a2.501 2.501 0 1 0 3.214-3.214c-.446-.166-.855-.497-.925-.968a.979.979 0 0 1 .276-.837l1.61-1.61a2.404 2.404 0 0 1 1.705-.707c.618 0 1.234.236 1.704.706l1.568 1.568c.23.23.556.338.877.29.493-.074.84-.504 1.02-.968a2.5 2.5 0 1 1 3.237 3.237c-.464.18-.894.527-.967 1.02z"/></svg>',
   rocket: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 4 0 4 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-4 0-4"/></svg>',
+  help: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
   gear: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
 };
 
@@ -191,6 +193,15 @@ const bellIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="c
           >
             <span id="theme-icon-light" set:html={sunIcon} />
             <span id="theme-icon-dark" class="hidden" set:html={moonIcon} />
+          </button>
+
+          <!-- Help button (?) -->
+          <button
+            id="help-trigger"
+            class="flex items-center justify-center rounded-lg p-2 text-muted hover:bg-dark/5 hover:text-dark transition-colors cursor-pointer"
+            title="Help & Documentation"
+          >
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
           </button>
 
           <!-- Approvals notification bell -->
@@ -1368,6 +1379,352 @@ const bellIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="c
       setupWebSocket();
       // Poll unread count as fallback every 30s
       setInterval(fetchUnreadCount, 30000);
+    })();
+  </script>
+
+  <!-- Keyboard shortcuts reference panel (Cmd+/) -->
+  <dialog id="shortcuts-modal" class="backdrop:bg-dark/40 rounded-xl border border-dark/[0.08] bg-paper shadow-xl p-0 w-full max-w-md mt-[10vh]">
+    <div class="flex flex-col max-h-[70vh]">
+      <div class="flex items-center justify-between border-b border-dark/[0.08] px-5 py-3.5">
+        <h2 class="text-sm font-semibold text-dark">Keyboard Shortcuts</h2>
+        <button id="shortcuts-close" class="flex items-center justify-center rounded-lg p-1 text-muted hover:bg-dark/5 hover:text-dark transition-colors cursor-pointer">
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="overflow-y-auto p-5 space-y-5">
+        <!-- General -->
+        <div>
+          <h3 class="text-[11px] font-semibold text-muted uppercase tracking-wide mb-2">General</h3>
+          <div class="space-y-1.5">
+            <div class="flex items-center justify-between py-1">
+              <span class="text-sm text-dark">Search</span>
+              <kbd class="inline-flex items-center gap-0.5 rounded border border-dark/[0.08] bg-subtle/50 px-2 py-0.5 text-xs font-medium text-muted"><span class="text-xs">&#8984;</span>K</kbd>
+            </div>
+            <div class="flex items-center justify-between py-1">
+              <span class="text-sm text-dark">Toggle sidebar</span>
+              <kbd class="inline-flex items-center gap-0.5 rounded border border-dark/[0.08] bg-subtle/50 px-2 py-0.5 text-xs font-medium text-muted"><span class="text-xs">&#8984;</span>B</kbd>
+            </div>
+            <div class="flex items-center justify-between py-1">
+              <span class="text-sm text-dark">Keyboard shortcuts</span>
+              <kbd class="inline-flex items-center gap-0.5 rounded border border-dark/[0.08] bg-subtle/50 px-2 py-0.5 text-xs font-medium text-muted"><span class="text-xs">&#8984;</span>/</kbd>
+            </div>
+            <div class="flex items-center justify-between py-1">
+              <span class="text-sm text-dark">Toggle theme</span>
+              <kbd class="inline-flex items-center gap-0.5 rounded border border-dark/[0.08] bg-subtle/50 px-2 py-0.5 text-xs font-medium text-muted"><span class="text-xs">&#8984;</span>Shift+T</kbd>
+            </div>
+          </div>
+        </div>
+        <!-- Navigation -->
+        <div>
+          <h3 class="text-[11px] font-semibold text-muted uppercase tracking-wide mb-2">Navigation</h3>
+          <div class="space-y-1.5">
+            <div class="flex items-center justify-between py-1">
+              <span class="text-sm text-dark">Go to Projects</span>
+              <kbd class="inline-flex items-center gap-0.5 rounded border border-dark/[0.08] bg-subtle/50 px-2 py-0.5 text-xs font-medium text-muted">G then P</kbd>
+            </div>
+            <div class="flex items-center justify-between py-1">
+              <span class="text-sm text-dark">Go to Agents</span>
+              <kbd class="inline-flex items-center gap-0.5 rounded border border-dark/[0.08] bg-subtle/50 px-2 py-0.5 text-xs font-medium text-muted">G then A</kbd>
+            </div>
+            <div class="flex items-center justify-between py-1">
+              <span class="text-sm text-dark">Go to Workflows</span>
+              <kbd class="inline-flex items-center gap-0.5 rounded border border-dark/[0.08] bg-subtle/50 px-2 py-0.5 text-xs font-medium text-muted">G then W</kbd>
+            </div>
+            <div class="flex items-center justify-between py-1">
+              <span class="text-sm text-dark">Go to Playground</span>
+              <kbd class="inline-flex items-center gap-0.5 rounded border border-dark/[0.08] bg-subtle/50 px-2 py-0.5 text-xs font-medium text-muted">G then L</kbd>
+            </div>
+            <div class="flex items-center justify-between py-1">
+              <span class="text-sm text-dark">Go to Docs</span>
+              <kbd class="inline-flex items-center gap-0.5 rounded border border-dark/[0.08] bg-subtle/50 px-2 py-0.5 text-xs font-medium text-muted">G then D</kbd>
+            </div>
+          </div>
+        </div>
+        <!-- Workflow Canvas -->
+        <div>
+          <h3 class="text-[11px] font-semibold text-muted uppercase tracking-wide mb-2">Workflow Canvas</h3>
+          <div class="space-y-1.5">
+            <div class="flex items-center justify-between py-1">
+              <span class="text-sm text-dark">Run workflow</span>
+              <kbd class="inline-flex items-center gap-0.5 rounded border border-dark/[0.08] bg-subtle/50 px-2 py-0.5 text-xs font-medium text-muted"><span class="text-xs">&#8984;</span>Enter</kbd>
+            </div>
+            <div class="flex items-center justify-between py-1">
+              <span class="text-sm text-dark">Debug mode</span>
+              <kbd class="inline-flex items-center gap-0.5 rounded border border-dark/[0.08] bg-subtle/50 px-2 py-0.5 text-xs font-medium text-muted">F5</kbd>
+            </div>
+            <div class="flex items-center justify-between py-1">
+              <span class="text-sm text-dark">Step over</span>
+              <kbd class="inline-flex items-center gap-0.5 rounded border border-dark/[0.08] bg-subtle/50 px-2 py-0.5 text-xs font-medium text-muted">F10</kbd>
+            </div>
+            <div class="flex items-center justify-between py-1">
+              <span class="text-sm text-dark">Continue</span>
+              <kbd class="inline-flex items-center gap-0.5 rounded border border-dark/[0.08] bg-subtle/50 px-2 py-0.5 text-xs font-medium text-muted">F8</kbd>
+            </div>
+            <div class="flex items-center justify-between py-1">
+              <span class="text-sm text-dark">Toggle variable panel</span>
+              <kbd class="inline-flex items-center gap-0.5 rounded border border-dark/[0.08] bg-subtle/50 px-2 py-0.5 text-xs font-medium text-muted"><span class="text-xs">&#8984;</span>J</kbd>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="border-t border-dark/[0.08] px-5 py-3 text-center">
+        <a href="/docs" class="text-xs text-coral hover:underline no-underline">View full documentation</a>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Keyboard shortcuts panel script (Cmd+/) -->
+  <script is:inline>
+    (function () {
+      var modal = document.getElementById("shortcuts-modal");
+      var closeBtn = document.getElementById("shortcuts-close");
+      if (!modal) return;
+
+      function openShortcuts() {
+        modal.showModal();
+      }
+
+      function closeShortcuts() {
+        modal.close();
+      }
+
+      // Cmd+/ or Ctrl+/ to toggle
+      document.addEventListener("keydown", function (e) {
+        if ((e.metaKey || e.ctrlKey) && e.key === "/") {
+          e.preventDefault();
+          if (modal.open) {
+            closeShortcuts();
+          } else {
+            openShortcuts();
+          }
+        }
+      });
+
+      if (closeBtn) closeBtn.addEventListener("click", closeShortcuts);
+
+      // Close on backdrop click
+      modal.addEventListener("click", function (e) {
+        if (e.target === modal) closeShortcuts();
+      });
+
+      /* ---- "G then X" navigation shortcuts ---- */
+      var gPressed = false;
+      var gTimer = null;
+      var gRoutes = {
+        p: "/projects",
+        a: "/agents",
+        w: "/workflows",
+        l: "/playground",
+        d: "/docs",
+      };
+
+      document.addEventListener("keydown", function (e) {
+        // Don't trigger inside inputs/textareas
+        var tag = (e.target.tagName || "").toLowerCase();
+        if (tag === "input" || tag === "textarea" || tag === "select" || e.target.isContentEditable) return;
+        if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+        if (e.key === "g" && !gPressed) {
+          gPressed = true;
+          if (gTimer) clearTimeout(gTimer);
+          gTimer = setTimeout(function () { gPressed = false; }, 1000);
+          return;
+        }
+
+        if (gPressed) {
+          gPressed = false;
+          if (gTimer) clearTimeout(gTimer);
+          var route = gRoutes[e.key];
+          if (route) {
+            e.preventDefault();
+            window.location.href = route;
+          }
+        }
+      });
+    })();
+  </script>
+
+  <!-- Help panel (slide-out from right) -->
+  <div id="help-panel-overlay" class="fixed inset-0 z-[80] hidden">
+    <div id="help-panel-backdrop" class="absolute inset-0 bg-dark/40 backdrop-blur-sm"></div>
+    <aside
+      id="help-panel"
+      class="absolute top-0 right-0 bottom-0 w-80 sm:w-96 bg-paper shadow-xl flex flex-col"
+      style="transform: translateX(100%); transition: transform 200ms ease-out;"
+    >
+      <div class="flex h-14 items-center justify-between border-b border-dark/[0.08] px-4">
+        <div class="flex items-center gap-2">
+          <svg class="h-5 w-5 text-coral" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <span class="text-sm font-semibold text-dark">Help</span>
+        </div>
+        <button
+          id="help-panel-close"
+          class="flex items-center justify-center rounded-lg p-1.5 text-muted hover:bg-dark/5 hover:text-dark transition-colors cursor-pointer"
+        >
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+
+      <!-- Search within help -->
+      <div class="border-b border-dark/[0.08] px-4 py-3">
+        <div class="flex items-center gap-2 rounded-lg border border-dark/[0.08] bg-subtle/30 px-3 py-2">
+          <svg class="h-3.5 w-3.5 shrink-0 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input
+            id="help-search-input"
+            type="text"
+            placeholder="Search help..."
+            class="flex-1 bg-transparent text-xs text-dark placeholder-muted/60 outline-none"
+            autocomplete="off"
+          />
+        </div>
+      </div>
+
+      <!-- Help links -->
+      <div id="help-panel-content" class="flex-1 overflow-y-auto py-3 px-3 space-y-4">
+        <!-- Quick actions -->
+        <div>
+          <h3 class="text-[11px] font-semibold text-muted uppercase tracking-wide px-2 mb-1.5">Quick Actions</h3>
+          <div class="space-y-0.5">
+            <a href="/docs/getting-started" class="help-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-dark hover:bg-dark/5 transition-colors no-underline" data-keywords="getting started first agent tutorial">
+              <svg class="h-4 w-4 shrink-0 text-coral" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 4 0 4 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-4 0-4"/></svg>
+              Getting Started Guide
+            </a>
+            <button id="help-open-shortcuts" class="help-link w-full flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-dark hover:bg-dark/5 transition-colors cursor-pointer text-left" data-keywords="keyboard shortcuts hotkeys keybindings">
+              <svg class="h-4 w-4 shrink-0 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.001"/><path d="M10 8h.001"/><path d="M14 8h.001"/><path d="M18 8h.001"/><path d="M6 12h.001"/><path d="M10 12h.001"/><path d="M14 12h.001"/><path d="M18 12h.001"/><path d="M8 16h8"/></svg>
+              Keyboard Shortcuts
+              <span class="ml-auto text-[10px] text-muted">&#8984;/</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Documentation sections -->
+        <div>
+          <h3 class="text-[11px] font-semibold text-muted uppercase tracking-wide px-2 mb-1.5">Documentation</h3>
+          <div class="space-y-0.5">
+            <a href="/docs/agents" class="help-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-dark hover:bg-dark/5 transition-colors no-underline" data-keywords="agents models prompts tools multi-agent">
+              <svg class="h-4 w-4 shrink-0 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/></svg>
+              Agents
+            </a>
+            <a href="/docs/workflows" class="help-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-dark hover:bg-dark/5 transition-colors no-underline" data-keywords="workflows canvas nodes edges automation">
+              <svg class="h-4 w-4 shrink-0 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="6" height="6" rx="1"/><rect x="15" y="3" width="6" height="6" rx="1"/><rect x="9" y="15" width="6" height="6" rx="1"/><path d="M6 9v3a1 1 0 0 0 1 1h4"/><path d="M18 9v3a1 1 0 0 1-1 1h-4"/><path d="M12 13v2"/></svg>
+              Workflows
+            </a>
+            <a href="/docs/tools" class="help-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-dark hover:bg-dark/5 transition-colors no-underline" data-keywords="tools functions custom built-in schema">
+              <svg class="h-4 w-4 shrink-0 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+              Tools
+            </a>
+            <a href="/docs/knowledge-base" class="help-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-dark hover:bg-dark/5 transition-colors no-underline" data-keywords="knowledge base documents rag retrieval upload">
+              <svg class="h-4 w-4 shrink-0 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+              Knowledge Base
+            </a>
+            <a href="/docs/monitoring" class="help-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-dark hover:bg-dark/5 transition-colors no-underline" data-keywords="monitoring runs costs metrics alerts logs">
+              <svg class="h-4 w-4 shrink-0 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+              Monitoring
+            </a>
+            <a href="/docs/deployments" class="help-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-dark hover:bg-dark/5 transition-colors no-underline" data-keywords="deployments api widget embed endpoint">
+              <svg class="h-4 w-4 shrink-0 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/></svg>
+              Deployments
+            </a>
+            <a href="/docs/api-reference" class="help-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-dark hover:bg-dark/5 transition-colors no-underline" data-keywords="api reference rest endpoints http">
+              <svg class="h-4 w-4 shrink-0 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+              API Reference
+            </a>
+          </div>
+        </div>
+
+        <!-- Contextual help -->
+        <div>
+          <h3 class="text-[11px] font-semibold text-muted uppercase tracking-wide px-2 mb-1.5">Help</h3>
+          <div class="space-y-0.5">
+            <a href="/docs" class="help-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-dark hover:bg-dark/5 transition-colors no-underline" data-keywords="all documentation browse">
+              <svg class="h-4 w-4 shrink-0 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+              Browse all docs
+            </a>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- Help panel script -->
+  <script is:inline>
+    (function () {
+      var overlay = document.getElementById("help-panel-overlay");
+      var panel = document.getElementById("help-panel");
+      var closeBtn = document.getElementById("help-panel-close");
+      var backdrop = document.getElementById("help-panel-backdrop");
+      var searchInput = document.getElementById("help-search-input");
+      var shortcutsBtn = document.getElementById("help-open-shortcuts");
+      var shortcutsModal = document.getElementById("shortcuts-modal");
+      if (!overlay || !panel) return;
+
+      var links = overlay.querySelectorAll(".help-link");
+
+      function openHelp() {
+        overlay.classList.remove("hidden");
+        void panel.offsetWidth;
+        panel.style.transform = "translateX(0)";
+        if (searchInput) searchInput.focus();
+      }
+
+      function closeHelp() {
+        panel.style.transform = "translateX(100%)";
+        setTimeout(function () {
+          overlay.classList.add("hidden");
+        }, 200);
+      }
+
+      if (closeBtn) closeBtn.addEventListener("click", closeHelp);
+      if (backdrop) backdrop.addEventListener("click", closeHelp);
+
+      // Esc to close help panel
+      document.addEventListener("keydown", function (e) {
+        if (e.key === "Escape" && !overlay.classList.contains("hidden")) {
+          closeHelp();
+        }
+      });
+
+      // Open shortcuts from help panel
+      if (shortcutsBtn && shortcutsModal) {
+        shortcutsBtn.addEventListener("click", function () {
+          closeHelp();
+          setTimeout(function () {
+            shortcutsModal.showModal();
+          }, 220);
+        });
+      }
+
+      // Filter help links by search
+      if (searchInput) {
+        searchInput.addEventListener("input", function () {
+          var q = searchInput.value.toLowerCase().trim();
+          links.forEach(function (link) {
+            if (!q) {
+              link.classList.remove("hidden");
+              return;
+            }
+            var text = (link.textContent || "").toLowerCase();
+            var keywords = (link.getAttribute("data-keywords") || "").toLowerCase();
+            var matches = text.indexOf(q) !== -1 || keywords.indexOf(q) !== -1;
+            link.classList.toggle("hidden", !matches);
+          });
+        });
+      }
+
+      // Wire the help trigger button
+      var helpTrigger = document.getElementById("help-trigger");
+      if (helpTrigger) {
+        helpTrigger.addEventListener("click", function () {
+          if (overlay.classList.contains("hidden")) {
+            openHelp();
+          } else {
+            closeHelp();
+          }
+        });
+      }
+
+      // Make help panel openable via a global function
+      window.__orbiterOpenHelp = openHelp;
     })();
   </script>
 </BaseLayout>

@@ -3,6 +3,7 @@ import PageLayout from "../layouts/PageLayout.astro";
 import Button from "../components/Button.astro";
 import Input from "../components/Input.astro";
 import Select from "../components/Select.astro";
+import HelpTooltip from "../components/HelpTooltip.astro";
 import Modal from "../components/Modal.astro";
 
 const breadcrumbs = [{ label: "Settings" }];
@@ -243,7 +244,7 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
       <div class="rounded-xl bg-subtle/80 border border-dark/[0.08] p-6">
         <div class="flex items-center justify-between mb-6">
           <div>
-            <h2 class="text-lg font-semibold text-dark mb-1">Model Providers</h2>
+            <h2 class="text-lg font-semibold text-dark mb-1 inline-flex items-center gap-2">Model Providers <HelpTooltip text="Add API keys for OpenAI, Anthropic, Gemini, etc. to use them in agents." href="/docs/agents" /></h2>
             <p class="text-sm text-muted">Configure API keys and provider connections</p>
           </div>
           <Button variant="primary" id="add-provider-btn">
