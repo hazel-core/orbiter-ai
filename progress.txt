@@ -3,6 +3,7 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
 ---
 
 ## Codebase Patterns
+- Node error handling: `_get_node_error_config(node)` reads retry_count, retry_delay_ms, on_error, fallback_value, timeout_ms from `node.data`; `_execute_node_with_retry()` wraps `_execute_node` with timeout + exponential backoff + on_error strategy
 - Schedules: CRUD at `/api/schedules`, background polling in `services/scheduler.py` using `croniter`; fires workflow runs with `trigger_type='schedule'`; starts/stops via app lifespan
 - Sandbox execution: `execute_code(code, config)` in `services/sandbox.py` — runs Python in isolated subprocess with import allowlist, filesystem restriction, and timeout; returns SandboxResult with stdout/stderr/files
 - Sandbox import restriction: don't block exec/eval/compile from builtins (breaks importlib); use explicit import allowlist + safe stdlib set instead
@@ -2481,4 +2482,24 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Scheduler polls DB every 15 seconds for enabled schedules where `next_run_at <= now`
   - Scheduler disables schedules automatically if their workflow is deleted (ON DELETE CASCADE handles the row, but if fetched before deletion the service disables it)
   - Ruff doesn't enable PLW0603 by default — don't add `# noqa: PLW0603` for global statements
+---
+
+## 2026-02-17 - US-173
+- What was implemented: Per-node retry, error handling, and timeout for workflow execution engine
+- Changes:
+  - `_get_node_error_config()` — extracts retry_count (0-5), retry_delay_ms, on_error (fail/skip/fallback), fallback_value, timeout_ms from node.data
+  - `_execute_node_with_retry()` — wraps `_execute_node` with asyncio.wait_for timeout, exponential backoff retries, and on_error strategies
+  - `execute_workflow()` — uses `_execute_node_with_retry` instead of `_execute_node`; logs retry metadata in workflow_run_logs
+  - `execute_workflow_debug()` — same retry wrapper applied to debug execution
+  - Migration `048_add_node_retry_fields.sql` — adds retry_attempt, max_retries, on_error columns to workflow_run_logs
+- Files changed:
+  - `packages/orbiter-web/src/orbiter_web/engine.py` — added retry/timeout/error handling logic (~140 lines)
+  - `packages/orbiter-web/src/orbiter_web/migrations/048_add_node_retry_fields.sql` — new migration
+- **Learnings for future iterations:**
+  - Node error config lives in `node.data` (JSON stored in workflow's `nodes_json`) — no DB migration needed for config fields
+  - Use `asyncio.wait_for()` for per-node timeout; catches `TimeoutError` (not `asyncio.TimeoutError` — ruff UP041)
+  - Exponential backoff: `delay_s = (retry_delay_ms / 1000) * 2^attempt`
+  - Retry metadata flows through result dict via `_` prefixed keys (_retry_attempt, _max_retries, _on_error, _skipped, _fallback) — popped before DB storage
+  - `on_error='skip'` sets `variables[nid] = None` so downstream nodes get null input
+  - Both `execute_workflow` and `execute_workflow_debug` share the same retry wrapper — keep them in sync
 ---
