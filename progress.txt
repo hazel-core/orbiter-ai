@@ -2901,3 +2901,20 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Admin guard pattern: every endpoint uses `Depends(require_role("admin"))` with `# noqa: B008`
   - Last-admin check: `SELECT COUNT(*) AS cnt FROM users WHERE role = 'admin'` before demotion or deletion
 ---
+
+## 2026-02-17 - US-137
+- What was implemented: Embeddable chat widget — full deploy-as-widget feature for agents
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/migrations/062_add_widget_config.sql (new — adds widget_config_json and cors_origins columns to deployments)
+  - packages/orbiter-web/src/orbiter_web/routes/deployments.py (updated — widget config CRUD endpoints, embed code generation, CORS preflight handling for cross-origin widget requests)
+  - packages/orbiter-web/public/widget.js (new — self-contained embeddable chat widget script)
+  - packages/orbiter-web/src/pages/deployments/[id]/widget.astro (new — widget settings page with live preview, color picker, position, welcome message, avatar, CORS origins, embed code)
+  - packages/orbiter-web/src/pages/deployments.astro (updated — added widget settings link in actions column)
+- **Learnings for future iterations:**
+  - Widget config stored as JSON TEXT in `widget_config_json` column; CORS origins as comma-separated TEXT in `cors_origins`
+  - Per-deployment CORS: `_check_cors()` reads deployment's cors_origins from DB; `preflight_run()` handles OPTIONS; `run_deployed()` attaches CORS headers to responses
+  - CSRF middleware already skips requests without session cookies, so deployed endpoints (Bearer token auth) work without explicit CSRF exemption
+  - Embed code uses data attributes on `<script>` tag — widget.js reads them with `getAttribute()`
+  - Widget preview in settings page is pure HTML injection into a container div — no iframe needed
+  - `_escape_attr()` helper for safe HTML attribute escaping in embed code generation
+---
