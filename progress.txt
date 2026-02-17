@@ -2541,3 +2541,16 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Terminal output uses dark VS Code-inspired color scheme: `#1e1e1e` bg, `#d4d4d4` text, `#6a9955` green comments, `#569cd6` blue headers, `#f44747` red errors
   - Unused icon variables (chevronDown, cpuIcon, wrenchIcon, arrowRightIcon) were cleaned up from frontmatter — only used icons remain
 ---
+
+## 2026-02-17 - US-175
+- Implemented PUT /api/auth/password endpoint for password change
+- Added PasswordChangeRequest model (current_password + new_password with min 8 chars)
+- Added MessageResponse model for success responses
+- Validates current password against bcrypt hash, returns 401 if wrong
+- Updates password hash and invalidates all other sessions (keeps current)
+- Files changed: packages/orbiter-web/src/orbiter_web/routes/auth.py
+- **Learnings for future iterations:**
+  - Auth helpers `_hash_password()` and `_verify_password()` already exist in auth.py — reuse them
+  - Session cookie name is `SESSION_COOKIE = "orbiter_session"` — use `Cookie(None)` param to access it in endpoints
+  - `get_current_user` dependency returns dict with id, email, created_at — no password_hash included (need separate query)
+---
