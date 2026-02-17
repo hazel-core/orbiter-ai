@@ -17,13 +17,19 @@ def _hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
 
-async def _create_user(email: str, password: str, *, admin: bool = False) -> None:
+async def _create_user(
+    email: str, password: str, *, admin: bool = False, role: str = "developer"
+) -> None:
     """Create a user record in the database."""
     # Ensure migrations are up to date.
     await run_migrations()
 
     user_id = str(uuid.uuid4())
     password_hash = _hash_password(password)
+
+    # --admin flag implies admin role for backward compatibility.
+    if admin:
+        role = "admin"
 
     async with get_db() as db:
         # Check if email already exists.
@@ -33,12 +39,12 @@ async def _create_user(email: str, password: str, *, admin: bool = False) -> Non
             sys.exit(1)
 
         await db.execute(
-            "INSERT INTO users (id, email, password_hash, is_admin) VALUES (?, ?, ?, ?)",
-            (user_id, email, password_hash, int(admin)),
+            "INSERT INTO users (id, email, password_hash, is_admin, role) VALUES (?, ?, ?, ?, ?)",
+            (user_id, email, password_hash, int(admin), role),
         )
         await db.commit()
 
-    print(f"User created: {email} (id: {user_id})")
+    print(f"User created: {email} (id: {user_id}, role: {role})")
 
 
 def main() -> None:
@@ -52,11 +58,19 @@ def main() -> None:
     create_user_parser.add_argument(
         "--admin", action="store_true", default=False, help="Grant admin privileges"
     )
+    create_user_parser.add_argument(
+        "--role",
+        choices=["admin", "developer", "viewer"],
+        default="developer",
+        help="User role (default: developer)",
+    )
 
     args = parser.parse_args()
 
     if args.command == "create-user":
-        asyncio.run(_create_user(args.email, args.password, admin=args.admin))
+        asyncio.run(
+            _create_user(args.email, args.password, admin=args.admin, role=args.role)
+        )
     else:
         parser.print_help()
         sys.exit(1)

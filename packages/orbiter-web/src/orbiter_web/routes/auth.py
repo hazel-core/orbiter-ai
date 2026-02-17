@@ -35,6 +35,7 @@ class LoginRequest(BaseModel):
 class UserResponse(BaseModel):
     id: str
     email: str
+    role: str
     created_at: str
 
 
@@ -68,7 +69,7 @@ async def get_current_user(
     async with get_db() as db:
         cursor = await db.execute(
             """
-            SELECT u.id, u.email, u.created_at
+            SELECT u.id, u.email, u.role, u.created_at
             FROM sessions s
             JOIN users u ON u.id = s.user_id
             WHERE s.id = ? AND s.expires_at > datetime('now')
@@ -93,7 +94,7 @@ async def login(body: LoginRequest, response: Response) -> dict[str, Any]:
     """Authenticate with email + password and set a session cookie."""
     async with get_db() as db:
         cursor = await db.execute(
-            "SELECT id, email, password_hash, created_at FROM users WHERE email = ?",
+            "SELECT id, email, password_hash, role, created_at FROM users WHERE email = ?",
             (body.email,),
         )
         user = await cursor.fetchone()
@@ -124,7 +125,7 @@ async def login(body: LoginRequest, response: Response) -> dict[str, Any]:
         path="/",
     )
 
-    return {"id": user["id"], "email": user["email"], "created_at": user["created_at"]}
+    return {"id": user["id"], "email": user["email"], "role": user["role"], "created_at": user["created_at"]}
 
 
 @router.post("/logout", status_code=204)
