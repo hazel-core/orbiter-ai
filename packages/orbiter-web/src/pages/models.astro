@@ -157,6 +157,7 @@ const searchIcon = '<svg class="h-4 w-4 text-muted" viewBox="0 0 24 24" fill="no
         >
           <option value="">Select a provider</option>
         </select>
+        <p id="no-providers-hint" class="text-xs text-muted hidden">No providers configured. <a href="/settings" class="text-coral hover:underline">Add a provider in Settings</a> first.</p>
       </div>
       <Input label="Model Name" name="model_name" placeholder="e.g., ft:gpt-4o:my-org:custom-model" required />
       <Input label="Context Window" name="context_window" type="number" placeholder="e.g., 128000" />
@@ -573,12 +574,18 @@ const searchIcon = '<svg class="h-4 w-4 text-muted" viewBox="0 0 24 24" fill="no
 
       // Also populate the modal's provider dropdown
       providerSelect.innerHTML = '<option value="">Select a provider</option>';
-      providers.forEach(function (prov) {
-        var opt = document.createElement("option");
-        opt.value = prov.id;
-        opt.textContent = prov.name + " (" + prov.provider_type + ")";
-        providerSelect.appendChild(opt);
-      });
+      var noProvidersHint = document.getElementById("no-providers-hint");
+      if (!providers || providers.length === 0) {
+        if (noProvidersHint) noProvidersHint.classList.remove("hidden");
+      } else {
+        if (noProvidersHint) noProvidersHint.classList.add("hidden");
+        providers.forEach(function (prov) {
+          var opt = document.createElement("option");
+          opt.value = prov.id;
+          opt.textContent = prov.name + " (" + prov.provider_type + ")";
+          providerSelect.appendChild(opt);
+        });
+      }
     }
 
     /* ---------------------------------------------------------------

@@ -755,23 +755,27 @@ const aiIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="cur
         createAppBtn.disabled = true;
         createAppBtn.textContent = "Creating...";
 
-        fetch("/api/v1/applications", {
+        /* Workflow type goes to the workflows table + canvas editor */
+        var isWorkflow = selectedAppType === "workflow";
+        var endpoint = isWorkflow ? "/api/v1/workflows" : "/api/v1/applications";
+        var payload = isWorkflow
+          ? { name: name, project_id: projectId }
+          : { name: name, type: selectedAppType, project_id: projectId };
+
+        fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: name,
-            type: selectedAppType,
-            project_id: projectId,
-          }),
+          body: JSON.stringify(payload),
         })
           .then(function (res) {
-            if (!res.ok) return res.json().then(function (d) { throw new Error(d.detail || "Failed to create application"); });
+            if (!res.ok) return res.json().then(function (d) { throw new Error(d.detail || "Failed to create"); });
             return res.json();
           })
-          .then(function (app) {
+          .then(function (item) {
             newAppModal.close();
-            // Navigate to the application builder
-            window.location.href = "/applications/" + app.id;
+            window.location.href = isWorkflow
+              ? "/workflows/" + item.id
+              : "/applications/" + item.id;
           })
           .catch(function (err) {
             newAppError.textContent = err.message;

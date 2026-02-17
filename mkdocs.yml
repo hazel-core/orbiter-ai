@@ -1,0 +1,251 @@
+site_name: Orbiter
+site_description: A modern, modular multi-agent framework for building LLM-powered applications
+site_url: https://inclusionai.github.io/AWorld/
+repo_url: https://github.com/inclusionAI/AWorld
+repo_name: inclusionAI/AWorld
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep purple
+      accent: purple
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep purple
+      accent: purple
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.path
+    - navigation.indexes
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+    - toc.follow
+  icon:
+    repo: fontawesome/brands/github
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.details
+  - admonition
+  - tables
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: true
+
+plugins:
+  - search
+
+nav:
+  - Home: index.md
+
+  - Getting Started:
+    - getting-started/index.md
+    - Installation: getting-started/installation.md
+    - Quickstart: getting-started/quickstart.md
+    - Core Concepts: getting-started/concepts.md
+    - Your First Agent: getting-started/first-agent.md
+
+  - Guides:
+    - guides/index.md
+    - Core:
+      - Agents: guides/agents.md
+      - Tools: guides/tools.md
+      - Running Agents: guides/running.md
+      - Streaming: guides/streaming.md
+      - Structured Output: guides/structured-output.md
+      - Model Providers: guides/models.md
+    - Multi-Agent:
+      - Swarms: guides/multi-agent.md
+      - Agent Groups: guides/agent-groups.md
+    - Lifecycle:
+      - Hooks: guides/hooks.md
+      - Events: guides/events.md
+      - Human-in-the-Loop: guides/human-in-the-loop.md
+    - Context Engine:
+      - Overview: guides/context/index.md
+      - State Management: guides/context/state.md
+      - Prompt Building: guides/context/prompt-building.md
+      - Processors: guides/context/processors.md
+      - Workspace: guides/context/workspace.md
+      - Knowledge: guides/context/knowledge.md
+      - Checkpoints: guides/context/checkpoints.md
+      - Token Tracking: guides/context/token-tracking.md
+      - Context Tools: guides/context/context-tools.md
+    - Memory:
+      - Memory System: guides/memory.md
+      - Memory Backends: guides/memory-backends.md
+    - Integration:
+      - MCP: guides/mcp.md
+      - Sandbox: guides/sandbox.md
+      - Agent-to-Agent: guides/a2a.md
+    - Observability:
+      - Tracing: guides/tracing.md
+      - Evaluation: guides/evaluation.md
+      - Ralph Loop: guides/ralph-loop.md
+    - Training: guides/training.md
+    - Deployment:
+      - Server: guides/server.md
+      - CLI: guides/cli.md
+    - Configuration:
+      - Config-Driven Agents: guides/config-driven.md
+      - Skills: guides/skills.md
+
+  - Architecture:
+    - architecture/index.md
+    - Dependency Graph: architecture/dependency-graph.md
+    - Design Decisions: architecture/design-decisions.md
+    - Execution Flow: architecture/execution-flow.md
+    - Async Patterns: architecture/async-patterns.md
+    - Error Handling: architecture/error-handling.md
+
+  - API Reference:
+    - reference/index.md
+    - Core:
+      - reference/core/index.md
+      - Types: reference/core/types.md
+      - Config: reference/core/config.md
+      - Registry: reference/core/registry.md
+      - Events: reference/core/events.md
+      - Hooks: reference/core/hooks.md
+      - Tool: reference/core/tool.md
+      - Agent: reference/core/agent.md
+      - Runner: reference/core/runner.md
+      - Swarm: reference/core/swarm.md
+      - Human: reference/core/human.md
+      - Loader: reference/core/loader.md
+      - Skills: reference/core/skills.md
+    - Core Internal:
+      - reference/core-internal/index.md
+      - Message Builder: reference/core-internal/message-builder.md
+      - Output Parser: reference/core-internal/output-parser.md
+      - State: reference/core-internal/state.md
+      - Call Runner: reference/core-internal/call-runner.md
+      - Handlers: reference/core-internal/handlers.md
+      - Agent Group: reference/core-internal/agent-group.md
+      - Nested: reference/core-internal/nested.md
+      - Graph: reference/core-internal/graph.md
+      - Background: reference/core-internal/background.md
+    - Models:
+      - reference/models/index.md
+      - Provider: reference/models/provider.md
+      - Types: reference/models/types.md
+      - OpenAI: reference/models/openai.md
+      - Anthropic: reference/models/anthropic.md
+      - Gemini: reference/models/gemini.md
+      - Vertex: reference/models/vertex.md
+    - Context:
+      - reference/context/index.md
+      - Context: reference/context/context.md
+      - Config: reference/context/config.md
+      - State: reference/context/state.md
+      - Neuron: reference/context/neuron.md
+      - Prompt Builder: reference/context/prompt-builder.md
+      - Processor: reference/context/processor.md
+      - Workspace: reference/context/workspace.md
+      - Checkpoint: reference/context/checkpoint.md
+      - Token Tracker: reference/context/token-tracker.md
+      - Tools: reference/context/tools.md
+      - Variables: reference/context/variables.md
+      - Knowledge: reference/context/knowledge.md
+    - Memory:
+      - reference/memory/index.md
+      - Base: reference/memory/base.md
+      - Short-Term: reference/memory/short-term.md
+      - Long-Term: reference/memory/long-term.md
+      - Summary: reference/memory/summary.md
+      - Events: reference/memory/events.md
+      - Backends: reference/memory/backends.md
+    - MCP:
+      - reference/mcp/index.md
+      - Client: reference/mcp/client.md
+      - Server: reference/mcp/server.md
+      - Execution: reference/mcp/execution.md
+      - Tools: reference/mcp/tools.md
+    - Sandbox:
+      - reference/sandbox/index.md
+      - Base: reference/sandbox/base.md
+      - Builder: reference/sandbox/builder.md
+      - Kubernetes: reference/sandbox/kubernetes.md
+      - Tools: reference/sandbox/tools.md
+    - Trace:
+      - reference/trace/index.md
+      - Config: reference/trace/config.md
+      - Decorator: reference/trace/decorator.md
+      - Instrumentation: reference/trace/instrumentation.md
+      - Prompt Logger: reference/trace/prompt-logger.md
+      - Propagation: reference/trace/propagation.md
+    - Eval:
+      - reference/eval/index.md
+      - Base: reference/eval/base.md
+      - Scorers: reference/eval/scorers.md
+      - LLM Scorer: reference/eval/llm-scorer.md
+      - Trajectory Scorers: reference/eval/trajectory-scorers.md
+      - Reflection: reference/eval/reflection.md
+      - Ralph: reference/eval/ralph.md
+    - A2A:
+      - reference/a2a/index.md
+      - Types: reference/a2a/types.md
+      - Client: reference/a2a/client.md
+      - Server: reference/a2a/server.md
+    - CLI:
+      - reference/cli/index.md
+      - Main: reference/cli/main.md
+      - Loader: reference/cli/loader.md
+      - Executor: reference/cli/executor.md
+      - Console: reference/cli/console.md
+      - Batch: reference/cli/batch.md
+      - Plugins: reference/cli/plugins.md
+    - Server:
+      - reference/server/index.md
+      - App: reference/server/app.md
+      - Agents: reference/server/agents.md
+      - Sessions: reference/server/sessions.md
+      - Streaming: reference/server/streaming.md
+    - Train:
+      - reference/train/index.md
+      - Trajectory: reference/train/trajectory.md
+      - Trainer: reference/train/trainer.md
+      - Synthesis: reference/train/synthesis.md
+      - Evolution: reference/train/evolution.md
+      - VeRL: reference/train/verl.md
+
+  - Contributing:
+    - contributing/index.md
+    - Development Setup: contributing/development.md
+    - Code Style: contributing/code-style.md
+    - Package Structure: contributing/package-structure.md
+    - Testing: contributing/testing.md
+
+  - Migration:
+    - migration/index.md
+    - From AWorld: migration/from-aworld.md
+
+  - Changelog: changelog.md
+  - Design Spec: design-spec.md

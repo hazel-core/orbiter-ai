@@ -1297,7 +1297,14 @@ const bellIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="c
       }
 
       /* --- WebSocket real-time updates --- */
+      var _wsHasConnected = false;
+      var _wsBannerTimeout = null;
+
       function setupWebSocket() {
+        // Don't attempt WS on login/auth pages
+        var path = window.location.pathname;
+        if (path === "/login" || path === "/reset-password" || path === "/register") return;
+
         try {
           var proto = window.location.protocol === "https:" ? "wss:" : "ws:";
           var wsUrl = proto + "//" + window.location.host + "/api/v1/ws";
@@ -1312,11 +1319,23 @@ const bellIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="c
             }
           }
 
+          function showBannerDelayed(msg) {
+            // Only show after a successful connection has dropped, with a delay
+            // to avoid flashing during page transitions
+            if (!_wsHasConnected) return;
+            clearTimeout(_wsBannerTimeout);
+            _wsBannerTimeout = setTimeout(function () {
+              showBanner(msg);
+            }, 2000);
+          }
+
           function hideBanner() {
+            clearTimeout(_wsBannerTimeout);
             if (banner) banner.classList.add("hidden");
           }
 
           ws.addEventListener("open", function () {
+            _wsHasConnected = true;
             hideBanner();
             ws.send(JSON.stringify({ type: "subscribe", channel: "notifications" }));
           });
@@ -1361,8 +1380,8 @@ const bellIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="c
               return;
             }
 
-            // Normal disconnect — show reconnecting banner and retry.
-            showBanner("Connection lost. Reconnecting...");
+            // Only show reconnecting banner if WS had previously connected
+            showBannerDelayed("Connection lost. Reconnecting...");
             setTimeout(function () {
               setupWebSocket();
             }, 5000);

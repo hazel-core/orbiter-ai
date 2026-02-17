@@ -188,7 +188,28 @@ async def _resolve_agent_tool_schemas(
     db_ids: list[str] = []
 
     for tid in tool_ids:
-        if tid.startswith("builtin:"):
+        if isinstance(tid, dict):
+            # Sub-agent tool or inline tool definition
+            schemas.append(
+                {
+                    "type": "function",
+                    "function": {
+                        "name": tid.get("name", tid.get("id", "unknown")),
+                        "description": tid.get("description", ""),
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "task": {
+                                    "type": "string",
+                                    "description": "The task to delegate",
+                                },
+                            },
+                            "required": ["task"],
+                        },
+                    },
+                }
+            )
+        elif isinstance(tid, str) and tid.startswith("builtin:"):
             for bt in BUILTIN_TOOLS:
                 if bt["id"] == tid:
                     try:
@@ -206,7 +227,7 @@ async def _resolve_agent_tool_schemas(
                         }
                     )
                     break
-        else:
+        elif isinstance(tid, str):
             db_ids.append(tid)
 
     if db_ids:
@@ -794,6 +815,191 @@ async def _run_stream(
         raise ValueError(msg)
 
 
+# ---- Compare mode helpers ----
+# NOTE: The compare endpoint MUST be defined before the {agent_id} route
+# so that FastAPI doesn't match "compare" as an agent_id.
+
+
+class _IndexedCollector:
+    """Wraps a WebSocket to prefix all messages with a model_index."""
+
+    def __init__(self, websocket: WebSocket, model_index: int) -> None:
+        self._ws = websocket
+        self._idx = model_index
+        self.collected = ""
+        self.usage: dict[str, int] | None = None
+
+    async def send_json(self, data: Any) -> None:
+        if data.get("type") == "token":
+            self.collected += data.get("content", "")
+        elif data.get("type") == "done":
+            self.usage = data.get("usage")
+        data["model_index"] = self._idx
+        await self._ws.send_json(data)
+
+
+async def _stream_for_model(
+    websocket: WebSocket,
+    model_index: int,
+    provider_type: str,
+    api_key: str,
+    base_url: str,
+    model_name: str,
+    system_prompt: str,
+    messages: list[dict[str, str]],
+    temperature: float,
+    max_tokens: int | None,
+) -> None:
+    """Stream a single model response, tagged with model_index."""
+    collector = _IndexedCollector(websocket, model_index)
+    try:
+        if provider_type in ("openai", "custom"):
+            await _stream_openai(
+                collector,
+                api_key,
+                base_url,
+                model_name,
+                messages,
+                temperature,
+                max_tokens,  # type: ignore[arg-type]
+            )
+        elif provider_type == "anthropic":
+            await _stream_anthropic(
+                collector,
+                api_key,
+                model_name,
+                system_prompt,
+                messages,
+                temperature,
+                max_tokens,  # type: ignore[arg-type]
+            )
+        elif provider_type == "gemini":
+            await _stream_gemini(
+                collector,
+                api_key,
+                model_name,
+                messages,
+                temperature,
+                max_tokens,  # type: ignore[arg-type]
+            )
+        elif provider_type == "ollama":
+            await _stream_ollama(collector, base_url, model_name, messages, temperature)  # type: ignore[arg-type]
+        else:
+            await websocket.send_json(
+                {
+                    "type": "error",
+                    "model_index": model_index,
+                    "message": f"Unsupported provider: {provider_type}",
+                }
+            )
+    except Exception as exc:
+        await websocket.send_json(
+            {"type": "error", "model_index": model_index, "message": f"Stream error: {exc!s}"}
+        )
+
+
+@router.websocket("/api/v1/playground/compare/chat")
+async def playground_compare(websocket: WebSocket) -> None:
+    """WebSocket endpoint for multi-model comparison.
+
+    Client sends: { models: [{provider_type, model_name}], content: "..." }
+    Server streams responses tagged with model_index for each model.
+    """
+    import asyncio
+
+    user = await _get_user_from_cookie(websocket)
+    if user is None:
+        await websocket.close(code=4001, reason="Not authenticated")
+        return
+
+    await websocket.accept()
+
+    try:
+        while True:
+            raw = await websocket.receive_text()
+            try:
+                msg = json.loads(raw)
+            except json.JSONDecodeError:
+                await websocket.send_json({"type": "error", "message": "Invalid JSON"})
+                continue
+
+            content = msg.get("content", "").strip()
+            models = msg.get("models", [])
+
+            if not content:
+                await websocket.send_json({"type": "error", "message": "Empty message"})
+                continue
+            if not models or len(models) < 2:
+                await websocket.send_json({"type": "error", "message": "Select at least 2 models"})
+                continue
+            if len(models) > 4:
+                await websocket.send_json({"type": "error", "message": "Maximum 4 models"})
+                continue
+
+            # Resolve each model's provider and key
+            tasks = []
+            for i, m in enumerate(models):
+                ptype = m.get("provider_type", "")
+                mname = m.get("model_name", "")
+                if not ptype or not mname:
+                    await websocket.send_json(
+                        {
+                            "type": "error",
+                            "model_index": i,
+                            "message": "Missing provider or model name",
+                        }
+                    )
+                    continue
+
+                pid = await _find_provider_by_type(ptype, user["id"])
+                if not pid:
+                    await websocket.send_json(
+                        {
+                            "type": "error",
+                            "model_index": i,
+                            "message": f"No {ptype} provider configured",
+                        }
+                    )
+                    continue
+
+                provider, api_key = await _resolve_api_key(pid, user["id"])
+                if not api_key:
+                    await websocket.send_json(
+                        {"type": "error", "model_index": i, "message": "No API key for provider"}
+                    )
+                    continue
+
+                burl = (provider or {}).get("base_url", "") or ""
+                system_prompt = msg.get("system_prompt", "")
+                temperature = m.get("temperature", 0.7)
+                max_tokens = m.get("max_tokens")
+
+                messages = [{"role": "user", "content": content}]
+                if system_prompt:
+                    messages.insert(0, {"role": "system", "content": system_prompt})
+
+                tasks.append(
+                    _stream_for_model(
+                        websocket,
+                        i,
+                        ptype,
+                        api_key,
+                        burl,
+                        mname,
+                        system_prompt,
+                        messages,
+                        temperature,
+                        max_tokens,
+                    )
+                )
+
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
+
+    except WebSocketDisconnect:
+        pass
+
+
 @router.websocket("/api/v1/playground/{agent_id}/chat")
 async def playground_chat(websocket: WebSocket, agent_id: str) -> None:
     """WebSocket endpoint for streaming chat with an agent."""
@@ -1203,185 +1409,3 @@ async def playground_chat(websocket: WebSocket, agent_id: str) -> None:
             with contextlib.suppress(asyncio.CancelledError):
                 await stream_task
 
-
-# ---- Compare mode helpers ----
-
-
-class _IndexedCollector:
-    """Wraps a WebSocket to prefix all messages with a model_index."""
-
-    def __init__(self, websocket: WebSocket, model_index: int) -> None:
-        self._ws = websocket
-        self._idx = model_index
-        self.collected = ""
-        self.usage: dict[str, int] | None = None
-
-    async def send_json(self, data: Any) -> None:
-        if data.get("type") == "token":
-            self.collected += data.get("content", "")
-        elif data.get("type") == "done":
-            self.usage = data.get("usage")
-        data["model_index"] = self._idx
-        await self._ws.send_json(data)
-
-
-async def _stream_for_model(
-    websocket: WebSocket,
-    model_index: int,
-    provider_type: str,
-    api_key: str,
-    base_url: str,
-    model_name: str,
-    system_prompt: str,
-    messages: list[dict[str, str]],
-    temperature: float,
-    max_tokens: int | None,
-) -> None:
-    """Stream a single model response, tagged with model_index."""
-    collector = _IndexedCollector(websocket, model_index)
-    try:
-        if provider_type in ("openai", "custom"):
-            await _stream_openai(
-                collector,
-                api_key,
-                base_url,
-                model_name,
-                messages,
-                temperature,
-                max_tokens,  # type: ignore[arg-type]
-            )
-        elif provider_type == "anthropic":
-            await _stream_anthropic(
-                collector,
-                api_key,
-                model_name,
-                system_prompt,
-                messages,
-                temperature,
-                max_tokens,  # type: ignore[arg-type]
-            )
-        elif provider_type == "gemini":
-            await _stream_gemini(
-                collector,
-                api_key,
-                model_name,
-                messages,
-                temperature,
-                max_tokens,  # type: ignore[arg-type]
-            )
-        elif provider_type == "ollama":
-            await _stream_ollama(collector, base_url, model_name, messages, temperature)  # type: ignore[arg-type]
-        else:
-            await websocket.send_json(
-                {
-                    "type": "error",
-                    "model_index": model_index,
-                    "message": f"Unsupported provider: {provider_type}",
-                }
-            )
-    except Exception as exc:
-        await websocket.send_json(
-            {"type": "error", "model_index": model_index, "message": f"Stream error: {exc!s}"}
-        )
-
-
-@router.websocket("/api/v1/playground/compare/chat")
-async def playground_compare(websocket: WebSocket) -> None:
-    """WebSocket endpoint for multi-model comparison.
-
-    Client sends: { models: [{provider_type, model_name}], content: "..." }
-    Server streams responses tagged with model_index for each model.
-    """
-    import asyncio
-
-    user = await _get_user_from_cookie(websocket)
-    if user is None:
-        await websocket.close(code=4001, reason="Not authenticated")
-        return
-
-    await websocket.accept()
-
-    try:
-        while True:
-            raw = await websocket.receive_text()
-            try:
-                msg = json.loads(raw)
-            except json.JSONDecodeError:
-                await websocket.send_json({"type": "error", "message": "Invalid JSON"})
-                continue
-
-            content = msg.get("content", "").strip()
-            models = msg.get("models", [])
-
-            if not content:
-                await websocket.send_json({"type": "error", "message": "Empty message"})
-                continue
-            if not models or len(models) < 2:
-                await websocket.send_json({"type": "error", "message": "Select at least 2 models"})
-                continue
-            if len(models) > 4:
-                await websocket.send_json({"type": "error", "message": "Maximum 4 models"})
-                continue
-
-            # Resolve each model's provider and key
-            tasks = []
-            for i, m in enumerate(models):
-                ptype = m.get("provider_type", "")
-                mname = m.get("model_name", "")
-                if not ptype or not mname:
-                    await websocket.send_json(
-                        {
-                            "type": "error",
-                            "model_index": i,
-                            "message": "Missing provider or model name",
-                        }
-                    )
-                    continue
-
-                pid = await _find_provider_by_type(ptype, user["id"])
-                if not pid:
-                    await websocket.send_json(
-                        {
-                            "type": "error",
-                            "model_index": i,
-                            "message": f"No {ptype} provider configured",
-                        }
-                    )
-                    continue
-
-                provider, api_key = await _resolve_api_key(pid, user["id"])
-                if not api_key:
-                    await websocket.send_json(
-                        {"type": "error", "model_index": i, "message": "No API key for provider"}
-                    )
-                    continue
-
-                burl = (provider or {}).get("base_url", "") or ""
-                system_prompt = msg.get("system_prompt", "")
-                temperature = m.get("temperature", 0.7)
-                max_tokens = m.get("max_tokens")
-
-                messages = [{"role": "user", "content": content}]
-                if system_prompt:
-                    messages.insert(0, {"role": "system", "content": system_prompt})
-
-                tasks.append(
-                    _stream_for_model(
-                        websocket,
-                        i,
-                        ptype,
-                        api_key,
-                        burl,
-                        mname,
-                        system_prompt,
-                        messages,
-                        temperature,
-                        max_tokens,
-                    )
-                )
-
-            if tasks:
-                await asyncio.gather(*tasks, return_exceptions=True)
-
-    except WebSocketDisconnect:
-        pass

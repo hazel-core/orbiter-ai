@@ -12,6 +12,7 @@
     "check": "astro check"
   },
   "dependencies": {
+    "@astrojs/node": "^9.1.0",
     "@astrojs/react": "^4.4.2",
     "@dagrejs/dagre": "^2.0.4",
     "@fontsource/bricolage-grotesque": "^5.2.10",

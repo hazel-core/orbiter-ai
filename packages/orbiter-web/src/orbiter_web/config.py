@@ -15,7 +15,7 @@ class Settings:
     debug: bool = os.getenv("ORBITER_DEBUG", "false").lower() in ("true", "1", "yes")
     session_expiry_hours: int = int(os.getenv("ORBITER_SESSION_EXPIRY_HOURS", "72"))
     rate_limit_auth: int = int(os.getenv("ORBITER_RATE_LIMIT_AUTH", "5"))
-    rate_limit_general: int = int(os.getenv("ORBITER_RATE_LIMIT_GENERAL", "60"))
+    rate_limit_general: int = int(os.getenv("ORBITER_RATE_LIMIT_GENERAL", "200"))
     rate_limit_agent: int = int(os.getenv("ORBITER_RATE_LIMIT_AGENT", "10"))
     max_upload_mb: float = float(os.getenv("ORBITER_MAX_UPLOAD_MB", "50"))
     upload_dir: str = os.getenv("ORBITER_UPLOAD_DIR", "data/uploads/")
