@@ -2825,3 +2825,18 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Storage endpoint: include WAL and SHM files in DB size calculation for accurate SQLite size reporting
   - Ruff import sorting: retention comes after providers alphabetically — keep imports sorted
 ---
+
+## 2026-02-17 - US-136
+- What was implemented: Deploy as API UI — deployment management page at /deployments, Deploy as API buttons on agent edit and workflow detail pages, deployment detail modal with endpoint URL, curl usage example, and rate limit config
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/routes/deployments.py (modified — added GET /{id}, PATCH /{id} endpoints, DeploymentUpdate model, entity name resolution in list/get)
+  - packages/orbiter-web/src/layouts/PageLayout.astro (modified — added "deployments" nav entry with rocket icon)
+  - packages/orbiter-web/src/pages/deployments.astro (new — deployment management page with table, status toggles, search/filter, detail modal, delete confirmation)
+  - packages/orbiter-web/src/pages/agents/[id]/edit.astro (modified — added Deploy as API button + modal with form/success states)
+  - packages/orbiter-web/src/pages/workflows/[id].astro (modified — added floating Deploy as API button + modal)
+- **Learnings for future iterations:**
+  - Deployment API keys use `orb_` prefix with `secrets.token_urlsafe(32)`, stored as SHA-256 hash; only returned on creation
+  - Deploy modal pattern: form view + success view in same modal, toggled via classList; success view shows one-time API key
+  - Workflow detail page is canvas-only — use absolute positioned floating buttons with z-20 to overlay the ReactFlow canvas
+  - Entity name resolution: deployments table only stores entity_id, need to JOIN with agents/workflows to get names for display
+---
