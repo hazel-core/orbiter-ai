@@ -25,12 +25,14 @@ from orbiter_web.routes.applications import router as applications_router
 from orbiter_web.routes.approvals import router as approvals_router
 from orbiter_web.routes.artifacts import router as artifacts_router
 from orbiter_web.routes.auth import router as auth_router
+from orbiter_web.routes.benchmarks import router as benchmarks_router
 from orbiter_web.routes.checkpoints import router as checkpoints_router
 from orbiter_web.routes.context_state import router as context_state_router
 from orbiter_web.routes.conversations import router as conversations_router
 from orbiter_web.routes.costs import router as costs_router
 from orbiter_web.routes.crews import router as crews_router
-from orbiter_web.routes.benchmarks import router as benchmarks_router
+from orbiter_web.routes.deployments import deployed_router
+from orbiter_web.routes.deployments import router as deployments_router
 from orbiter_web.routes.evaluations import router as evaluations_router
 from orbiter_web.routes.knowledge_bases import router as knowledge_bases_router
 from orbiter_web.routes.logs import router as logs_router
@@ -140,6 +142,8 @@ app.include_router(context_state_router)
 app.include_router(conversations_router)
 app.include_router(costs_router)
 app.include_router(crews_router)
+app.include_router(deployments_router)
+app.include_router(deployed_router)
 app.include_router(benchmarks_router)
 app.include_router(evaluations_router)
 app.include_router(knowledge_bases_router)
