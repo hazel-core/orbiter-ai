@@ -3398,7 +3398,7 @@
         "Typecheck passes"
       ],
       "priority": 155,
-      "passes": false,
+      "passes": true,
       "notes": "Documentation: auto-generated API reference from FastAPI"
     },
     {

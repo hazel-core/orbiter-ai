@@ -3301,3 +3301,18 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Spotlight overlay uses `box-shadow: 0 0 0 9999px` trick for the cutout effect
   - Tooltip positioning: tries step.position first, falls back to bottom/top, clamps to viewport
 ---
+
+## 2026-02-17 - US-194
+- What was implemented: Auto-generated API reference documentation via FastAPI's built-in Swagger UI and ReDoc
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/app.py (updated — added OpenAPI description with auth docs, error format table, explicit docs_url/redoc_url)
+  - packages/orbiter-web/src/orbiter_web/routes/*.py (42 files updated — added Field(description=...) to all 1067 Pydantic model fields)
+  - packages/orbiter-web/src/content/docs/api-reference.md (updated — added Swagger/ReDoc links, detailed auth docs for session cookies and API keys, comprehensive error format with all codes and validation error details)
+  - packages/orbiter-web/src/layouts/PageLayout.astro (updated — added "Interactive API Docs (Swagger)" and "API Docs (ReDoc)" links to help panel)
+- **Learnings for future iterations:**
+  - FastAPI enables /docs (Swagger) and /redoc by default — just need to add good metadata via description= param
+  - All endpoint functions already had docstrings (AST-verified) — the grep-based check was unreliable for multi-line function signatures
+  - Only sandbox.py had Field(description=...) out of 212 models — bulk scripting via AST parsing is the efficient approach
+  - Ruff RUF001 catches ambiguous Unicode chars like en-dash (–) in strings — use hyphen (-) instead in descriptions
+  - The help panel in PageLayout.astro uses data-keywords for search filtering — include relevant keywords like "swagger openapi" on new links
+---
