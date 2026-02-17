@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 
 from orbiter_web.crypto import decrypt_api_key, encrypt_api_key
 from orbiter_web.database import get_db
-from orbiter_web.routes.auth import get_current_user
+from orbiter_web.routes.auth import require_role
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +109,7 @@ def _row_to_response(row: dict[str, object]) -> dict[str, object]:
 
 
 @router.get("")
-async def get_config(user: dict = Depends(get_current_user)) -> VectorStoreResponse:  # noqa: B008
+async def get_config(user: dict = Depends(require_role("admin"))) -> VectorStoreResponse:  # noqa: B008
     """Get the active vector store configuration (or create default)."""
     async with get_db() as db:
         cursor = await db.execute(
@@ -137,7 +137,7 @@ async def get_config(user: dict = Depends(get_current_user)) -> VectorStoreRespo
 
 
 @router.put("")
-async def update_config(body: VectorStoreUpdate, user: dict = Depends(get_current_user)) -> VectorStoreResponse:  # noqa: B008
+async def update_config(body: VectorStoreUpdate, user: dict = Depends(require_role("admin"))) -> VectorStoreResponse:  # noqa: B008
     """Update the active vector store configuration."""
     async with get_db() as db:
         # Ensure config exists
@@ -177,7 +177,7 @@ async def update_config(body: VectorStoreUpdate, user: dict = Depends(get_curren
 
 
 @router.post("/test")
-async def test_connection(user: dict = Depends(get_current_user)) -> TestResult:  # noqa: B008
+async def test_connection(user: dict = Depends(require_role("admin"))) -> TestResult:  # noqa: B008
     """Test the active vector store connection."""
     async with get_db() as db:
         cursor = await db.execute(

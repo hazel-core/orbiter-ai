@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 
 from orbiter_web.crypto import decrypt_api_key, encrypt_api_key
 from orbiter_web.database import get_db
-from orbiter_web.routes.auth import get_current_user
+from orbiter_web.routes.auth import require_role
 
 router = APIRouter(prefix="/api/providers", tags=["provider-keys"])
 
@@ -100,7 +100,7 @@ async def _verify_provider_ownership(provider_id: str, user_id: str) -> None:
 @router.get("/{provider_id}/keys", response_model=list[KeyResponse])
 async def list_keys(
     provider_id: str,
-    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+    user: dict[str, Any] = Depends(require_role("admin")),  # noqa: B008
 ) -> list[dict[str, Any]]:
     """List all keys for a provider."""
     await _verify_provider_ownership(provider_id, user["id"])
@@ -118,7 +118,7 @@ async def list_keys(
 async def create_key(
     provider_id: str,
     body: KeyCreate,
-    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+    user: dict[str, Any] = Depends(require_role("admin")),  # noqa: B008
 ) -> dict[str, Any]:
     """Add a new API key to a provider."""
     await _verify_provider_ownership(provider_id, user["id"])
@@ -155,7 +155,7 @@ async def create_key(
 async def delete_key(
     provider_id: str,
     key_id: str,
-    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+    user: dict[str, Any] = Depends(require_role("admin")),  # noqa: B008
 ) -> None:
     """Delete an API key from a provider."""
     await _verify_provider_ownership(provider_id, user["id"])
@@ -180,7 +180,7 @@ async def delete_key(
 @router.get("/{provider_id}/strategy")
 async def get_strategy(
     provider_id: str,
-    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+    user: dict[str, Any] = Depends(require_role("admin")),  # noqa: B008
 ) -> dict[str, str]:
     """Get the current load balancing strategy for a provider."""
     async with get_db() as db:
@@ -198,7 +198,7 @@ async def get_strategy(
 async def update_strategy(
     provider_id: str,
     body: StrategyUpdate,
-    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+    user: dict[str, Any] = Depends(require_role("admin")),  # noqa: B008
 ) -> dict[str, str]:
     """Update the load balancing strategy for a provider."""
     if body.strategy not in VALID_STRATEGIES:
@@ -233,7 +233,7 @@ async def update_strategy(
 @router.post("/{provider_id}/keys/select", response_model=KeySelectResponse)
 async def select_key(
     provider_id: str,
-    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+    user: dict[str, Any] = Depends(require_role("admin")),  # noqa: B008
 ) -> dict[str, Any]:
     """Select the next API key using the provider's load balancing strategy.
 
@@ -317,7 +317,7 @@ async def report_key_usage(
     provider_id: str,
     key_id: str,
     body: KeyUsageReport,
-    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+    user: dict[str, Any] = Depends(require_role("admin")),  # noqa: B008
 ) -> None:
     """Report the result of an API call for auto-failover and stats tracking.
 

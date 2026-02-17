@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 
 from orbiter_web.crypto import decrypt_api_key, encrypt_api_key
 from orbiter_web.database import get_db
-from orbiter_web.routes.auth import get_current_user
+from orbiter_web.routes.auth import require_role
 
 router = APIRouter(prefix="/api/providers", tags=["providers"])
 
@@ -89,7 +89,7 @@ def _row_to_response(row: Any) -> dict[str, Any]:
 
 @router.get("", response_model=list[ProviderResponse])
 async def list_providers(
-    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+    user: dict[str, Any] = Depends(require_role("admin")),  # noqa: B008
 ) -> list[dict[str, Any]]:
     """Return all providers for the current user."""
     async with get_db() as db:
@@ -104,7 +104,7 @@ async def list_providers(
 @router.post("", response_model=ProviderResponse, status_code=201)
 async def create_provider(
     body: ProviderCreate,
-    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+    user: dict[str, Any] = Depends(require_role("admin")),  # noqa: B008
 ) -> dict[str, Any]:
     """Create a new provider."""
     if body.provider_type not in VALID_PROVIDER_TYPES:
@@ -147,7 +147,7 @@ async def create_provider(
 @router.get("/{provider_id}", response_model=ProviderResponse)
 async def get_provider(
     provider_id: str,
-    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+    user: dict[str, Any] = Depends(require_role("admin")),  # noqa: B008
 ) -> dict[str, Any]:
     """Return a single provider by ID."""
     async with get_db() as db:
@@ -165,7 +165,7 @@ async def get_provider(
 async def update_provider(
     provider_id: str,
     body: ProviderUpdate,
-    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+    user: dict[str, Any] = Depends(require_role("admin")),  # noqa: B008
 ) -> dict[str, Any]:
     """Update a provider's editable fields."""
     updates = body.model_dump(exclude_none=True)
@@ -210,7 +210,7 @@ async def update_provider(
 @router.delete("/{provider_id}", status_code=204)
 async def delete_provider(
     provider_id: str,
-    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+    user: dict[str, Any] = Depends(require_role("admin")),  # noqa: B008
 ) -> None:
     """Delete a provider."""
     async with get_db() as db:
@@ -228,7 +228,7 @@ async def delete_provider(
 @router.post("/{provider_id}/test", response_model=TestResult)
 async def test_provider(
     provider_id: str,
-    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+    user: dict[str, Any] = Depends(require_role("admin")),  # noqa: B008
 ) -> dict[str, Any]:
     """Test a provider's API key by making a lightweight API call."""
     async with get_db() as db:

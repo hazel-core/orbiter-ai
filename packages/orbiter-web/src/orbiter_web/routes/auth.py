@@ -85,6 +85,37 @@ async def get_current_user(
 
 
 # ---------------------------------------------------------------------------
+# Role-based access control
+# ---------------------------------------------------------------------------
+
+_ROLE_HIERARCHY: dict[str, int] = {"viewer": 0, "developer": 1, "admin": 2}
+
+
+def require_role(min_role: str):
+    """Return a FastAPI dependency that enforces a minimum role level.
+
+    Usage::
+
+        @router.post("/admin-only")
+        async def admin_endpoint(
+            user: dict = Depends(require_role("admin")),
+        ):
+            ...
+    """
+
+    async def _check_role(
+        user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+    ) -> dict[str, Any]:
+        user_level = _ROLE_HIERARCHY.get(user.get("role", ""), -1)
+        required_level = _ROLE_HIERARCHY.get(min_role, 999)
+        if user_level < required_level:
+            raise HTTPException(status_code=403, detail="FORBIDDEN")
+        return user
+
+    return _check_role
+
+
+# ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
 
