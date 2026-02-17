@@ -2892,7 +2892,7 @@
         "Typecheck passes"
       ],
       "priority": 21,
-      "passes": false,
+      "passes": true,
       "notes": "Gap fill: PRD defines cursor-based pagination for all list endpoints. Currently all return unbounded flat lists"
     },
     {

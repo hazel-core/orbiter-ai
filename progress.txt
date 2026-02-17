@@ -3,6 +3,7 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
 ---
 
 ## Codebase Patterns
+- Pagination: list endpoints return `{data: [...], pagination: {next_cursor, has_more, total}}`; use `paginate()` from `orbiter_web/pagination.py`; frontend extracts `.data` via `.then(body => body.data || body)`
 - CSRF: window.fetch is monkey-patched in PageLayout to auto-include X-CSRF-Token on POST/PUT/DELETE; no need to manually add headers in page scripts
 - CSRF exempt paths are in `middleware/csrf.py` `_EXEMPT_PATHS` — add new exempt routes there when needed
 - orbiter-web is a Node.js (Astro 5.x) package inside a UV Python workspace — it has its own package.json, not pyproject.toml for the frontend
@@ -2233,4 +2234,21 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - When adding keyword-only args to _execute_node(), all 3 call sites (single node, workflow, debug) need updating
   - Notifications piggyback on the existing alerts table (rule_id set to empty string for system-generated alerts)
   - Timeout check uses SQLite datetime arithmetic: `datetime(requested_at, '+' || timeout_minutes || ' minutes')`
+---
+
+## 2026-02-17 - US-165
+- Implemented cursor-based pagination utility for list endpoints
+- Files changed:
+  - `packages/orbiter-web/src/orbiter_web/pagination.py` (new) — paginate() utility with PaginatedResponse envelope, base64 cursor encode/decode
+  - `packages/orbiter-web/src/orbiter_web/routes/agents.py` — list_agents now uses paginate() with optional cursor/limit params
+  - `packages/orbiter-web/src/orbiter_web/routes/projects.py` — list_projects now uses paginate() with optional cursor/limit params
+  - `packages/orbiter-web/src/orbiter_web/routes/workflows.py` — list_workflows now uses paginate() with optional cursor/limit params
+  - 13 frontend files updated to extract `.data` from new paginated response envelope
+- **Learnings for future iterations:**
+  - Pagination response format: `{data: [...], pagination: {next_cursor, has_more, total}}`
+  - Cursor encodes `created_at|id` as base64 — uses both fields for stable ordering (created_at DESC, id DESC)
+  - Frontend pattern for handling paginated response: `.then(function (body) { return body.data || body; })` provides backward compat
+  - paginate() fetches limit+1 rows to detect `has_more` without a separate query
+  - Total count query runs against base conditions (ignoring cursor) to give total count of all matching rows
+  - When changing list endpoint response shapes, ALL frontend consumers must be updated — grep for `fetch("/api/<endpoint>")` in both .astro and .tsx files
 ---
