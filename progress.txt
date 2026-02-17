@@ -102,6 +102,7 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
 - Input sanitization: use `sanitize_html()` from `orbiter_web/sanitize.py` on all user-provided text fields before DB storage; apply in route handlers (not models)
 - Security headers: `SecurityHeadersMiddleware` in `middleware/security.py` adds CSP, X-Content-Type-Options, X-Frame-Options; add frameable paths to `_FRAMEABLE_PATHS` set
 - Time columns differ: `runs` table uses `start_time`/`end_time`; `workflow_runs` uses `started_at`/`completed_at` — always check migration SQL before writing queries
+- Takeover protocol: WebSocket commands `takeover`, `inject`, `resume`, `stop`; server responds with `takeover_ack`, `takeover_event`, `takeover_stopped`; stream runs in asyncio.Task for cancellability
 
 ---
 
@@ -2282,4 +2283,19 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Bell icon inserted between theme toggle and user menu in PageLayout top bar
   - ApprovalGateConfig fetches history from `/api/approvals/history?node_id=` on mount
   - Comment is required for rejection but optional for approval (enforced client-side)
+---
+
+## 2026-02-17 - US-121
+- What was implemented: Real-time agent takeover for playground chat
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/routes/playground.py (refactored to support async stream cancellation and takeover protocol)
+  - packages/orbiter-web/src/pages/playground.astro (added Take Over button, status badge, takeover controls bar, trace logging)
+- **Learnings for future iterations:**
+  - WebSocket takeover pattern: run LLM stream in asyncio.Task, listen for client commands via asyncio.Queue concurrently; cancel task on takeover
+  - _TokenCollector accepts cancel_event (asyncio.Event) — checks on each send_json and raises CancelledError to abort stream cleanly
+  - Refactored common streaming dispatch into _run_stream() helper to avoid duplicating provider switch logic for resume/inject paths
+  - Agent status badge uses three states: idle (hidden), running (green), paused (coral) — driven by setAgentStatus() function
+  - Takeover trace entries use a distinct coral-styled card (not collapsible like normal trace entries) for visual differentiation
+  - Frontend inject flow: addUserMessage() + ws.send({type:"inject"}) + startAgentMessage() — mirrors sendMessage() but with inject type
+  - contextlib.suppress(asyncio.CancelledError) is the clean pattern for awaiting cancelled tasks in finally blocks
 ---
