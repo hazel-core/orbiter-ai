@@ -17,6 +17,7 @@ Usage::
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import AsyncIterator, Sequence
 from typing import Any
 
@@ -25,12 +26,18 @@ from orbiter._internal.message_builder import build_messages
 from orbiter._internal.output_parser import parse_tool_arguments
 from orbiter.types import (
     AssistantMessage,
+    ErrorEvent,
     Message,
     RunResult,
+    StatusEvent,
+    StepEvent,
     StreamEvent,
     TextEvent,
     ToolCall,
     ToolCallEvent,
+    ToolResultEvent,
+    Usage,
+    UsageEvent,
     UserMessage,
 )
 
@@ -133,6 +140,7 @@ async def _stream(
     messages: Sequence[Message] | None = None,
     provider: Any = None,
     max_steps: int | None = None,
+    detailed: bool = False,
 ) -> AsyncIterator[StreamEvent]:
     """Stream agent execution, yielding events in real-time.
 
@@ -142,6 +150,11 @@ async def _stream(
     the LLM is re-streamed with the results — looping until a
     text-only response or *max_steps* is reached.
 
+    When *detailed* is ``True``, additional event types are emitted:
+    ``StatusEvent``, ``StepEvent``, ``UsageEvent``, and
+    ``ToolResultEvent``.  ``ErrorEvent`` is emitted on errors
+    regardless of the *detailed* flag.
+
     Args:
         agent: An ``Agent`` instance.
         input: User query string.
@@ -150,10 +163,16 @@ async def _stream(
             When ``None``, auto-resolved from the agent's model string.
         max_steps: Maximum LLM-tool round-trips. Defaults to
             ``agent.max_steps``.
+        detailed: When ``True``, emit rich event types (StepEvent,
+            UsageEvent, ToolResultEvent, StatusEvent) in addition to
+            the default TextEvent and ToolCallEvent.
 
     Yields:
         ``TextEvent`` for text chunks and ``ToolCallEvent`` for tool
-        invocations.
+        invocations.  When *detailed* is ``True``, also yields
+        ``StepEvent``, ``UsageEvent``, ``ToolResultEvent``, and
+        ``StatusEvent``.  ``ErrorEvent`` is yielded on errors
+        regardless of the *detailed* flag.
     """
     resolved = provider or _resolve_provider(agent)
     if resolved is None:
@@ -178,65 +197,166 @@ async def _stream(
 
     tool_schemas = agent.get_tool_schemas() or None
 
-    for _step in range(steps):
-        # Accumulate text and tool call deltas from the stream
-        text_parts: list[str] = []
-        # dict of index -> accumulated tool call data
-        tc_acc: dict[int, dict[str, str]] = {}
+    model_name = getattr(agent, "model", "") or ""
 
-        async for chunk in resolved.stream(
-            msg_list,
-            tools=tool_schemas,
-            temperature=agent.temperature,
-            max_tokens=agent.max_tokens,
-        ):
-            # Yield text deltas
-            if chunk.delta:
-                text_parts.append(chunk.delta)
-                yield TextEvent(text=chunk.delta, agent_name=agent.name)
+    if detailed:
+        yield StatusEvent(
+            status="starting",
+            agent_name=agent.name,
+            message=f"Agent '{agent.name}' starting execution",
+        )
 
-            # Accumulate tool call deltas
-            for tcd in chunk.tool_call_deltas:
-                idx = tcd.index
-                if idx not in tc_acc:
-                    tc_acc[idx] = {"id": "", "name": "", "arguments": ""}
-                if tcd.id is not None:
-                    tc_acc[idx]["id"] = tcd.id
-                if tcd.name is not None:
-                    tc_acc[idx]["name"] = tcd.name
-                tc_acc[idx]["arguments"] += tcd.arguments
+    for step_num in range(steps):
+        step_started_at = time.time()
 
-        # Build completed tool calls
-        tool_calls = [
-            ToolCall(
-                id=data["id"],
-                name=data["name"],
-                arguments=data["arguments"],
-            )
-            for data in tc_acc.values()
-            if data["id"]
-        ]
-
-        # No tool calls — done streaming
-        if not tool_calls:
-            return
-
-        # Yield ToolCallEvent for each tool call
-        for tc in tool_calls:
-            yield ToolCallEvent(
-                tool_name=tc.name,
-                tool_call_id=tc.id,
+        if detailed:
+            yield StepEvent(
+                step_number=step_num + 1,
                 agent_name=agent.name,
+                status="started",
+                started_at=step_started_at,
             )
 
-        # Execute tools and feed results back
-        full_text = "".join(text_parts)
-        actions = parse_tool_arguments(tool_calls)
-        tool_results = await agent._execute_tools(actions)
+        try:
+            # Accumulate text and tool call deltas from the stream
+            text_parts: list[str] = []
+            # dict of index -> accumulated tool call data
+            tc_acc: dict[int, dict[str, str]] = {}
+            step_usage = Usage()
 
-        # Append assistant message + tool results to conversation
-        msg_list.append(AssistantMessage(content=full_text, tool_calls=tool_calls))
-        msg_list.extend(tool_results)
+            async for chunk in resolved.stream(
+                msg_list,
+                tools=tool_schemas,
+                temperature=agent.temperature,
+                max_tokens=agent.max_tokens,
+            ):
+                # Yield text deltas
+                if chunk.delta:
+                    text_parts.append(chunk.delta)
+                    yield TextEvent(text=chunk.delta, agent_name=agent.name)
+
+                # Accumulate tool call deltas
+                for tcd in chunk.tool_call_deltas:
+                    idx = tcd.index
+                    if idx not in tc_acc:
+                        tc_acc[idx] = {"id": "", "name": "", "arguments": ""}
+                    if tcd.id is not None:
+                        tc_acc[idx]["id"] = tcd.id
+                    if tcd.name is not None:
+                        tc_acc[idx]["name"] = tcd.name
+                    tc_acc[idx]["arguments"] += tcd.arguments
+
+                # Capture usage from final chunk
+                if chunk.usage and chunk.usage.total_tokens > 0:
+                    step_usage = Usage(
+                        input_tokens=chunk.usage.input_tokens,
+                        output_tokens=chunk.usage.output_tokens,
+                        total_tokens=chunk.usage.total_tokens,
+                    )
+
+            if detailed:
+                yield UsageEvent(
+                    usage=step_usage,
+                    agent_name=agent.name,
+                    step_number=step_num + 1,
+                    model=model_name,
+                )
+
+            # Build completed tool calls
+            tool_calls = [
+                ToolCall(
+                    id=data["id"],
+                    name=data["name"],
+                    arguments=data["arguments"],
+                )
+                for data in tc_acc.values()
+                if data["id"]
+            ]
+
+            # No tool calls — done streaming
+            if not tool_calls:
+                if detailed:
+                    yield StepEvent(
+                        step_number=step_num + 1,
+                        agent_name=agent.name,
+                        status="completed",
+                        started_at=step_started_at,
+                        completed_at=time.time(),
+                        usage=step_usage,
+                    )
+                    yield StatusEvent(
+                        status="completed",
+                        agent_name=agent.name,
+                        message=f"Agent '{agent.name}' completed execution",
+                    )
+                return
+
+            # Yield ToolCallEvent for each tool call
+            for tc in tool_calls:
+                yield ToolCallEvent(
+                    tool_name=tc.name,
+                    tool_call_id=tc.id,
+                    agent_name=agent.name,
+                )
+
+            # Execute tools and feed results back
+            full_text = "".join(text_parts)
+            actions = parse_tool_arguments(tool_calls)
+            tool_exec_start = time.time()
+            tool_results = await agent._execute_tools(actions)
+            tool_exec_end = time.time()
+
+            # Emit ToolResultEvent for each tool execution when detailed
+            if detailed:
+                total_tool_duration_ms = (tool_exec_end - tool_exec_start) * 1000
+                per_tool_duration_ms = (
+                    total_tool_duration_ms / len(tool_results)
+                    if tool_results
+                    else 0.0
+                )
+                for action, tr in zip(actions, tool_results):
+                    yield ToolResultEvent(
+                        tool_name=tr.tool_name,
+                        tool_call_id=tr.tool_call_id,
+                        arguments=action.arguments,
+                        result=tr.content,
+                        error=tr.error,
+                        success=tr.error is None,
+                        duration_ms=per_tool_duration_ms,
+                        agent_name=agent.name,
+                    )
+
+            if detailed:
+                yield StepEvent(
+                    step_number=step_num + 1,
+                    agent_name=agent.name,
+                    status="completed",
+                    started_at=step_started_at,
+                    completed_at=time.time(),
+                    usage=step_usage,
+                )
+
+            # Append assistant message + tool results to conversation
+            msg_list.append(
+                AssistantMessage(content=full_text, tool_calls=tool_calls)
+            )
+            msg_list.extend(tool_results)
+
+        except Exception as exc:
+            yield ErrorEvent(
+                error=str(exc),
+                error_type=type(exc).__name__,
+                agent_name=agent.name,
+                step_number=step_num + 1,
+                recoverable=False,
+            )
+            if detailed:
+                yield StatusEvent(
+                    status="error",
+                    agent_name=agent.name,
+                    message=str(exc),
+                )
+            raise
 
 
 def _resolve_provider(agent: Any) -> Any:

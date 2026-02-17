@@ -13,12 +13,17 @@ from orbiter.runner import run
 from orbiter.tool import tool
 from orbiter.types import (
     AgentOutput,
+    ErrorEvent,
     RunResult,
+    StatusEvent,
+    StepEvent,
     StreamEvent,
     TextEvent,
     ToolCall,
     ToolCallEvent,
+    ToolResultEvent,
     Usage,
+    UsageEvent,
     UserMessage,
 )
 
@@ -573,3 +578,495 @@ class TestRunStreamCompletion:
         types = [type(e).__name__ for e in events]
         assert "TextEvent" in types
         assert "ToolCallEvent" in types
+
+
+# ---------------------------------------------------------------------------
+# run.stream() detailed=False backward compatibility
+# ---------------------------------------------------------------------------
+
+
+class TestRunStreamDetailedFalse:
+    """Verify that detailed=False (default) only emits TextEvent and ToolCallEvent."""
+
+    async def test_default_no_rich_events(self) -> None:
+        """Default (detailed=False) emits only TextEvent — no StatusEvent/StepEvent."""
+        agent = Agent(name="bot", instructions="Be nice.")
+        chunks = [
+            _FakeStreamChunk(delta="Hello"),
+            _FakeStreamChunk(delta="!", finish_reason="stop"),
+        ]
+        provider = _make_stream_provider([chunks])
+
+        events = [ev async for ev in run.stream(agent, "Hi", provider=provider)]
+
+        assert all(isinstance(e, TextEvent) for e in events)
+        assert len(events) == 2
+
+    async def test_explicit_false_no_rich_events(self) -> None:
+        """Explicit detailed=False still only emits TextEvent/ToolCallEvent."""
+
+        @tool
+        def greet(name: str) -> str:
+            """Greet someone."""
+            return f"Hi {name}!"
+
+        agent = Agent(name="bot", tools=[greet])
+        round1 = [
+            _FakeStreamChunk(
+                tool_call_deltas=[
+                    _FakeToolCallDelta(index=0, id="tc1", name="greet"),
+                ]
+            ),
+            _FakeStreamChunk(
+                tool_call_deltas=[
+                    _FakeToolCallDelta(index=0, arguments='{"name":"Alice"}'),
+                ],
+                finish_reason="tool_calls",
+            ),
+        ]
+        round2 = [_FakeStreamChunk(delta="Done!")]
+        provider = _make_stream_provider([round1, round2])
+
+        events = [
+            ev
+            async for ev in run.stream(
+                agent, "Greet Alice", provider=provider, detailed=False
+            )
+        ]
+
+        for ev in events:
+            assert isinstance(ev, (TextEvent, ToolCallEvent))
+
+
+# ---------------------------------------------------------------------------
+# run.stream() detailed=True tests
+# ---------------------------------------------------------------------------
+
+
+class TestRunStreamDetailedText:
+    """Tests for detailed=True with text-only responses."""
+
+    async def test_detailed_text_emits_status_and_step_events(self) -> None:
+        """detailed=True wraps text response with StatusEvent and StepEvent."""
+        agent = Agent(name="bot", instructions="Be nice.")
+        chunks = [
+            _FakeStreamChunk(delta="Hello"),
+            _FakeStreamChunk(
+                delta="!",
+                finish_reason="stop",
+                usage=Usage(input_tokens=10, output_tokens=5, total_tokens=15),
+            ),
+        ]
+        provider = _make_stream_provider([chunks])
+
+        events: list[StreamEvent] = []
+        async for ev in run.stream(agent, "Hi", provider=provider, detailed=True):
+            events.append(ev)
+
+        types = [type(e).__name__ for e in events]
+
+        # StatusEvent('starting') first
+        assert isinstance(events[0], StatusEvent)
+        assert events[0].status == "starting"
+        assert events[0].agent_name == "bot"
+
+        # StepEvent(status='started') next
+        assert isinstance(events[1], StepEvent)
+        assert events[1].status == "started"
+        assert events[1].step_number == 1
+
+        # Text events in the middle
+        assert "TextEvent" in types
+
+        # UsageEvent after LLM stream
+        usage_events = [e for e in events if isinstance(e, UsageEvent)]
+        assert len(usage_events) == 1
+        assert usage_events[0].usage.total_tokens == 15
+        assert usage_events[0].step_number == 1
+        assert usage_events[0].agent_name == "bot"
+
+        # StepEvent(status='completed') near the end
+        step_completed = [
+            e for e in events if isinstance(e, StepEvent) and e.status == "completed"
+        ]
+        assert len(step_completed) == 1
+        assert step_completed[0].completed_at is not None
+        assert step_completed[0].usage is not None
+        assert step_completed[0].usage.total_tokens == 15
+
+        # StatusEvent('completed') at the end
+        assert isinstance(events[-1], StatusEvent)
+        assert events[-1].status == "completed"
+
+    async def test_detailed_text_event_order(self) -> None:
+        """Verify exact event type order for a simple text response."""
+        agent = Agent(name="bot")
+        chunks = [_FakeStreamChunk(delta="ok")]
+        provider = _make_stream_provider([chunks])
+
+        events = [
+            ev async for ev in run.stream(agent, "Hi", provider=provider, detailed=True)
+        ]
+
+        type_names = [type(e).__name__ for e in events]
+        assert type_names == [
+            "StatusEvent",  # starting
+            "StepEvent",  # started
+            "TextEvent",  # text delta
+            "UsageEvent",  # usage after LLM
+            "StepEvent",  # completed
+            "StatusEvent",  # completed
+        ]
+
+
+class TestRunStreamDetailedToolCalls:
+    """Tests for detailed=True with tool call responses."""
+
+    async def test_detailed_tool_call_emits_tool_result_events(self) -> None:
+        """detailed=True emits ToolResultEvent for each tool execution."""
+
+        @tool
+        def greet(name: str) -> str:
+            """Greet someone."""
+            return f"Hi {name}!"
+
+        agent = Agent(name="bot", tools=[greet])
+        round1 = [
+            _FakeStreamChunk(
+                tool_call_deltas=[
+                    _FakeToolCallDelta(index=0, id="tc1", name="greet"),
+                ]
+            ),
+            _FakeStreamChunk(
+                tool_call_deltas=[
+                    _FakeToolCallDelta(index=0, arguments='{"name":"Alice"}'),
+                ],
+                finish_reason="tool_calls",
+                usage=Usage(input_tokens=10, output_tokens=5, total_tokens=15),
+            ),
+        ]
+        round2 = [_FakeStreamChunk(delta="Done!")]
+        provider = _make_stream_provider([round1, round2])
+
+        events = [
+            ev
+            async for ev in run.stream(
+                agent, "Greet Alice", provider=provider, detailed=True
+            )
+        ]
+
+        tool_result_events = [e for e in events if isinstance(e, ToolResultEvent)]
+        assert len(tool_result_events) == 1
+        tre = tool_result_events[0]
+        assert tre.tool_name == "greet"
+        assert tre.tool_call_id == "tc1"
+        assert tre.arguments == {"name": "Alice"}
+        assert tre.result == "Hi Alice!"
+        assert tre.success is True
+        assert tre.error is None
+        assert tre.duration_ms > 0
+        assert tre.agent_name == "bot"
+
+    async def test_detailed_tool_call_full_event_order(self) -> None:
+        """Verify event type order for a tool call + text response."""
+
+        @tool
+        def compute() -> str:
+            """Compute."""
+            return "42"
+
+        agent = Agent(name="bot", tools=[compute])
+        round1 = [
+            _FakeStreamChunk(
+                tool_call_deltas=[
+                    _FakeToolCallDelta(index=0, id="tc1", name="compute"),
+                ]
+            ),
+            _FakeStreamChunk(
+                tool_call_deltas=[
+                    _FakeToolCallDelta(index=0, arguments="{}"),
+                ],
+                finish_reason="tool_calls",
+            ),
+        ]
+        round2 = [_FakeStreamChunk(delta="Result: 42")]
+        provider = _make_stream_provider([round1, round2])
+
+        events = [
+            ev
+            async for ev in run.stream(agent, "calc", provider=provider, detailed=True)
+        ]
+
+        type_names = [type(e).__name__ for e in events]
+        # Step 1: tool call
+        assert type_names == [
+            "StatusEvent",  # starting
+            "StepEvent",  # step 1 started
+            "UsageEvent",  # usage after LLM call
+            "ToolCallEvent",  # tool call notification
+            "ToolResultEvent",  # tool result
+            "StepEvent",  # step 1 completed
+            # Step 2: text response
+            "StepEvent",  # step 2 started
+            "TextEvent",  # text delta
+            "UsageEvent",  # usage after LLM call
+            "StepEvent",  # step 2 completed
+            "StatusEvent",  # completed
+        ]
+
+    async def test_detailed_failed_tool_result_event(self) -> None:
+        """ToolResultEvent captures failure when a tool raises."""
+
+        @tool
+        def fail_tool() -> str:
+            """Always fails."""
+            raise ValueError("oops")
+
+        agent = Agent(name="bot", tools=[fail_tool])
+        round1 = [
+            _FakeStreamChunk(
+                tool_call_deltas=[
+                    _FakeToolCallDelta(index=0, id="tc1", name="fail_tool"),
+                ]
+            ),
+            _FakeStreamChunk(
+                tool_call_deltas=[
+                    _FakeToolCallDelta(index=0, arguments="{}"),
+                ],
+                finish_reason="tool_calls",
+            ),
+        ]
+        round2 = [_FakeStreamChunk(delta="Tool failed.")]
+        provider = _make_stream_provider([round1, round2])
+
+        events = [
+            ev
+            async for ev in run.stream(agent, "try", provider=provider, detailed=True)
+        ]
+
+        tool_result_events = [e for e in events if isinstance(e, ToolResultEvent)]
+        assert len(tool_result_events) == 1
+        tre = tool_result_events[0]
+        assert tre.tool_name == "fail_tool"
+        assert tre.success is False
+        assert tre.error is not None
+        assert "oops" in tre.error
+
+    async def test_detailed_multiple_tool_calls(self) -> None:
+        """detailed=True emits ToolResultEvent for each parallel tool call."""
+
+        @tool
+        def add(a: int, b: int) -> str:
+            """Add numbers."""
+            return str(a + b)
+
+        @tool
+        def mul(a: int, b: int) -> str:
+            """Multiply numbers."""
+            return str(a * b)
+
+        agent = Agent(name="calc", tools=[add, mul])
+        round1 = [
+            _FakeStreamChunk(
+                tool_call_deltas=[
+                    _FakeToolCallDelta(index=0, id="tc1", name="add"),
+                    _FakeToolCallDelta(index=1, id="tc2", name="mul"),
+                ]
+            ),
+            _FakeStreamChunk(
+                tool_call_deltas=[
+                    _FakeToolCallDelta(index=0, arguments='{"a":2,"b":3}'),
+                    _FakeToolCallDelta(index=1, arguments='{"a":4,"b":5}'),
+                ],
+                finish_reason="tool_calls",
+            ),
+        ]
+        round2 = [_FakeStreamChunk(delta="Done.")]
+        provider = _make_stream_provider([round1, round2])
+
+        events = [
+            ev
+            async for ev in run.stream(
+                agent, "compute", provider=provider, detailed=True
+            )
+        ]
+
+        tool_result_events = [e for e in events if isinstance(e, ToolResultEvent)]
+        assert len(tool_result_events) == 2
+        names = {e.tool_name for e in tool_result_events}
+        assert names == {"add", "mul"}
+
+        # Check results
+        add_result = next(e for e in tool_result_events if e.tool_name == "add")
+        assert add_result.result == "5"
+        assert add_result.arguments == {"a": 2, "b": 3}
+
+        mul_result = next(e for e in tool_result_events if e.tool_name == "mul")
+        assert mul_result.result == "20"
+        assert mul_result.arguments == {"a": 4, "b": 5}
+
+
+class TestRunStreamDetailedUsage:
+    """Tests for UsageEvent emission with detailed=True."""
+
+    async def test_usage_event_captures_token_counts(self) -> None:
+        """UsageEvent correctly captures token counts from stream chunks."""
+        agent = Agent(name="bot", model="gpt-4")
+        chunks = [
+            _FakeStreamChunk(delta="Hi"),
+            _FakeStreamChunk(
+                delta="!",
+                finish_reason="stop",
+                usage=Usage(input_tokens=50, output_tokens=10, total_tokens=60),
+            ),
+        ]
+        provider = _make_stream_provider([chunks])
+
+        events = [
+            ev async for ev in run.stream(agent, "Hi", provider=provider, detailed=True)
+        ]
+
+        usage_events = [e for e in events if isinstance(e, UsageEvent)]
+        assert len(usage_events) == 1
+        assert usage_events[0].usage.input_tokens == 50
+        assert usage_events[0].usage.output_tokens == 10
+        assert usage_events[0].usage.total_tokens == 60
+        assert usage_events[0].model == "gpt-4"
+        assert usage_events[0].step_number == 1
+
+    async def test_usage_event_zero_when_no_usage(self) -> None:
+        """UsageEvent has zero tokens when chunks don't include usage."""
+        agent = Agent(name="bot")
+        chunks = [_FakeStreamChunk(delta="ok")]
+        provider = _make_stream_provider([chunks])
+
+        events = [
+            ev async for ev in run.stream(agent, "Hi", provider=provider, detailed=True)
+        ]
+
+        usage_events = [e for e in events if isinstance(e, UsageEvent)]
+        assert len(usage_events) == 1
+        assert usage_events[0].usage.total_tokens == 0
+
+
+class TestRunStreamDetailedErrors:
+    """Tests for ErrorEvent emission."""
+
+    async def test_error_event_on_provider_error(self) -> None:
+        """ErrorEvent emitted when provider stream raises an exception."""
+        agent = Agent(name="bot")
+
+        async def failing_stream(messages: Any, **kwargs: Any) -> AsyncIterator[Any]:
+            raise RuntimeError("connection failed")
+            yield  # noqa: RUF027 — unreachable yield makes it async generator
+
+        mock = AsyncMock()
+        mock.stream = failing_stream
+
+        events: list[StreamEvent] = []
+        with pytest.raises(RuntimeError, match="connection failed"):
+            async for ev in run.stream(agent, "Hi", provider=mock, detailed=True):
+                events.append(ev)
+
+        error_events = [e for e in events if isinstance(e, ErrorEvent)]
+        assert len(error_events) == 1
+        assert error_events[0].error == "connection failed"
+        assert error_events[0].error_type == "RuntimeError"
+        assert error_events[0].agent_name == "bot"
+        assert error_events[0].step_number == 1
+        assert error_events[0].recoverable is False
+
+    async def test_error_event_emitted_without_detailed(self) -> None:
+        """ErrorEvent emitted on errors regardless of detailed flag."""
+        agent = Agent(name="bot")
+
+        async def failing_stream(messages: Any, **kwargs: Any) -> AsyncIterator[Any]:
+            raise RuntimeError("oops")
+            yield  # noqa: RUF027
+
+        mock = AsyncMock()
+        mock.stream = failing_stream
+
+        events: list[StreamEvent] = []
+        with pytest.raises(RuntimeError, match="oops"):
+            async for ev in run.stream(agent, "Hi", provider=mock, detailed=False):
+                events.append(ev)
+
+        error_events = [e for e in events if isinstance(e, ErrorEvent)]
+        assert len(error_events) == 1
+        assert error_events[0].error == "oops"
+
+    async def test_error_event_includes_status_when_detailed(self) -> None:
+        """When detailed=True, error also emits StatusEvent(status='error')."""
+        agent = Agent(name="bot")
+
+        async def failing_stream(messages: Any, **kwargs: Any) -> AsyncIterator[Any]:
+            raise ValueError("bad input")
+            yield  # noqa: RUF027
+
+        mock = AsyncMock()
+        mock.stream = failing_stream
+
+        events: list[StreamEvent] = []
+        with pytest.raises(ValueError, match="bad input"):
+            async for ev in run.stream(agent, "Hi", provider=mock, detailed=True):
+                events.append(ev)
+
+        status_events = [
+            e
+            for e in events
+            if isinstance(e, StatusEvent) and e.status == "error"
+        ]
+        assert len(status_events) == 1
+        assert status_events[0].message == "bad input"
+
+
+class TestRunStreamDetailedStepNumbers:
+    """Tests for correct step numbering with detailed=True."""
+
+    async def test_multi_step_step_numbers(self) -> None:
+        """Step numbers increment correctly across multiple steps."""
+
+        @tool
+        def echo() -> str:
+            """Echo."""
+            return "echoed"
+
+        agent = Agent(name="bot", tools=[echo])
+        tool_round = [
+            _FakeStreamChunk(
+                tool_call_deltas=[
+                    _FakeToolCallDelta(index=0, id="tc1", name="echo"),
+                ]
+            ),
+            _FakeStreamChunk(
+                tool_call_deltas=[
+                    _FakeToolCallDelta(index=0, arguments="{}"),
+                ],
+                finish_reason="tool_calls",
+            ),
+        ]
+        text_round = [_FakeStreamChunk(delta="Final answer")]
+        provider = _make_stream_provider([tool_round, text_round])
+
+        events = [
+            ev
+            async for ev in run.stream(agent, "go", provider=provider, detailed=True)
+        ]
+
+        step_events = [e for e in events if isinstance(e, StepEvent)]
+        # Step 1 started + completed, Step 2 started + completed
+        assert len(step_events) == 4
+        assert step_events[0].step_number == 1
+        assert step_events[0].status == "started"
+        assert step_events[1].step_number == 1
+        assert step_events[1].status == "completed"
+        assert step_events[2].step_number == 2
+        assert step_events[2].status == "started"
+        assert step_events[3].step_number == 2
+        assert step_events[3].status == "completed"
+
+        usage_events = [e for e in events if isinstance(e, UsageEvent)]
+        assert len(usage_events) == 2
+        assert usage_events[0].step_number == 1
+        assert usage_events[1].step_number == 2
