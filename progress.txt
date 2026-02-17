@@ -2763,3 +2763,23 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Red-team mode generates novel adversarial inputs via LLM — falls back to preset cases if generation fails
   - Safety results stored separately from eval_results (safety_runs table) with category_scores_json for per-category breakdown
 ---
+
+## 2026-02-17 - US-135
+- What was implemented: Deployment backend and REST API — deploy agents/workflows as API endpoints
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/migrations/058_create_deployments.sql (new — deployments table with entity_type, api_key_hash, rate_limit, status, usage_count)
+  - packages/orbiter-web/src/orbiter_web/routes/deployments.py (new — CRUD endpoints + runtime endpoint)
+  - packages/orbiter-web/src/orbiter_web/app.py (updated — registered deployments_router and deployed_router)
+- Endpoints:
+  - POST /api/deployments — creates deployment, generates `orb_` prefixed API key (shown once), stores SHA-256 hash
+  - GET /api/deployments — lists all deployments with pagination
+  - DELETE /api/deployments/:id — removes deployment
+  - POST /api/deployed/:id/run — runtime endpoint, authenticates via Bearer token, supports `stream: true` for SSE
+- **Learnings for future iterations:**
+  - API key pattern: generate with `secrets.token_urlsafe(32)`, store SHA-256 hash (not encrypted), prefix with `orb_` for easy identification
+  - CSRF middleware already skips requests without session cookies — external API calls using Bearer auth need no CSRF exemption
+  - Workflow engine `execute_workflow()` signature: `run_id, workflow_id, user_id, nodes, edges, event_callback` — event_callback is async
+  - SSE streaming for workflows needs asyncio.Queue bridge: task writes events to queue, generator yields from queue
+  - For agent SSE, use `AgentService.stream_agent()` which yields `StreamChunk` objects
+  - Two routers in one file: `router` (prefix `/api/deployments`) for CRUD, `deployed_router` (prefix `/api/deployed`) for runtime — both registered in app.py
+---
