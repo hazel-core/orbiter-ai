@@ -94,6 +94,7 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
 - orbiter-web depends on orbiter-core + orbiter-models via workspace deps in pyproject.toml + `[tool.uv.sources]`
 - Rate limiting: custom in-memory `_SlidingWindow` in `middleware/rate_limit.py`; config via ORBITER_RATE_LIMIT_AUTH/GENERAL/AGENT env vars in settings
 - RBAC: `require_role("admin")` from auth.py is a FastAPI dependency factory — use `Depends(require_role("admin"))` to restrict endpoints; hierarchy: viewer < developer < admin
+- CI/CD auth: `_get_ci_user` in routes/ci.py authenticates via X-API-Key header; `_require_permission("ci:deploy")` checks permissions; CSRF exempt via `_EXEMPT_PREFIXES` in csrf.py
 - Agent runtime: `get_provider("provider:model", api_key=..., base_url=...)` creates ModelProvider; `Agent.run(input=..., messages=..., provider=...)` executes the tool loop
 - Agent node execution: `_execute_agent_node()` in engine.py handles both DB-referenced and inline agents; inject `_user_id` into node data for provider resolution
 - Upstream context: `_gather_upstream_inputs(node_id, edges, variables)` collects text from all upstream nodes — use for agent node input
@@ -3082,4 +3083,24 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Notifications and audit_log tables do NOT have ON DELETE CASCADE — require explicit DELETE
   - Existing deactivate_member (DELETE /{user_id}) is a soft delete; permanent endpoint adds /permanent suffix
   - Confirmation pattern: use Pydantic model with `confirm: bool` field, reject if not True
+---
+
+## 2026-02-17 - US-193
+- What was implemented: CI/CD integration endpoints and platform API key management
+  - Migration 065: `api_keys` table (id, user_id, key_hash, label, permissions_json, last_used_at, created_at)
+  - `routes/ci.py`: CI router (`/api/v1/ci/`) with deploy, evaluate, and status endpoints authenticated via X-API-Key header
+  - `routes/ci.py`: API keys router (`/api/v1/settings/api-keys`) with create, list, delete endpoints (session auth)
+  - CSRF middleware: added prefix-based exemptions for `/api/v1/ci/` paths
+  - `app.py`: registered ci_router and api_keys_router, added X-API-Key to CORS headers
+- Files changed: 
+  - `packages/orbiter-web/src/orbiter_web/migrations/065_create_api_keys.sql` (new)
+  - `packages/orbiter-web/src/orbiter_web/routes/ci.py` (new)
+  - `packages/orbiter-web/src/orbiter_web/app.py` (modified)
+  - `packages/orbiter-web/src/orbiter_web/middleware/csrf.py` (modified)
+- **Learnings for future iterations:**
+  - CI endpoints use `_get_ci_user` dependency (X-API-Key header) — not `get_current_user` (session cookie)
+  - `_require_permission("ci:deploy")` wraps `_get_ci_user` to check permission strings in api_keys.permissions_json
+  - CSRF middleware has `_EXEMPT_PREFIXES` tuple for prefix-based exemptions (in addition to exact-match `_EXEMPT_PATHS`)
+  - API keys use SHA-256 hash via `_hash_key()` — similar pattern to deployments' `_hash_api_key()`
+  - `Header(...)` in FastAPI doesn't trigger ruff B008 (unlike `Depends()`) — no noqa needed
 ---
