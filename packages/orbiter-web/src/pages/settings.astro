@@ -113,21 +113,92 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
 
         <div id="profile-loading" class="text-sm text-muted py-4">Loading profile...</div>
 
-        <form id="profile-form" class="hidden flex flex-col gap-4">
-          <Input
-            label="Email"
-            name="email"
-            type="email"
-            disabled
-          />
-          <Input
-            label="Member since"
-            name="created_at"
-            disabled
-          />
-          <div class="flex justify-end mt-2">
+        <div id="profile-section" class="hidden flex flex-col gap-6">
+          <!-- Email row -->
+          <div class="flex flex-col gap-1.5">
+            <label class="text-sm font-medium text-dark">Email</label>
+            <div id="email-display" class="flex items-center gap-3">
+              <span id="email-value" class="text-sm text-dark"></span>
+              <button type="button" id="email-edit-btn" class="text-xs text-coral hover:text-coral/80 cursor-pointer transition-colors">Edit</button>
+            </div>
+            <div id="email-edit-form" class="hidden flex items-center gap-2">
+              <input
+                type="email"
+                id="email-edit-input"
+                class="flex-1 bg-paper border border-dark/[0.08] rounded-lg px-3 py-2 text-sm text-dark outline-none focus:border-coral focus:ring-2 focus:ring-coral/20"
+              />
+              <button type="button" id="email-save-btn" class="inline-flex items-center text-xs px-3 py-2 rounded-lg bg-coral text-white hover:bg-coral/90 transition-colors cursor-pointer font-medium">Save</button>
+              <button type="button" id="email-cancel-btn" class="inline-flex items-center text-xs px-3 py-2 rounded-lg border border-dark/[0.08] text-muted hover:text-dark hover:bg-dark/5 transition-colors cursor-pointer">Cancel</button>
+            </div>
+          </div>
+
+          <!-- Role badge -->
+          <div class="flex flex-col gap-1.5">
+            <label class="text-sm font-medium text-dark">Role</label>
+            <div>
+              <span id="role-badge" class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium"></span>
+            </div>
+          </div>
+
+          <!-- Member since -->
+          <div class="flex flex-col gap-1.5">
+            <label class="text-sm font-medium text-dark">Member since</label>
+            <span id="member-since" class="text-sm text-muted"></span>
+          </div>
+
+          <!-- Sign out -->
+          <div class="flex justify-end">
             <Button variant="bordered" type="button" id="logout-btn">
               Sign out
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Change Password -->
+      <div id="password-section" class="hidden rounded-xl bg-subtle/80 border border-dark/[0.08] p-6 mt-4">
+        <h2 class="text-lg font-semibold text-dark mb-1">Change Password</h2>
+        <p class="text-sm text-muted mb-6">Update your account password</p>
+
+        <form id="password-form" class="flex flex-col gap-4">
+          <div class="flex flex-col gap-1.5">
+            <label for="current-password" class="text-sm font-medium text-dark">Current Password</label>
+            <input
+              type="password"
+              id="current-password"
+              name="current_password"
+              class="w-full bg-paper border border-dark/[0.08] rounded-lg px-3 py-2 text-sm text-dark placeholder:text-muted/60 outline-none focus:border-coral focus:ring-2 focus:ring-coral/20"
+              placeholder="Enter current password"
+              required
+            />
+          </div>
+          <div class="flex flex-col gap-1.5">
+            <label for="new-password" class="text-sm font-medium text-dark">New Password</label>
+            <input
+              type="password"
+              id="new-password"
+              name="new_password"
+              class="w-full bg-paper border border-dark/[0.08] rounded-lg px-3 py-2 text-sm text-dark placeholder:text-muted/60 outline-none focus:border-coral focus:ring-2 focus:ring-coral/20"
+              placeholder="Min 8 characters"
+              minlength="8"
+              required
+            />
+          </div>
+          <div class="flex flex-col gap-1.5">
+            <label for="confirm-password" class="text-sm font-medium text-dark">Confirm New Password</label>
+            <input
+              type="password"
+              id="confirm-password"
+              name="confirm_password"
+              class="w-full bg-paper border border-dark/[0.08] rounded-lg px-3 py-2 text-sm text-dark placeholder:text-muted/60 outline-none focus:border-coral focus:ring-2 focus:ring-coral/20"
+              placeholder="Re-enter new password"
+              required
+            />
+          </div>
+          <div id="password-error" class="text-sm text-coral hidden"></div>
+          <div class="flex justify-end mt-2">
+            <Button variant="primary" type="submit" id="password-save-btn">
+              Update Password
             </Button>
           </div>
         </form>
@@ -734,8 +805,17 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
 
     // ------- Profile -------
     var profileLoading = document.getElementById("profile-loading");
-    var profileForm = document.getElementById("profile-form");
+    var profileSection = document.getElementById("profile-section");
+    var passwordSection = document.getElementById("password-section");
     var logoutBtn = document.getElementById("logout-btn");
+    var currentUserEmail = "";
+
+    // Role badge colors
+    var roleBadgeStyles = {
+      admin: "bg-coral/15 text-coral border-coral/20",
+      developer: "bg-zen-blue/15 text-zen-blue border-zen-blue/20",
+      viewer: "bg-dark/10 text-dark border-dark/10"
+    };
 
     fetch("/api/v1/auth/me", { credentials: "same-origin" })
       .then(function (res) {
@@ -744,19 +824,32 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
       })
       .then(function (user) {
         if (profileLoading) profileLoading.classList.add("hidden");
-        if (!profileForm) return;
-        profileForm.classList.remove("hidden");
+        if (profileSection) profileSection.classList.remove("hidden");
+        if (passwordSection) passwordSection.classList.remove("hidden");
 
-        var emailInput = profileForm.querySelector('[name="email"]');
-        if (emailInput) emailInput.value = user.email;
+        currentUserEmail = user.email;
 
-        var createdInput = profileForm.querySelector('[name="created_at"]');
-        if (createdInput) {
+        // Email
+        var emailValue = document.getElementById("email-value");
+        if (emailValue) emailValue.textContent = user.email;
+
+        // Role badge
+        var roleBadge = document.getElementById("role-badge");
+        if (roleBadge) {
+          var roleLabel = user.role.charAt(0).toUpperCase() + user.role.slice(1);
+          roleBadge.textContent = roleLabel;
+          var style = roleBadgeStyles[user.role] || roleBadgeStyles.viewer;
+          roleBadge.className = "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium " + style;
+        }
+
+        // Member since
+        var memberSince = document.getElementById("member-since");
+        if (memberSince) {
           try {
             var d = new Date(user.created_at + "Z");
-            createdInput.value = d.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
+            memberSince.textContent = d.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
           } catch (_e) {
-            createdInput.value = user.created_at;
+            memberSince.textContent = user.created_at;
           }
         }
       })
@@ -764,6 +857,117 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
         if (profileLoading) profileLoading.textContent = "Could not load profile.";
       });
 
+    // Email editing
+    var emailDisplay = document.getElementById("email-display");
+    var emailEditForm = document.getElementById("email-edit-form");
+    var emailEditInput = document.getElementById("email-edit-input");
+    var emailEditBtn = document.getElementById("email-edit-btn");
+    var emailSaveBtn = document.getElementById("email-save-btn");
+    var emailCancelBtn = document.getElementById("email-cancel-btn");
+
+    if (emailEditBtn) {
+      emailEditBtn.addEventListener("click", function () {
+        if (emailEditInput) emailEditInput.value = currentUserEmail;
+        if (emailDisplay) emailDisplay.classList.add("hidden");
+        if (emailEditForm) emailEditForm.classList.remove("hidden");
+        if (emailEditInput) emailEditInput.focus();
+      });
+    }
+
+    if (emailCancelBtn) {
+      emailCancelBtn.addEventListener("click", function () {
+        if (emailEditForm) emailEditForm.classList.add("hidden");
+        if (emailDisplay) emailDisplay.classList.remove("hidden");
+      });
+    }
+
+    if (emailSaveBtn) {
+      emailSaveBtn.addEventListener("click", function () {
+        var newEmail = emailEditInput ? emailEditInput.value.trim() : "";
+        if (!newEmail) return;
+        if (newEmail === currentUserEmail) {
+          if (emailEditForm) emailEditForm.classList.add("hidden");
+          if (emailDisplay) emailDisplay.classList.remove("hidden");
+          return;
+        }
+
+        emailSaveBtn.disabled = true;
+        fetch("/api/v1/auth/profile", {
+          method: "PUT",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: newEmail })
+        })
+          .then(function (res) {
+            if (!res.ok) return res.json().then(function (b) { throw new Error(b.detail || "Failed to update email"); });
+            return res.json();
+          })
+          .then(function (updated) {
+            currentUserEmail = updated.email;
+            var emailValue = document.getElementById("email-value");
+            if (emailValue) emailValue.textContent = updated.email;
+            if (emailEditForm) emailEditForm.classList.add("hidden");
+            if (emailDisplay) emailDisplay.classList.remove("hidden");
+            showToast("Email updated", "success");
+          })
+          .catch(function (err) {
+            showToast(err.message, "error");
+          })
+          .finally(function () {
+            emailSaveBtn.disabled = false;
+          });
+      });
+    }
+
+    // Change password
+    var passwordForm = document.getElementById("password-form");
+    var passwordError = document.getElementById("password-error");
+
+    if (passwordForm) {
+      passwordForm.addEventListener("submit", function (e) {
+        e.preventDefault();
+        if (passwordError) { passwordError.classList.add("hidden"); passwordError.textContent = ""; }
+
+        var currentPw = document.getElementById("current-password").value;
+        var newPw = document.getElementById("new-password").value;
+        var confirmPw = document.getElementById("confirm-password").value;
+
+        if (newPw.length < 8) {
+          if (passwordError) { passwordError.textContent = "New password must be at least 8 characters"; passwordError.classList.remove("hidden"); }
+          return;
+        }
+        if (newPw !== confirmPw) {
+          if (passwordError) { passwordError.textContent = "Passwords do not match"; passwordError.classList.remove("hidden"); }
+          return;
+        }
+
+        var saveBtn = document.getElementById("password-save-btn");
+        if (saveBtn) saveBtn.disabled = true;
+
+        fetch("/api/v1/auth/password", {
+          method: "PUT",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ current_password: currentPw, new_password: newPw })
+        })
+          .then(function (res) {
+            if (!res.ok) return res.json().then(function (b) { throw new Error(b.detail || "Failed to change password"); });
+            return res.json();
+          })
+          .then(function () {
+            passwordForm.reset();
+            showToast("Password updated", "success");
+          })
+          .catch(function (err) {
+            showToast(err.message, "error");
+          })
+          .finally(function () {
+            if (saveBtn) saveBtn.disabled = false;
+          });
+      });
+    }
+
+    // Logout
     if (logoutBtn) {
       logoutBtn.addEventListener("click", function () {
         fetch("/api/v1/auth/logout", { method: "POST", credentials: "same-origin" })
