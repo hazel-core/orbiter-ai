@@ -14,12 +14,16 @@ Usage::
     orbiter run --config agents.yaml "What is 2+2?"
     orbiter run -m openai:gpt-4o "Hello"
     orbiter --verbose run "Explain Python decorators"
+    orbiter start worker --redis-url redis://localhost:6379
 """
 
 from __future__ import annotations
 
+import asyncio
+import os
 from pathlib import Path
 from typing import Annotated, Any
+from urllib.parse import urlparse
 
 import typer
 from rich.console import Console
@@ -153,3 +157,74 @@ def run(
         console.print(f"[dim]Streaming: {stream}[/dim]")
 
     console.print(f"[green]Running with input:[/green] {input_text}")
+
+
+# ---------------------------------------------------------------------------
+# Subcommand group: start
+# ---------------------------------------------------------------------------
+
+start_app = typer.Typer(
+    name="start",
+    help="Start long-running services.",
+    no_args_is_help=True,
+)
+app.add_typer(start_app, name="start")
+
+
+def _mask_redis_url(url: str) -> str:
+    """Return a masked version of the Redis URL showing only the host."""
+    try:
+        parsed = urlparse(url)
+        host = parsed.hostname or "unknown"
+        port = parsed.port or 6379
+        return f"redis://{host}:{port}/***"
+    except Exception:
+        return "redis://***"
+
+
+@start_app.command("worker")
+def start_worker(
+    redis_url: Annotated[
+        str | None,
+        typer.Option("--redis-url", help="Redis connection URL (default: ORBITER_REDIS_URL env var)."),
+    ] = None,
+    concurrency: Annotated[
+        int,
+        typer.Option("--concurrency", help="Number of concurrent task executions."),
+    ] = 1,
+    queue: Annotated[
+        str,
+        typer.Option("--queue", help="Redis Streams queue name."),
+    ] = "orbiter:tasks",
+    worker_id: Annotated[
+        str | None,
+        typer.Option("--worker-id", help="Unique worker ID (auto-generated if not set)."),
+    ] = None,
+) -> None:
+    """Start a distributed worker that claims and executes agent tasks."""
+    url = redis_url or os.environ.get("ORBITER_REDIS_URL")
+    if not url:
+        console.print(
+            "[red]Error: --redis-url required or set ORBITER_REDIS_URL environment variable.[/red]"
+        )
+        raise typer.Exit(code=1)
+
+    from orbiter.distributed.worker import Worker  # pyright: ignore[reportMissingImports]
+
+    worker = Worker(
+        url,
+        worker_id=worker_id,
+        concurrency=concurrency,
+        queue_name=queue,
+    )
+
+    # Print startup banner
+    console.print("[bold green]Orbiter Worker Starting[/bold green]")
+    console.print(f"  Worker ID:   {worker.worker_id}")
+    console.print(f"  Redis URL:   {_mask_redis_url(url)}")
+    console.print(f"  Queue:       {queue}")
+    console.print(f"  Concurrency: {concurrency}")
+    console.print()
+    console.print("[dim]Press Ctrl+C to stop.[/dim]")
+
+    asyncio.run(worker.start())

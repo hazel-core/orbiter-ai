@@ -5,6 +5,7 @@ description = "CLI agent runner for Orbiter"
 requires-python = ">=3.11"
 dependencies = [
     "orbiter-core",
+    "orbiter-distributed",
     "orbiter-models",
     "typer>=0.12",
     "rich>=13.0",
@@ -15,6 +16,7 @@ orbiter = "orbiter_cli.main:app"
 
 [tool.uv.sources]
 orbiter-core = { workspace = true }
+orbiter-distributed = { workspace = true }
 orbiter-models = { workspace = true }
 
 [build-system]

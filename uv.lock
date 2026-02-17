@@ -2462,6 +2462,7 @@ version = "0.1.0"
 source = { editable = "packages/orbiter-cli" }
 dependencies = [
     { name = "orbiter-core" },
+    { name = "orbiter-distributed" },
     { name = "orbiter-models" },
     { name = "rich" },
     { name = "typer" },
@@ -2470,6 +2471,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "orbiter-core", editable = "packages/orbiter-core" },
+    { name = "orbiter-distributed", editable = "packages/orbiter-distributed" },
     { name = "orbiter-models", editable = "packages/orbiter-models" },
     { name = "rich", specifier = ">=13.0" },
     { name = "typer", specifier = ">=0.12" },

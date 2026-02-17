@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from typer.testing import CliRunner
 
 from orbiter_cli.main import (
     CLIError,
+    _mask_redis_url,
     app,
     find_config,
     load_config,
@@ -273,3 +275,150 @@ class TestEdgeCases:
         (tmp_path / ".orbiter.yaml").write_text("ok: true\n")
         result = find_config(Path(tmp_path))
         assert result is not None
+
+
+# ---------------------------------------------------------------------------
+# _mask_redis_url helper
+# ---------------------------------------------------------------------------
+
+
+class TestMaskRedisUrl:
+    def test_masks_standard_url(self) -> None:
+        assert _mask_redis_url("redis://localhost:6379/0") == "redis://localhost:6379/***"
+
+    def test_masks_url_with_password(self) -> None:
+        result = _mask_redis_url("redis://:secret@myhost:6380/2")
+        assert result == "redis://myhost:6380/***"
+        assert "secret" not in result
+
+    def test_masks_url_default_port(self) -> None:
+        result = _mask_redis_url("redis://myhost")
+        assert result == "redis://myhost:6379/***"
+
+    def test_handles_invalid_url(self) -> None:
+        result = _mask_redis_url("not a url at all")
+        assert "***" in result
+
+
+# ---------------------------------------------------------------------------
+# CLI: start worker command
+# ---------------------------------------------------------------------------
+
+
+class TestStartWorkerCommand:
+    def test_start_worker_registered(self) -> None:
+        """The 'start worker' subcommand is registered on the app."""
+        result = runner.invoke(app, ["start", "--help"])
+        assert result.exit_code == 0
+        assert "worker" in result.output.lower()
+
+    def test_start_worker_help(self) -> None:
+        """The 'start worker' command shows expected options."""
+        result = runner.invoke(app, ["start", "worker", "--help"])
+        assert result.exit_code == 0
+        assert "--redis-url" in result.output
+        assert "--concurrency" in result.output
+        assert "--queue" in result.output
+        assert "--worker-id" in result.output
+
+    def test_start_worker_no_redis_url(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Error when neither --redis-url nor ORBITER_REDIS_URL provided."""
+        monkeypatch.delenv("ORBITER_REDIS_URL", raising=False)
+        result = runner.invoke(app, ["start", "worker"])
+        assert result.exit_code == 1
+        assert "redis-url" in result.output.lower() or "ORBITER_REDIS_URL" in result.output
+
+    def test_start_worker_uses_env_var(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Falls back to ORBITER_REDIS_URL env var when --redis-url not set."""
+        monkeypatch.setenv("ORBITER_REDIS_URL", "redis://envhost:6379")
+        mock_worker = MagicMock()
+        mock_worker.worker_id = "test-worker-123"
+        mock_worker.start = AsyncMock()
+
+        with patch(
+            "orbiter.distributed.worker.Worker", return_value=mock_worker
+        ):
+            result = runner.invoke(app, ["start", "worker"])
+        assert result.exit_code == 0
+        assert "envhost" in result.output
+
+    def test_start_worker_with_redis_url_flag(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """--redis-url flag is used when provided."""
+        monkeypatch.delenv("ORBITER_REDIS_URL", raising=False)
+        mock_worker = MagicMock()
+        mock_worker.worker_id = "custom-worker"
+        mock_worker.start = AsyncMock()
+
+        with patch(
+            "orbiter.distributed.worker.Worker", return_value=mock_worker
+        ):
+            result = runner.invoke(
+                app,
+                ["start", "worker", "--redis-url", "redis://flaghost:6379"],
+            )
+        assert result.exit_code == 0
+        assert "flaghost" in result.output
+
+    def test_start_worker_banner_content(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Startup banner shows worker ID, masked URL, queue, concurrency."""
+        monkeypatch.delenv("ORBITER_REDIS_URL", raising=False)
+        mock_worker = MagicMock()
+        mock_worker.worker_id = "my-worker-abc"
+        mock_worker.start = AsyncMock()
+
+        with patch(
+            "orbiter.distributed.worker.Worker", return_value=mock_worker
+        ):
+            result = runner.invoke(
+                app,
+                [
+                    "start", "worker",
+                    "--redis-url", "redis://:password@myredis:6380/1",
+                    "--concurrency", "4",
+                    "--queue", "custom:queue",
+                    "--worker-id", "my-worker-abc",
+                ],
+            )
+        assert result.exit_code == 0
+        assert "my-worker-abc" in result.output
+        assert "myredis" in result.output
+        assert "password" not in result.output
+        assert "custom:queue" in result.output
+        assert "4" in result.output
+
+    def test_start_worker_passes_options_to_worker(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """CLI options are passed correctly to Worker constructor."""
+        monkeypatch.delenv("ORBITER_REDIS_URL", raising=False)
+        mock_worker = MagicMock()
+        mock_worker.worker_id = "w1"
+        mock_worker.start = AsyncMock()
+
+        with patch(
+            "orbiter.distributed.worker.Worker", return_value=mock_worker
+        ) as mock_cls:
+            runner.invoke(
+                app,
+                [
+                    "start", "worker",
+                    "--redis-url", "redis://localhost:6379",
+                    "--concurrency", "3",
+                    "--queue", "my:queue",
+                    "--worker-id", "w1",
+                ],
+            )
+        mock_cls.assert_called_once_with(
+            "redis://localhost:6379",
+            worker_id="w1",
+            concurrency=3,
+            queue_name="my:queue",
+        )

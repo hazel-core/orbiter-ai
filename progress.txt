@@ -33,6 +33,9 @@ Started: Mon Feb 17 2026
 - Worker imports `Agent`, `Swarm`, `run`, `TextEvent` inside methods (local imports) to avoid circular deps and pyright issues — patch at source (`orbiter.agent.Agent`, `orbiter.swarm.Swarm`, `orbiter.runner.run`) not at `orbiter.distributed.worker.X` in tests
 - Worker heartbeat uses a separate Redis connection — published to `orbiter:workers:{worker_id}` hash with TTL
 - `contextlib.suppress(asyncio.CancelledError)` preferred over try/except/pass per ruff SIM105
+- `distributed()` in client.py is the main public API — connects broker/store/subscriber, submits TaskPayload, returns TaskHandle
+- `TaskHandle` wraps all distributed components (broker, store, subscriber) — provides result(), stream(), cancel(), status() methods
+- CLI subcommand groups: `sub = typer.Typer()` + `app.add_typer(sub, name="name")` — lazy-import heavy deps inside command functions
 
 ---
 
@@ -304,4 +307,50 @@ Started: Mon Feb 17 2026
   - Cooperative cancellation: token checked between event yields in `_run_agent`, not between steps — gives finer-grained cancellation response
   - When adding params to `_run_agent`, update ALL existing tests that mock it (both in test_worker.py and test_cancel.py)
   - Total tests: 894 (108 distributed + 786 orbiter-core)
+---
+
+## 2026-02-17 - US-014
+- Created `distributed()` function and `TaskHandle` class in `orbiter/distributed/client.py`
+- `distributed(agent, input, *, messages, redis_url, detailed, timeout, metadata)` serializes agent via `to_dict()`, creates `TaskPayload`, submits via `TaskBroker`, returns `TaskHandle`
+- `TaskHandle` wraps `TaskBroker`, `TaskStore`, `EventSubscriber` with methods:
+  - `task_id` property — unique task identifier
+  - `result(poll_interval=0.5)` — polls TaskStore until terminal status, returns result dict or raises RuntimeError
+  - `stream()` — yields live `StreamEvent` via `EventSubscriber.subscribe()`
+  - `cancel()` — delegates to `TaskBroker.cancel()`
+  - `status()` — returns current `TaskResult` from `TaskStore`
+- `redis_url` defaults to `ORBITER_REDIS_URL` environment variable; raises `ValueError` if neither provided
+- Works with both `Agent` and `Swarm` instances (both have `to_dict()`)
+- Updated `__init__.py` to export `TaskHandle` and `distributed`
+- Added 18 tests across 7 test classes: `TestTaskHandleInit` (2), `TestTaskHandleStatus` (2), `TestTaskHandleCancel` (1), `TestTaskHandleResult` (5), `TestTaskHandleStream` (1), `TestDistributed` (7)
+- Files changed: `packages/orbiter-distributed/src/orbiter/distributed/client.py` (new), `packages/orbiter-distributed/src/orbiter/distributed/__init__.py`, `packages/orbiter-distributed/tests/test_client.py` (new)
+- **Learnings for future iterations:**
+  - `distributed()` connects broker/store/subscriber before submitting — all three must be connected for the TaskHandle to work
+  - `TaskHandle.result()` uses polling with `asyncio.sleep(poll_interval)` — terminal statuses are COMPLETED, FAILED, CANCELLED
+  - On FAILED: `RuntimeError` message includes the `error` field from `TaskResult`; on CANCELLED: simpler "was cancelled" message
+  - `result()` returns empty dict `{}` when `TaskResult.result` is None (e.g., completed without explicit result)
+  - `patch.dict("os.environ", {}, clear=True)` in tests to ensure env var fallback works correctly
+  - Ruff SIM117 requires combining nested `with` statements — `patch.dict` + `pytest.raises` can be combined with `,` inside `with()`
+  - Ruff doesn't flag `A002` (builtin shadowing) for `input` parameter — the `# noqa: A002` is unnecessary
+  - Total tests: 912 (126 distributed + 786 orbiter-core)
+---
+
+## 2026-02-17 - US-016
+- Added `orbiter start worker` CLI command to `orbiter_cli/main.py` using Typer subcommand group
+- `start_app = typer.Typer()` + `app.add_typer(start_app, name="start")` for subcommand group
+- `start_worker` command with options: `--redis-url` (default: ORBITER_REDIS_URL env var), `--concurrency` (default: 1), `--queue` (default: orbiter:tasks), `--worker-id` (auto-generated)
+- Startup banner shows: Worker ID, masked Redis URL (host + port only, password hidden), queue name, concurrency
+- `_mask_redis_url()` helper parses URL with `urllib.parse.urlparse()` and shows only host:port
+- Uses `asyncio.run(worker.start())` to run the Worker event loop
+- Worker class lazily imported from `orbiter.distributed.worker` inside command function
+- Added `orbiter-distributed` as dependency in `orbiter-cli/pyproject.toml` (both `dependencies` and `[tool.uv.sources]`)
+- Added 11 new tests across 2 test classes: `TestMaskRedisUrl` (4), `TestStartWorkerCommand` (7)
+- Files changed: `packages/orbiter-cli/src/orbiter_cli/main.py`, `packages/orbiter-cli/pyproject.toml`, `packages/orbiter-cli/tests/test_cli_main.py`, `uv.lock`
+- **Learnings for future iterations:**
+  - Typer subcommand groups: `sub = typer.Typer()` + `app.add_typer(sub, name="name")` — commands added via `@sub.command("cmd")`
+  - Worker import is lazy (inside command function) to avoid loading Redis/distributed deps when using other CLI commands
+  - `urlparse()` from `urllib.parse` is reliable for masking — `parsed.hostname` and `parsed.port` extract cleanly
+  - Tests mock `orbiter.distributed.worker.Worker` — the import path in `patch()` matches the actual module path, not the lazy import location
+  - `CliRunner` from `typer.testing` captures Rich console output — search for plain text in `result.output`, Rich markup is stripped
+  - `monkeypatch.delenv("ORBITER_REDIS_URL", raising=False)` for clean env in tests — `raising=False` prevents error if var not set
+  - Total tests: 1154 (44 CLI + 126 distributed + 786 orbiter-core + others)
 ---

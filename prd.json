@@ -276,7 +276,7 @@
         "Pyright passes"
       ],
       "priority": 16,
-      "passes": false,
+      "passes": true,
       "notes": "Add to packages/orbiter-cli/src/orbiter_cli/main.py. Use Typer subcommand group: start = typer.Typer(), app.add_typer(start, name='start'). Mask Redis URL in banner: show host only. Use asyncio.run(worker.start()) to run the worker."
     },
     {
