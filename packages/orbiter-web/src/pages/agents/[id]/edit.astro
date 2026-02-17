@@ -295,6 +295,10 @@ const historyIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke
                     <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
                     Compare
                   </button>
+                  <button type="button" id="optimize-prompt-btn" class="flex items-center gap-1 rounded-md bg-green-600/10 px-2 py-1 text-[11px] font-medium text-green-700 hover:bg-green-600/20 transition-colors cursor-pointer dark:text-green-400" title="AI-optimize prompt">
+                    <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4"/><path d="m6.34 6.34 2.83 2.83"/><path d="M2 12h4"/><path d="m17.66 6.34-2.83 2.83"/><path d="M22 12h-4"/><circle cx="12" cy="12" r="4"/></svg>
+                    Optimize
+                  </button>
                   <button type="button" id="version-history-btn" class="flex items-center gap-1 rounded-md bg-subtle px-2 py-1 text-[11px] font-medium text-muted hover:bg-dark/[0.08] hover:text-dark transition-colors cursor-pointer" title="Version history">
                     <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                     History
@@ -360,6 +364,53 @@ const historyIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke
                   </button>
                 </div>
                 <div id="compare-result-content" class="grid gap-0 max-h-96 overflow-y-auto"></div>
+              </div>
+
+              <!-- Prompt optimization result panel -->
+              <div id="optimize-result-panel" class="hidden rounded-lg border border-green-600/20 bg-subtle/50 overflow-hidden">
+                <div class="flex items-center justify-between px-3 py-2 border-b border-dark/[0.06] bg-paper">
+                  <div class="flex items-center gap-2">
+                    <span class="text-xs font-semibold text-green-700 uppercase tracking-wider dark:text-green-400">Prompt Optimization</span>
+                    <select id="optimize-strategy" class="bg-subtle/50 border border-dark/[0.06] rounded-md px-2 py-0.5 text-[11px] text-dark outline-none focus:border-green-600 transition-all cursor-pointer">
+                      <option value="clarity">Clarity</option>
+                      <option value="specificity">Specificity</option>
+                      <option value="safety">Safety</option>
+                      <option value="conciseness">Conciseness</option>
+                    </select>
+                    <span id="optimize-model-label" class="text-[10px] font-medium text-muted font-mono"></span>
+                  </div>
+                  <div class="flex items-center gap-1">
+                    <button type="button" id="optimize-history-toggle" class="flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-medium text-muted hover:bg-dark/[0.08] hover:text-dark transition-colors cursor-pointer" title="Optimization history">
+                      <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    </button>
+                    <button type="button" id="close-optimize-result" class="flex h-5 w-5 items-center justify-center rounded text-muted hover:text-dark transition-colors cursor-pointer">
+                      <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                  </div>
+                </div>
+                <!-- Diff view -->
+                <div id="optimize-diff-content" class="px-3 py-3 text-sm font-mono leading-relaxed max-h-72 overflow-y-auto"></div>
+                <!-- Action buttons -->
+                <div class="flex items-center justify-between px-3 py-2 border-t border-dark/[0.06] bg-paper">
+                  <span id="optimize-change-count" class="text-[10px] text-muted"></span>
+                  <div class="flex items-center gap-2">
+                    <button type="button" id="optimize-reject-btn" class="rounded-md border border-dark/[0.08] px-3 py-1 text-[11px] font-medium text-muted hover:text-dark hover:bg-dark/5 transition-colors cursor-pointer">
+                      Reject All
+                    </button>
+                    <button type="button" id="optimize-accept-btn" class="rounded-md bg-green-600 text-white px-3 py-1 text-[11px] font-medium hover:bg-green-700 transition-colors cursor-pointer">
+                      Accept All Changes
+                    </button>
+                  </div>
+                </div>
+                <!-- Optimization history (toggle) -->
+                <div id="optimize-history-panel" class="hidden border-t border-dark/[0.06]">
+                  <div class="px-3 py-2 bg-paper border-b border-dark/[0.06]">
+                    <span class="text-[10px] font-semibold text-dark uppercase tracking-wider">History</span>
+                  </div>
+                  <div id="optimize-history-list" class="max-h-48 overflow-y-auto divide-y divide-dark/[0.06]">
+                    <div class="px-3 py-3 text-center text-xs text-muted">Loading history...</div>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -3685,6 +3736,262 @@ const historyIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke
             confirmSaveAgentTpl.textContent = "Save Template";
           });
       });
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Prompt Optimization                                                 */
+    /* ------------------------------------------------------------------ */
+    var optimizePromptBtn = document.getElementById("optimize-prompt-btn");
+    var optimizeResultPanel = document.getElementById("optimize-result-panel");
+    var optimizeDiffContent = document.getElementById("optimize-diff-content");
+    var optimizeStrategy = document.getElementById("optimize-strategy");
+    var optimizeModelLabel = document.getElementById("optimize-model-label");
+    var optimizeChangeCount = document.getElementById("optimize-change-count");
+    var optimizeAcceptBtn = document.getElementById("optimize-accept-btn");
+    var optimizeRejectBtn = document.getElementById("optimize-reject-btn");
+    var closeOptimizeResult = document.getElementById("close-optimize-result");
+    var optimizeHistoryToggle = document.getElementById("optimize-history-toggle");
+    var optimizeHistoryPanel = document.getElementById("optimize-history-panel");
+    var optimizeHistoryList = document.getElementById("optimize-history-list");
+
+    var currentOptimization = null;
+
+    function renderDiff(changes, originalPrompt, optimizedPrompt) {
+      if (!changes || changes.length === 0) {
+        optimizeDiffContent.innerHTML = '<p class="text-xs text-muted text-center py-4">No changes suggested — the prompt looks good as-is.</p>';
+        optimizeChangeCount.textContent = "0 changes";
+        return;
+      }
+
+      var origLines = originalPrompt.split("\n");
+      var optLines = optimizedPrompt.split("\n");
+      var html = "";
+      var changeMap = {};
+      changes.forEach(function (c) { changeMap[c.line] = c; });
+
+      var maxLines = Math.max(origLines.length, optLines.length);
+      for (var i = 0; i < maxLines; i++) {
+        var lineNum = i + 1;
+        var change = changeMap[lineNum];
+        var lineNumStr = '<span class="inline-block w-6 text-right mr-2 text-muted/40 select-none text-[10px]">' + lineNum + '</span>';
+
+        if (!change) {
+          var text = i < optLines.length ? optLines[i] : (i < origLines.length ? origLines[i] : "");
+          html += '<div class="px-1 py-px text-dark/70">' + lineNumStr + escapeHtml(text) + '</div>';
+        } else if (change.type === "removed") {
+          html += '<div class="px-1 py-px bg-red-500/10 text-red-700 dark:text-red-400 line-through">' + lineNumStr + escapeHtml(change.original) + '</div>';
+        } else if (change.type === "added") {
+          html += '<div class="px-1 py-px bg-green-500/10 text-green-700 dark:text-green-400">' + lineNumStr + '+ ' + escapeHtml(change.optimized) + '</div>';
+        } else if (change.type === "modified") {
+          html += '<div class="px-1 py-px bg-red-500/10 text-red-700 dark:text-red-400 line-through">' + lineNumStr + escapeHtml(change.original) + '</div>';
+          html += '<div class="px-1 py-px bg-green-500/10 text-green-700 dark:text-green-400">' + lineNumStr + escapeHtml(change.optimized) + '</div>';
+        }
+      }
+
+      optimizeDiffContent.innerHTML = html;
+      var added = changes.filter(function (c) { return c.type === "added"; }).length;
+      var removed = changes.filter(function (c) { return c.type === "removed"; }).length;
+      var modified = changes.filter(function (c) { return c.type === "modified"; }).length;
+      var parts = [];
+      if (added > 0) parts.push("+" + added + " added");
+      if (removed > 0) parts.push("-" + removed + " removed");
+      if (modified > 0) parts.push(modified + " modified");
+      optimizeChangeCount.textContent = parts.join(", ") || "0 changes";
+    }
+
+    function runOptimization() {
+      var prompt = instructionsInput.value.trim();
+      if (!prompt) return;
+
+      var provId = providerSelect.value;
+      var modelName = modelSelect.value;
+
+      if (!provId || !modelName) {
+        optimizeResultPanel.classList.remove("hidden");
+        optimizeDiffContent.innerHTML = '<p class="text-xs text-coral text-center py-4">Please select a provider and model in the Model tab first.</p>';
+        optimizeChangeCount.textContent = "";
+        return;
+      }
+
+      optimizePromptBtn.disabled = true;
+      optimizePromptBtn.innerHTML =
+        '<svg class="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" stroke-dasharray="31.4 31.4" stroke-dashoffset="10"/></svg>' +
+        ' Optimizing...';
+
+      optimizeResultPanel.classList.remove("hidden");
+      optimizeDiffContent.innerHTML = '<p class="text-xs text-muted text-center py-4 animate-pulse">AI is analyzing and optimizing your prompt...</p>';
+      optimizeChangeCount.textContent = "";
+      optimizeModelLabel.textContent = modelName;
+
+      var strategy = optimizeStrategy.value;
+
+      fetch("/api/v1/prompt-templates/optimize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: prompt,
+          strategy: strategy,
+          provider_id: provId,
+          model_name: modelName,
+          agent_id: agentId,
+        }),
+      })
+        .then(function (res) {
+          if (!res.ok) return res.json().then(function (d) { throw new Error(d.detail || "Optimization failed"); });
+          return res.json();
+        })
+        .then(function (result) {
+          currentOptimization = result;
+          renderDiff(result.changes, prompt, result.optimized_prompt);
+        })
+        .catch(function (err) {
+          optimizeDiffContent.innerHTML = '<p class="text-xs text-coral text-center py-4">' + escapeHtml(err.message) + '</p>';
+          optimizeChangeCount.textContent = "";
+        })
+        .finally(function () {
+          optimizePromptBtn.disabled = false;
+          optimizePromptBtn.innerHTML =
+            '<svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4"/><path d="m6.34 6.34 2.83 2.83"/><path d="M2 12h4"/><path d="m17.66 6.34-2.83 2.83"/><path d="M22 12h-4"/><circle cx="12" cy="12" r="4"/></svg>' +
+            ' Optimize';
+        });
+    }
+
+    if (optimizePromptBtn) {
+      optimizePromptBtn.addEventListener("click", runOptimization);
+    }
+
+    if (optimizeStrategy) {
+      optimizeStrategy.addEventListener("change", function () {
+        if (instructionsInput.value.trim()) {
+          runOptimization();
+        }
+      });
+    }
+
+    if (closeOptimizeResult) {
+      closeOptimizeResult.addEventListener("click", function () {
+        optimizeResultPanel.classList.add("hidden");
+        currentOptimization = null;
+      });
+    }
+
+    if (optimizeAcceptBtn) {
+      optimizeAcceptBtn.addEventListener("click", function () {
+        if (!currentOptimization) return;
+
+        instructionsInput.value = currentOptimization.optimized_prompt;
+        onInstructionsChange();
+
+        /* Report acceptance to backend */
+        fetch("/api/v1/prompt-templates/optimize/" + currentOptimization.optimization_id + "/accept", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ optimization_id: currentOptimization.optimization_id, accepted: true }),
+        });
+
+        optimizeResultPanel.classList.add("hidden");
+        saveStatus.textContent = "Optimized prompt applied!";
+        saveStatus.classList.remove("hidden");
+        setTimeout(function () { saveStatus.classList.add("hidden"); }, 3000);
+        currentOptimization = null;
+      });
+    }
+
+    if (optimizeRejectBtn) {
+      optimizeRejectBtn.addEventListener("click", function () {
+        if (!currentOptimization) return;
+
+        /* Report rejection to backend */
+        fetch("/api/v1/prompt-templates/optimize/" + currentOptimization.optimization_id + "/accept", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ optimization_id: currentOptimization.optimization_id, accepted: false }),
+        });
+
+        optimizeResultPanel.classList.add("hidden");
+        currentOptimization = null;
+      });
+    }
+
+    /* Optimization history */
+    if (optimizeHistoryToggle) {
+      optimizeHistoryToggle.addEventListener("click", function () {
+        var isHidden = optimizeHistoryPanel.classList.contains("hidden");
+        if (isHidden) {
+          optimizeHistoryPanel.classList.remove("hidden");
+          loadOptimizationHistory();
+        } else {
+          optimizeHistoryPanel.classList.add("hidden");
+        }
+      });
+    }
+
+    function loadOptimizationHistory() {
+      optimizeHistoryList.innerHTML = '<div class="px-3 py-3 text-center text-xs text-muted animate-pulse">Loading history...</div>';
+
+      var url = "/api/v1/prompt-templates/optimize/history?limit=10";
+      if (agentId) url += "&agent_id=" + encodeURIComponent(agentId);
+
+      fetch(url)
+        .then(function (res) {
+          if (!res.ok) throw new Error("Failed to load history");
+          return res.json();
+        })
+        .then(function (items) {
+          if (!items || items.length === 0) {
+            optimizeHistoryList.innerHTML = '<div class="px-3 py-3 text-center text-xs text-muted">No optimization history yet.</div>';
+            return;
+          }
+
+          optimizeHistoryList.innerHTML = "";
+          items.forEach(function (item) {
+            var row = document.createElement("div");
+            row.className = "px-3 py-2 hover:bg-subtle/50 cursor-pointer transition-colors";
+
+            var changes = [];
+            try { changes = JSON.parse(item.changes_json || "[]"); } catch (e) { /* ignore */ }
+            var changeCount = changes.length;
+            var dateStr = "";
+            try {
+              var d = new Date(item.created_at + "Z");
+              dateStr = d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) + " " +
+                d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+            } catch (e) { dateStr = item.created_at; }
+
+            var statusBadge = item.accepted
+              ? '<span class="text-[9px] font-medium text-green-700 bg-green-600/10 rounded-full px-1.5 py-0.5 dark:text-green-400">Accepted</span>'
+              : '<span class="text-[9px] font-medium text-muted bg-subtle rounded-full px-1.5 py-0.5">Rejected</span>';
+
+            row.innerHTML =
+              '<div class="flex items-center justify-between">' +
+              '  <div class="flex items-center gap-2">' +
+              '    <span class="text-[10px] font-medium text-dark capitalize">' + escapeHtml(item.strategy) + '</span>' +
+              '    ' + statusBadge +
+              '    <span class="text-[10px] text-muted">' + changeCount + ' change' + (changeCount !== 1 ? 's' : '') + '</span>' +
+              '  </div>' +
+              '  <span class="text-[10px] text-muted">' + escapeHtml(dateStr) + '</span>' +
+              '</div>';
+
+            row.addEventListener("click", function () {
+              currentOptimization = {
+                optimized_prompt: item.optimized_prompt,
+                changes: changes,
+                strategy: item.strategy,
+                model_used: item.model_used,
+                optimization_id: item.id,
+              };
+              optimizeStrategy.value = item.strategy;
+              optimizeModelLabel.textContent = item.model_used;
+              renderDiff(changes, item.original_prompt, item.optimized_prompt);
+              optimizeHistoryPanel.classList.add("hidden");
+            });
+
+            optimizeHistoryList.appendChild(row);
+          });
+        })
+        .catch(function () {
+          optimizeHistoryList.innerHTML = '<div class="px-3 py-3 text-center text-xs text-coral">Failed to load history.</div>';
+        });
     }
 
     /* ------------------------------------------------------------------ */

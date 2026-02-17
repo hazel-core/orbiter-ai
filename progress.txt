@@ -3137,3 +3137,20 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - AIGenerateModal uses useEffect for keydown (Escape, Cmd+Enter) — no deps array means it re-binds each render to capture fresh `text` state
   - Modal uses absolute positioning with translate(-50%, -50%) to center in ReactFlow canvas, consistent with MockInputPanel
 ---
+
+## 2026-02-17 - US-144
+- What was implemented: AI-assisted prompt optimization in the agent edit page system prompt editor
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/migrations/066_create_prompt_optimizations.sql (new — prompt_optimizations table for history tracking)
+  - packages/orbiter-web/src/orbiter_web/routes/prompt_templates.py (added optimize endpoint, accept/reject endpoint, optimization history endpoint)
+  - packages/orbiter-web/src/pages/agents/[id]/edit.astro (added Optimize button, diff view panel, strategy dropdown, accept/reject UI, optimization history)
+- **Learnings for future iterations:**
+  - Prompt optimization reuses `_send_prompt_to_model()` from prompt_templates.py — no need for new LLM integration
+  - Ruff B008: only `Depends()` triggers it — `Query(...)` with keyword args does NOT need noqa comments
+  - Strategy-specific meta-prompts guide the LLM: each strategy (clarity/specificity/safety/conciseness) has a different instruction prefix
+  - Line-level diff computation: compare original vs optimized line-by-line, classify as added/removed/modified
+  - Context enrichment: optimization fetches recent eval_results and conversation messages for the agent to give the LLM context
+  - Optimization history is tracked in a separate table with accepted/rejected status for analytics
+  - The optimize endpoint stores results immediately, then accept/reject updates the record
+  - FastAPI route ordering: `/optimize/history` is 2-segment path that doesn't conflict with `/{template_id}` (1-segment)
+---

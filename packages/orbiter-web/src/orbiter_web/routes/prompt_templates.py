@@ -1,13 +1,14 @@
-"""Prompt templates CRUD REST API, version history, and test/compare endpoints."""
+"""Prompt templates CRUD REST API, version history, test/compare, and optimization endpoints."""
 
 from __future__ import annotations
 
 import asyncio
+import json
 import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from orbiter_web.database import get_db
@@ -101,9 +102,7 @@ def _row_to_dict(row: Any) -> dict[str, Any]:
     return dict(row)
 
 
-async def _verify_ownership(
-    db: Any, template_id: str, user_id: str
-) -> dict[str, Any]:
+async def _verify_ownership(db: Any, template_id: str, user_id: str) -> dict[str, Any]:
     """Verify template exists and belongs to user. Returns row dict or raises 404."""
     cursor = await db.execute(
         "SELECT * FROM prompt_templates WHERE id = ? AND user_id = ?",
@@ -115,7 +114,9 @@ async def _verify_ownership(
     return _row_to_dict(row)
 
 
-async def _create_version(db: Any, template_id: str, content: str, variables_json: str, user_id: str) -> None:
+async def _create_version(
+    db: Any, template_id: str, content: str, variables_json: str, user_id: str
+) -> None:
     """Create a new version entry for a template."""
     # Get next version number
     cursor = await db.execute(
@@ -153,7 +154,12 @@ async def _send_prompt_to_model(
         )
         provider_row = await cursor.fetchone()
         if provider_row is None:
-            return {"provider_id": provider_id, "model_name": model_name, "output": "", "error": "Provider not found"}
+            return {
+                "provider_id": provider_id,
+                "model_name": model_name,
+                "output": "",
+                "error": "Provider not found",
+            }
         provider = dict(provider_row)
 
         api_key = ""
@@ -169,7 +175,12 @@ async def _send_prompt_to_model(
                 api_key = decrypt_api_key(key_row["encrypted_api_key"])
 
         if not api_key:
-            return {"provider_id": provider_id, "model_name": model_name, "output": "", "error": "No API key configured"}
+            return {
+                "provider_id": provider_id,
+                "model_name": model_name,
+                "output": "",
+                "error": "No API key configured",
+            }
 
     provider_type = provider["provider_type"]
     base_url = provider.get("base_url") or ""
@@ -183,15 +194,30 @@ async def _send_prompt_to_model(
                 url = (base_url or "https://api.openai.com") + "/v1/chat/completions"
                 resp = await client.post(
                     url,
-                    headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                    json={"model": model_name, "messages": [{"role": "user", "content": prompt}], "max_tokens": 1024},
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": model_name,
+                        "messages": [{"role": "user", "content": prompt}],
+                        "max_tokens": 1024,
+                    },
                 )
             elif provider_type == "anthropic":
                 url = "https://api.anthropic.com/v1/messages"
                 resp = await client.post(
                     url,
-                    headers={"x-api-key": api_key, "anthropic-version": "2023-06-01", "Content-Type": "application/json"},
-                    json={"model": model_name, "messages": [{"role": "user", "content": prompt}], "max_tokens": 1024},
+                    headers={
+                        "x-api-key": api_key,
+                        "anthropic-version": "2023-06-01",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": model_name,
+                        "messages": [{"role": "user", "content": prompt}],
+                        "max_tokens": 1024,
+                    },
                 )
             elif provider_type == "gemini":
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
@@ -208,13 +234,24 @@ async def _send_prompt_to_model(
                     json={"model": model_name, "prompt": prompt, "stream": False},
                 )
             else:
-                return {"provider_id": provider_id, "model_name": model_name, "output": "", "error": f"Unsupported provider type: {provider_type}"}
+                return {
+                    "provider_id": provider_id,
+                    "model_name": model_name,
+                    "output": "",
+                    "error": f"Unsupported provider type: {provider_type}",
+                }
 
             elapsed_ms = int((time.monotonic() - start_time) * 1000)
 
             if resp.status_code >= 400:
                 error_text = resp.text[:500]
-                return {"provider_id": provider_id, "model_name": model_name, "output": "", "error": f"API error ({resp.status_code}): {error_text}", "response_time_ms": elapsed_ms}
+                return {
+                    "provider_id": provider_id,
+                    "model_name": model_name,
+                    "output": "",
+                    "error": f"API error ({resp.status_code}): {error_text}",
+                    "response_time_ms": elapsed_ms,
+                }
 
             data = resp.json()
 
@@ -225,9 +262,13 @@ async def _send_prompt_to_model(
                 tokens_used = usage.get("total_tokens")
             elif provider_type == "anthropic":
                 content_blocks = data.get("content", [])
-                output = "".join(b.get("text", "") for b in content_blocks if b.get("type") == "text")
+                output = "".join(
+                    b.get("text", "") for b in content_blocks if b.get("type") == "text"
+                )
                 usage = data.get("usage", {})
-                tokens_used = (usage.get("input_tokens", 0) or 0) + (usage.get("output_tokens", 0) or 0)
+                tokens_used = (usage.get("input_tokens", 0) or 0) + (
+                    usage.get("output_tokens", 0) or 0
+                )
             elif provider_type == "gemini":
                 candidates = data.get("candidates", [])
                 if candidates:
@@ -245,7 +286,12 @@ async def _send_prompt_to_model(
             }
 
     except httpx.HTTPError as exc:
-        return {"provider_id": provider_id, "model_name": model_name, "output": "", "error": f"Connection error: {exc!s}"}
+        return {
+            "provider_id": provider_id,
+            "model_name": model_name,
+            "output": "",
+            "error": f"Connection error: {exc!s}",
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -282,7 +328,15 @@ async def create_template(
             INSERT INTO prompt_templates (id, name, content, variables_json, user_id, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (template_id, sanitize_html(body.name), sanitize_html(body.content), body.variables_json, user["id"], now, now),
+            (
+                template_id,
+                sanitize_html(body.name),
+                sanitize_html(body.content),
+                body.variables_json,
+                user["id"],
+                now,
+                now,
+            ),
         )
 
         # Create initial version
@@ -424,7 +478,9 @@ async def restore_version(
         )
 
         # Create a new version to record the restore action
-        await _create_version(db, template_id, version["content"], version["variables_json"], user["id"])
+        await _create_version(
+            db, template_id, version["content"], version["variables_json"], user["id"]
+        )
 
         await db.commit()
 
@@ -480,9 +536,284 @@ async def compare_models(
 
     # Run all model calls in parallel
     tasks = [
-        _send_prompt_to_model(m.provider_id, m.model_name, prompt, user["id"])
-        for m in body.models
+        _send_prompt_to_model(m.provider_id, m.model_name, prompt, user["id"]) for m in body.models
     ]
     results = await asyncio.gather(*tasks)
 
     return {"results": results}
+
+
+# ---------------------------------------------------------------------------
+# Prompt Optimization Models
+# ---------------------------------------------------------------------------
+
+
+class OptimizeRequest(BaseModel):
+    prompt: str = Field(..., min_length=1)
+    strategy: str = Field("clarity", pattern=r"^(clarity|specificity|safety|conciseness)$")
+    provider_id: str = Field(..., min_length=1)
+    model_name: str = Field(..., min_length=1)
+    agent_id: str | None = None
+    template_id: str | None = None
+
+
+class PromptChange(BaseModel):
+    type: str  # "added", "removed", "modified"
+    line: int
+    original: str
+    optimized: str
+
+
+class OptimizeResponse(BaseModel):
+    optimized_prompt: str
+    changes: list[PromptChange]
+    strategy: str
+    model_used: str
+    optimization_id: str
+
+
+class OptimizationHistoryItem(BaseModel):
+    id: str
+    agent_id: str | None
+    template_id: str | None
+    original_prompt: str
+    optimized_prompt: str
+    strategy: str
+    changes_json: str
+    accepted: bool
+    eval_score_before: float | None
+    eval_score_after: float | None
+    model_used: str
+    created_at: str
+
+
+class AcceptOptimizationRequest(BaseModel):
+    optimization_id: str = Field(..., min_length=1)
+    accepted: bool = True
+
+
+# ---------------------------------------------------------------------------
+# Optimization Helpers
+# ---------------------------------------------------------------------------
+
+_STRATEGY_PROMPTS = {
+    "clarity": (
+        "Rewrite the following system prompt to be clearer and easier to understand. "
+        "Eliminate ambiguity, use direct language, and ensure instructions are unambiguous. "
+        "Preserve the original intent and functionality."
+    ),
+    "specificity": (
+        "Rewrite the following system prompt to be more specific and detailed. "
+        "Add concrete examples, precise constraints, and explicit expected behaviors. "
+        "Preserve the original intent but make instructions more actionable."
+    ),
+    "safety": (
+        "Rewrite the following system prompt to be safer. "
+        "Add appropriate guardrails, content boundaries, and ethical guidelines. "
+        "Ensure the prompt prevents misuse while preserving the original functionality."
+    ),
+    "conciseness": (
+        "Rewrite the following system prompt to be more concise. "
+        "Remove redundancy, tighten language, and eliminate unnecessary words. "
+        "Preserve all essential instructions and functionality in fewer words."
+    ),
+}
+
+
+def _compute_changes(original: str, optimized: str) -> list[dict[str, Any]]:
+    """Compute line-level changes between original and optimized prompts."""
+    orig_lines = original.splitlines()
+    opt_lines = optimized.splitlines()
+    changes: list[dict[str, Any]] = []
+
+    max_lines = max(len(orig_lines), len(opt_lines))
+    for i in range(max_lines):
+        orig_line = orig_lines[i] if i < len(orig_lines) else ""
+        opt_line = opt_lines[i] if i < len(opt_lines) else ""
+
+        if orig_line == opt_line:
+            continue
+
+        if i >= len(orig_lines):
+            changes.append({"type": "added", "line": i + 1, "original": "", "optimized": opt_line})
+        elif i >= len(opt_lines):
+            changes.append(
+                {"type": "removed", "line": i + 1, "original": orig_line, "optimized": ""}
+            )
+        else:
+            changes.append(
+                {"type": "modified", "line": i + 1, "original": orig_line, "optimized": opt_line}
+            )
+
+    return changes
+
+
+# ---------------------------------------------------------------------------
+# Optimization Endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.post("/optimize", response_model=OptimizeResponse)
+async def optimize_prompt(
+    body: OptimizeRequest,
+    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+) -> dict[str, Any]:
+    """Use AI to optimize a system prompt based on the selected strategy."""
+    strategy_instruction = _STRATEGY_PROMPTS.get(body.strategy, _STRATEGY_PROMPTS["clarity"])
+
+    # Build context: include eval results if agent_id is provided
+    context_parts: list[str] = []
+    if body.agent_id:
+        async with get_db() as db:
+            # Fetch recent eval results for context
+            cursor = await db.execute(
+                """
+                SELECT er.overall_score, er.pass_rate, er.results_json, er.run_at
+                FROM eval_results er
+                JOIN evaluations e ON e.id = er.evaluation_id
+                WHERE e.agent_id = ? ORDER BY er.run_at DESC LIMIT 3
+                """,
+                (body.agent_id,),
+            )
+            eval_rows = await cursor.fetchall()
+            if eval_rows:
+                context_parts.append("Recent evaluation results for this agent:")
+                for row in eval_rows:
+                    r = dict(row)
+                    context_parts.append(
+                        f"  - Score: {r['overall_score']:.1%}, Pass rate: {r['pass_rate']:.1%} (run at {r['run_at']})"
+                    )
+
+            # Fetch recent conversation logs for context
+            cursor = await db.execute(
+                """
+                SELECT m.role, m.content FROM messages m
+                JOIN conversations c ON c.id = m.conversation_id
+                WHERE c.agent_id = ?
+                ORDER BY m.created_at DESC LIMIT 10
+                """,
+                (body.agent_id,),
+            )
+            msg_rows = await cursor.fetchall()
+            if msg_rows:
+                context_parts.append("\nRecent conversation samples:")
+                for row in msg_rows:
+                    r = dict(row)
+                    text = (r.get("content") or "")[:200]
+                    context_parts.append(f"  [{r['role']}]: {text}")
+
+    meta_prompt = strategy_instruction + "\n\n"
+    if context_parts:
+        meta_prompt += "Context:\n" + "\n".join(context_parts) + "\n\n"
+    meta_prompt += (
+        "IMPORTANT: Return ONLY the improved prompt text. "
+        "Do not include any explanation, preamble, or commentary. "
+        "Do not wrap in quotes or code blocks.\n\n"
+        "Original prompt:\n" + body.prompt
+    )
+
+    result = await _send_prompt_to_model(body.provider_id, body.model_name, meta_prompt, user["id"])
+
+    if result.get("error"):
+        raise HTTPException(status_code=502, detail=result["error"])
+
+    optimized = (result.get("output") or "").strip()
+    if not optimized:
+        raise HTTPException(status_code=502, detail="Model returned empty optimization result")
+
+    changes = _compute_changes(body.prompt, optimized)
+
+    # Store optimization record
+    opt_id = str(uuid.uuid4())
+    now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
+
+    async with get_db() as db:
+        await db.execute(
+            """
+            INSERT INTO prompt_optimizations
+                (id, agent_id, template_id, original_prompt, optimized_prompt,
+                 strategy, changes_json, model_used, user_id, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                opt_id,
+                body.agent_id,
+                body.template_id,
+                body.prompt,
+                optimized,
+                body.strategy,
+                json.dumps(changes),
+                body.model_name,
+                user["id"],
+                now,
+            ),
+        )
+        await db.commit()
+
+    return {
+        "optimized_prompt": optimized,
+        "changes": changes,
+        "strategy": body.strategy,
+        "model_used": body.model_name,
+        "optimization_id": opt_id,
+    }
+
+
+@router.post("/optimize/{optimization_id}/accept")
+async def accept_optimization(
+    optimization_id: str,
+    body: AcceptOptimizationRequest,
+    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+) -> dict[str, str]:
+    """Mark an optimization as accepted or rejected."""
+    async with get_db() as db:
+        cursor = await db.execute(
+            "SELECT id FROM prompt_optimizations WHERE id = ? AND user_id = ?",
+            (optimization_id, user["id"]),
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Optimization not found")
+
+        await db.execute(
+            "UPDATE prompt_optimizations SET accepted = ? WHERE id = ?",
+            (1 if body.accepted else 0, optimization_id),
+        )
+        await db.commit()
+
+    return {"status": "ok"}
+
+
+@router.get("/optimize/history", response_model=list[OptimizationHistoryItem])
+async def optimization_history(
+    agent_id: str | None = Query(None),
+    template_id: str | None = Query(None),
+    limit: int = Query(20, ge=1, le=100),
+    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+) -> list[dict[str, Any]]:
+    """Return optimization history, optionally filtered by agent or template."""
+    async with get_db() as db:
+        conditions = ["user_id = ?"]
+        params: list[Any] = [user["id"]]
+
+        if agent_id:
+            conditions.append("agent_id = ?")
+            params.append(agent_id)
+        if template_id:
+            conditions.append("template_id = ?")
+            params.append(template_id)
+
+        where_clause = " AND ".join(conditions)
+        params.append(limit)
+
+        cursor = await db.execute(
+            f"SELECT * FROM prompt_optimizations WHERE {where_clause} ORDER BY created_at DESC LIMIT ?",
+            params,
+        )
+        rows = await cursor.fetchall()
+        results = []
+        for r in rows:
+            d = dict(r)
+            d["accepted"] = bool(d.get("accepted"))
+            results.append(d)
+        return results
