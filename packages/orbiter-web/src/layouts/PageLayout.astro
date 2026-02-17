@@ -393,7 +393,7 @@ const bellIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="c
       window.getCsrfToken = function () {
         if (_csrfToken) return Promise.resolve(_csrfToken);
         if (_csrfPromise) return _csrfPromise;
-        _csrfPromise = _origFetch("/api/auth/csrf", { credentials: "same-origin" })
+        _csrfPromise = _origFetch("/api/v1/auth/csrf", { credentials: "same-origin" })
           .then(function (r) {
             if (!r.ok) return "";
             return r.json().then(function (d) { _csrfToken = d.token; return _csrfToken; });
@@ -421,7 +421,7 @@ const bellIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="c
         // Determine if this is a same-origin API request.
         var url = typeof input === "string" ? input : (input.url || "");
         var isSameOrigin = url.indexOf("://") === -1 || url.indexOf(location.origin) === 0;
-        var isApiRequest = isSameOrigin && url.indexOf("/api/") !== -1;
+        var isApiRequest = isSameOrigin && url.indexOf("/api/v1/") !== -1;
 
         // Track request with AbortController for cancellation on expiry.
         var controller = null;
@@ -458,8 +458,8 @@ const bellIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="c
 
         return fetchPromise.then(function (res) {
           removeController();
-          // Intercept 401 on API requests (skip /api/auth/login to avoid redirect loops).
-          if (isApiRequest && res.status === 401 && url.indexOf("/api/auth/login") === -1) {
+          // Intercept 401 on API requests (skip /api/v1/auth/login to avoid redirect loops).
+          if (isApiRequest && res.status === 401 && url.indexOf("/api/v1/auth/login") === -1) {
             window.__orbiterExpireSession();
             return Promise.reject(new DOMException("Session expired", "AbortError"));
           }
@@ -471,7 +471,7 @@ const bellIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="c
       };
 
       /* ---------- Auth check ---------- */
-      _origFetch("/api/auth/me", { credentials: "same-origin" })
+      _origFetch("/api/v1/auth/me", { credentials: "same-origin" })
         .then(function (res) {
           if (!res.ok) window.location.replace("/login");
           else window.getCsrfToken(); // Prefetch CSRF token.
@@ -738,7 +738,7 @@ const bellIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="c
           renderRecent();
           return;
         }
-        fetch("/api/search?q=" + encodeURIComponent(query.trim()), { credentials: "same-origin" })
+        fetch("/api/v1/search?q=" + encodeURIComponent(query.trim()), { credentials: "same-origin" })
           .then(function (r) { return r.ok ? r.json() : {}; })
           .then(function (data) {
             // Only render if input still matches (debounce guard)
@@ -882,7 +882,7 @@ const bellIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="c
   <!-- Global budget check -->
   <script is:inline>
     (function () {
-      fetch("/api/costs/budget-check", { credentials: "same-origin" })
+      fetch("/api/v1/costs/budget-check", { credentials: "same-origin" })
         .then(function (res) { return res.ok ? res.json() : null; })
         .then(function (data) {
           if (!data) return;
@@ -988,7 +988,7 @@ const bellIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="c
       }
 
       function fetchPending() {
-        fetch("/api/approvals/pending?limit=20", { credentials: "same-origin" })
+        fetch("/api/v1/approvals/pending?limit=20", { credentials: "same-origin" })
           .then(function (r) { return r.ok ? r.json() : []; })
           .then(function (data) {
             pendingApprovals = data || [];
@@ -1028,7 +1028,7 @@ const bellIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="c
         var body = { approved: approved };
         if (comment) body.comment = comment;
 
-        fetch("/api/approvals/" + a.id + "/respond", {
+        fetch("/api/v1/approvals/" + a.id + "/respond", {
           method: "POST",
           credentials: "same-origin",
           headers: { "Content-Type": "application/json" },
@@ -1185,7 +1185,7 @@ const bellIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="c
 
       /* --- Fetch notifications --- */
       function fetchNotifications() {
-        fetch("/api/notifications?limit=20", { credentials: "same-origin" })
+        fetch("/api/v1/notifications?limit=20", { credentials: "same-origin" })
           .then(function (r) { return r.ok ? r.json() : { data: [] }; })
           .then(function (body) {
             notifications = (body.data || body || []).map(function (n) {
@@ -1198,7 +1198,7 @@ const bellIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="c
       }
 
       function fetchUnreadCount() {
-        fetch("/api/notifications/unread-count", { credentials: "same-origin" })
+        fetch("/api/v1/notifications/unread-count", { credentials: "same-origin" })
           .then(function (r) { return r.ok ? r.json() : { count: 0 }; })
           .then(function (data) {
             unreadCount = data.count || 0;
@@ -1246,7 +1246,7 @@ const bellIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="c
         if (!item) return;
         var notifId = item.getAttribute("data-notif-id");
         // Mark as read
-        fetch("/api/notifications/" + notifId + "/read", {
+        fetch("/api/v1/notifications/" + notifId + "/read", {
           method: "PUT",
           credentials: "same-origin"
         }).then(function () {
@@ -1269,7 +1269,7 @@ const bellIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="c
       /* --- Mark all as read --- */
       if (markAllBtn) {
         markAllBtn.addEventListener("click", function () {
-          fetch("/api/notifications/read-all", {
+          fetch("/api/v1/notifications/read-all", {
             method: "POST",
             credentials: "same-origin"
           }).then(function () {
@@ -1285,7 +1285,7 @@ const bellIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="c
       function setupWebSocket() {
         try {
           var proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-          var wsUrl = proto + "//" + window.location.host + "/api/ws";
+          var wsUrl = proto + "//" + window.location.host + "/api/v1/ws";
           var ws = new WebSocket(wsUrl);
           var banner = document.getElementById("connection-banner");
           var bannerText = document.getElementById("connection-banner-text");

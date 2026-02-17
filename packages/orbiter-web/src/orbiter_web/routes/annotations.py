@@ -17,7 +17,7 @@ from orbiter_web.routes.auth import get_current_user
 from orbiter_web.sanitize import sanitize_html
 from orbiter_web.upload import cleanup_upload, handle_upload
 
-router = APIRouter(prefix="/api/annotations", tags=["annotations"])
+router = APIRouter(prefix="/api/v1/annotations", tags=["annotations"])
 
 
 # ---------------------------------------------------------------------------

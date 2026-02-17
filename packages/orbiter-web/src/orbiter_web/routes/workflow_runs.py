@@ -22,7 +22,7 @@ from orbiter_web.engine import (
 )
 from orbiter_web.routes.auth import get_current_user
 
-router = APIRouter(prefix="/api/workflows", tags=["workflow-runs"])
+router = APIRouter(prefix="/api/v1/workflows", tags=["workflow-runs"])
 
 # Keep references to background tasks so they aren't garbage-collected.
 _background_tasks: set[asyncio.Task[Any]] = set()

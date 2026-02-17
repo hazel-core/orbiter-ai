@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from orbiter_web.routes.auth import get_current_user
 from orbiter_web.services.run_queue import cancel_queued_run, list_queued_runs
 
-router = APIRouter(prefix="/api/runs", tags=["run-queue"])
+router = APIRouter(prefix="/api/v1/runs", tags=["run-queue"])
 
 
 @router.get("/queue")

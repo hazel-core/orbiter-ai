@@ -306,7 +306,7 @@ const copyIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
     /* ---------------------------------------------------------------
        Fetch tool
     --------------------------------------------------------------- */
-    fetch("/api/tools/" + id)
+    fetch("/api/v1/tools/" + id)
       .then(function (res) {
         if (!res.ok) throw new Error("Not found");
         return res.json();
@@ -352,7 +352,7 @@ const copyIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
     }
 
     function fetchAgents() {
-      fetch("/api/agents")
+      fetch("/api/v1/agents")
         .then(function (res) {
           if (!res.ok) throw new Error("Failed");
           return res.json();
@@ -414,7 +414,7 @@ const copyIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
       btn.textContent = "Adding...";
       btn.disabled = true;
 
-      fetch("/api/agents/" + agent.id, {
+      fetch("/api/v1/agents/" + agent.id, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tools_json: JSON.stringify(existingTools) }),

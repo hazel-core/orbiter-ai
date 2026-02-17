@@ -14,7 +14,7 @@ from orbiter_web.crypto import decrypt_api_key
 from orbiter_web.database import get_db
 from orbiter_web.routes.auth import get_current_user
 
-router = APIRouter(prefix="/api", tags=["models"])
+router = APIRouter(prefix="/api/v1", tags=["models"])
 
 # ---------------------------------------------------------------------------
 # Pydantic models

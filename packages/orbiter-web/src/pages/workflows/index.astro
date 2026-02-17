@@ -436,7 +436,7 @@ const importIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke=
        Export
     --------------------------------------------------------------- */
     function exportWorkflow(wf) {
-      fetch("/api/workflows/" + wf.id + "/export", { method: "POST" })
+      fetch("/api/v1/workflows/" + wf.id + "/export", { method: "POST" })
         .then(function (res) {
           if (!res.ok) throw new Error("Export failed");
           return res.json();
@@ -508,7 +508,7 @@ const importIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke=
     }
 
     function loadProjectsForImport() {
-      fetch("/api/projects")
+      fetch("/api/v1/projects")
         .then(function (res) {
           if (!res.ok) throw new Error("Failed");
           return res.json();
@@ -552,7 +552,7 @@ const importIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke=
           viewport_json: typeof importData.viewport_json === "string" ? importData.viewport_json : JSON.stringify(importData.viewport_json || { x: 0, y: 0, zoom: 1 }),
         };
 
-        fetch("/api/workflows/import", {
+        fetch("/api/v1/workflows/import", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
@@ -596,7 +596,7 @@ const importIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke=
         confirmDuplicateBtn.disabled = true;
         confirmDuplicateBtn.textContent = "Duplicating...";
 
-        fetch("/api/workflows/" + duplicateTargetId + "/duplicate", { method: "POST" })
+        fetch("/api/v1/workflows/" + duplicateTargetId + "/duplicate", { method: "POST" })
           .then(function (res) {
             if (!res.ok) return res.json().then(function (d) { throw new Error(d.detail || "Failed to duplicate"); });
             return res.json();
@@ -621,7 +621,7 @@ const importIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke=
        Data fetching
     --------------------------------------------------------------- */
     function fetchWorkflows() {
-      fetch("/api/workflows")
+      fetch("/api/v1/workflows")
         .then(function (res) {
           if (!res.ok) throw new Error("Failed to load workflows");
           return res.json();
@@ -651,7 +651,7 @@ const importIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke=
         return;
       }
 
-      fetch("/api/projects")
+      fetch("/api/v1/projects")
         .then(function (res) {
           if (!res.ok) throw new Error("Failed");
           return res.json();

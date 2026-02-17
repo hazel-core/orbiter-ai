@@ -230,7 +230,7 @@ const downloadIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" strok
     /* ---------------------------------------------------------------
        Fetch plugin
     --------------------------------------------------------------- */
-    fetch("/api/plugins/marketplace/" + id)
+    fetch("/api/v1/plugins/marketplace/" + id)
       .then(function (res) {
         if (!res.ok) throw new Error("Not found");
         return res.json();
@@ -252,7 +252,7 @@ const downloadIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" strok
       installBtn.disabled = true;
       installBtnText.textContent = "Installing...";
 
-      fetch("/api/plugins/install", {
+      fetch("/api/v1/plugins/install", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

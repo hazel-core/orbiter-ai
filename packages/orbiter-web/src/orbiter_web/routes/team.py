@@ -13,7 +13,7 @@ from orbiter_web.routes.auth import _hash_password, require_role
 from orbiter_web.sanitize import sanitize_html
 from orbiter_web.services.audit import audit_log
 
-router = APIRouter(prefix="/api/settings/team", tags=["team"])
+router = APIRouter(prefix="/api/v1/settings/team", tags=["team"])
 
 _VALID_ROLES = {"viewer", "developer", "admin"}
 

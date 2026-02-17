@@ -18,6 +18,7 @@ from orbiter_web.errors import register_error_handlers
 from orbiter_web.middleware.csrf import CSRFMiddleware
 from orbiter_web.middleware.rate_limit import RateLimitMiddleware
 from orbiter_web.middleware.security import SecurityHeadersMiddleware
+from orbiter_web.middleware.versioning import APIVersionRedirectMiddleware
 from orbiter_web.routes.agent_templates import router as agent_templates_router
 from orbiter_web.routes.agents import router as agents_router
 from orbiter_web.routes.alerts import router as alerts_router
@@ -121,6 +122,7 @@ register_error_handlers(app)
 app.add_middleware(CSRFMiddleware)
 app.add_middleware(RateLimitMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(APIVersionRedirectMiddleware)
 
 if settings.cors_origins:
     app.add_middleware(

@@ -428,7 +428,7 @@ const typeIcons: Record<string, string> = {
     }
 
     function fetchKb() {
-      fetch("/api/knowledge-bases/" + kbId)
+      fetch("/api/v1/knowledge-bases/" + kbId)
         .then(function (res) {
           if (!res.ok) throw new Error("Not found");
           return res.json();
@@ -439,7 +439,7 @@ const typeIcons: Record<string, string> = {
 
     /* ---------- Documents list ---------- */
     function fetchDocuments() {
-      fetch("/api/knowledge-bases/" + kbId + "/documents")
+      fetch("/api/v1/knowledge-bases/" + kbId + "/documents")
         .then(function (res) {
           if (!res.ok) throw new Error("Failed");
           return res.json();
@@ -523,7 +523,7 @@ const typeIcons: Record<string, string> = {
       chunkPreviewContent.innerHTML = '<p class="text-xs text-muted">Loading chunks...</p>';
       chunkPreviewModal.showModal();
 
-      fetch("/api/knowledge-bases/" + kbId + "/documents/" + docId + "/chunks?limit=3")
+      fetch("/api/v1/knowledge-bases/" + kbId + "/documents/" + docId + "/chunks?limit=3")
         .then(function (res) {
           if (!res.ok) throw new Error("Failed to load chunks");
           return res.json();
@@ -567,7 +567,7 @@ const typeIcons: Record<string, string> = {
         deleteConfirmBtn.disabled = true;
         deleteConfirmBtn.textContent = "Deleting...";
 
-        fetch("/api/knowledge-bases/" + kbId, { method: "DELETE" })
+        fetch("/api/v1/knowledge-bases/" + kbId, { method: "DELETE" })
           .then(function (res) {
             if (!res.ok && res.status !== 204)
               throw new Error("Failed to delete knowledge base");
@@ -590,7 +590,7 @@ const typeIcons: Record<string, string> = {
         deleteDocConfirmBtn.disabled = true;
         deleteDocConfirmBtn.textContent = "Deleting...";
 
-        fetch("/api/knowledge-bases/" + kbId + "/documents/" + pendingDeleteDocId, { method: "DELETE" })
+        fetch("/api/v1/knowledge-bases/" + kbId + "/documents/" + pendingDeleteDocId, { method: "DELETE" })
           .then(function (res) {
             if (!res.ok && res.status !== 204)
               throw new Error("Failed to delete document");
@@ -807,7 +807,7 @@ const typeIcons: Record<string, string> = {
       var formData = new FormData();
       formData.append("file", item.file);
 
-      return fetch("/api/knowledge-bases/" + kbId + "/documents", {
+      return fetch("/api/v1/knowledge-bases/" + kbId + "/documents", {
         method: "POST",
         body: formData,
       })
@@ -826,7 +826,7 @@ const typeIcons: Record<string, string> = {
           status.textContent = "Chunking...";
 
           /* Fetch first 2-3 chunks for preview */
-          return fetch("/api/knowledge-bases/" + kbId + "/documents/" + doc.id + "/chunks?limit=3")
+          return fetch("/api/v1/knowledge-bases/" + kbId + "/documents/" + doc.id + "/chunks?limit=3")
             .then(function (res) { return res.ok ? res.json() : []; })
             .then(function (chunks) {
               bar.style.width = "100%";
@@ -937,7 +937,7 @@ const typeIcons: Record<string, string> = {
         reranker_enabled: rerankerToggle.getAttribute("aria-checked") === "true",
       };
 
-      fetch("/api/knowledge-bases/" + kbId, {
+      fetch("/api/v1/knowledge-bases/" + kbId, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -974,7 +974,7 @@ const typeIcons: Record<string, string> = {
       testNoResults.classList.add("hidden");
       testError.classList.add("hidden");
 
-      fetch("/api/knowledge-bases/" + kbId + "/search", {
+      fetch("/api/v1/knowledge-bases/" + kbId + "/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query: query }),

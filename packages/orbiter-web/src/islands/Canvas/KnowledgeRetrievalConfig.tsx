@@ -91,7 +91,7 @@ export default function KnowledgeRetrievalConfig({ data, onChange }: KnowledgeRe
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch("/api/knowledge-bases");
+        const res = await fetch("/api/v1/knowledge-bases");
         if (res.ok) {
           const json = await res.json();
           if (!cancelled) setKnowledgeBases(Array.isArray(json) ? json : []);

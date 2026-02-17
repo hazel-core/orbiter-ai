@@ -18,7 +18,7 @@ from orbiter_web.database import get_db
 from orbiter_web.routes.auth import get_current_user, require_role
 from orbiter_web.services.sandbox import SandboxConfig, execute_code
 
-router = APIRouter(prefix="/api/sandbox", tags=["sandbox"])
+router = APIRouter(prefix="/api/v1/sandbox", tags=["sandbox"])
 
 
 # ---------------------------------------------------------------------------

@@ -28,7 +28,7 @@ from orbiter_web.services.planner import (
     mark_step_running,
 )
 
-router = APIRouter(prefix="/api/agents", tags=["plans"])
+router = APIRouter(prefix="/api/v1/agents", tags=["plans"])
 
 # ---------------------------------------------------------------------------
 # Pydantic models

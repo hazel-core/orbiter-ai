@@ -12,7 +12,7 @@ from orbiter_web.config import settings
 from orbiter_web.database import _DB_PATH, get_db
 from orbiter_web.routes.auth import get_current_user
 
-router = APIRouter(prefix="/api/settings", tags=["retention"])
+router = APIRouter(prefix="/api/v1/settings", tags=["retention"])
 
 _RETENTION_KEYS = {
     "retention_artifacts_days": 90,

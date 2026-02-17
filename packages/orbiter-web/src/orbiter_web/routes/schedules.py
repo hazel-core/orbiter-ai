@@ -14,7 +14,7 @@ from orbiter_web.database import get_db
 from orbiter_web.routes.auth import get_current_user
 from orbiter_web.services.scheduler import compute_next_run
 
-router = APIRouter(prefix="/api/schedules", tags=["schedules"])
+router = APIRouter(prefix="/api/v1/schedules", tags=["schedules"])
 
 # ---------------------------------------------------------------------------
 # Pydantic models

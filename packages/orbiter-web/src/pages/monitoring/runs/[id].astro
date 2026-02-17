@@ -713,7 +713,7 @@ const liveIcon = '<svg class="h-3 w-3" viewBox="0 0 24 24" fill="currentColor"><
   // ---------------------------------------------------------------------------
   function connectWebSocket() {
     var proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-    var url = proto + "//" + window.location.host + "/api/runs/" + encodeURIComponent(runId) + "/stream";
+    var url = proto + "//" + window.location.host + "/api/v1/runs/" + encodeURIComponent(runId) + "/stream";
     ws = new WebSocket(url);
 
     ws.onmessage = function (e) {
@@ -746,7 +746,7 @@ const liveIcon = '<svg class="h-3 w-3" viewBox="0 0 24 24" fill="currentColor"><
   // ---------------------------------------------------------------------------
   async function loadRun() {
     try {
-      var res = await fetch("/api/runs/" + encodeURIComponent(runId));
+      var res = await fetch("/api/v1/runs/" + encodeURIComponent(runId));
       if (!res.ok) {
         if (res.status === 404) {
           stepsContainer.innerHTML = '<div class="px-6 py-12 text-center text-muted text-sm">Run not found</div>';

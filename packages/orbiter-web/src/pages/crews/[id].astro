@@ -198,7 +198,7 @@ const layersIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke=
   // -----------------------------------------------------------------------
   async function loadCrew() {
     try {
-      const resp = await fetch(`/api/crews/${crewId}`);
+      const resp = await fetch(`/api/v1/crews/${crewId}`);
       if (!resp.ok) { window.location.href = "/agents"; return; }
       crew = await resp.json();
 
@@ -244,7 +244,7 @@ const layersIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke=
     runBtn.style.opacity = "0.5";
 
     try {
-      const resp = await fetch(`/api/crews/${crewId}/run`, {
+      const resp = await fetch(`/api/v1/crews/${crewId}/run`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ input }),
@@ -401,7 +401,7 @@ const layersIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke=
     if (ws) { ws.close(); ws = null; }
 
     const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-    const url = `${protocol}//${location.host}/api/crews/${crewId}/runs/${currentRunId}/stream`;
+    const url = `${protocol}//${location.host}/api/v1/crews/${crewId}/runs/${currentRunId}/stream`;
     ws = new WebSocket(url);
 
     let taskIndexMap = {};
@@ -460,7 +460,7 @@ const layersIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke=
   // -----------------------------------------------------------------------
   async function loadHistory() {
     try {
-      const resp = await fetch(`/api/crews/${crewId}/runs?limit=10`);
+      const resp = await fetch(`/api/v1/crews/${crewId}/runs?limit=10`);
       if (!resp.ok) return;
       const data = await resp.json();
 

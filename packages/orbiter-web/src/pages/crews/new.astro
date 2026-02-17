@@ -233,7 +233,7 @@ const chevronUp = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="
   /* ---- Data loading ---- */
   async function loadProjects() {
     try {
-      var resp = await fetch('/api/projects');
+      var resp = await fetch('/api/v1/projects');
       if (!resp.ok) return;
       var body = await resp.json();
       projects = body.data || body;
@@ -249,7 +249,7 @@ const chevronUp = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="
 
   async function loadAgents() {
     try {
-      var resp = await fetch('/api/agents');
+      var resp = await fetch('/api/v1/agents');
       if (!resp.ok) return;
       var body = await resp.json();
       agents = body.data || body;
@@ -574,7 +574,7 @@ const chevronUp = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="
       var configJson = JSON.stringify({ delegation_enabled: delegation });
 
       // 1. Create the crew
-      var crewResp = await fetch('/api/crews', {
+      var crewResp = await fetch('/api/v1/crews', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -596,7 +596,7 @@ const chevronUp = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="
       // 2. Add tasks
       for (var i = 0; i < tasks.length; i++) {
         var t = tasks[i];
-        var taskResp = await fetch('/api/crews/' + crew.id + '/tasks', {
+        var taskResp = await fetch('/api/v1/crews/' + crew.id + '/tasks', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

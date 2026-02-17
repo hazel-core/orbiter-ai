@@ -18,7 +18,7 @@ from orbiter_web.services.audit import audit_log
 
 logger = logging.getLogger("orbiter_web")
 
-router = APIRouter(prefix="/api/auth", tags=["auth"])
+router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
 SESSION_COOKIE = "orbiter_session"
 

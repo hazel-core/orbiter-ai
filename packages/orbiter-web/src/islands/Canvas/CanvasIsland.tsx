@@ -439,7 +439,7 @@ function useAutoSave(
     if (!workflowId || savingRef.current || !loaded) return;
     savingRef.current = true;
     setSaveStatus("saving");
-    fetch(`/api/workflows/${workflowId}`, {
+    fetch(`/api/v1/workflows/${workflowId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -544,7 +544,7 @@ function useWorkflowExecution(workflowId: string | undefined, totalNodes: number
     setElapsed(0);
 
     try {
-      const res = await fetch(`/api/workflows/${workflowId}/run`, { method: "POST" });
+      const res = await fetch(`/api/v1/workflows/${workflowId}/run`, { method: "POST" });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ detail: "Failed to start run" }));
         setExec((s) => ({ ...s, status: "failed", runId: null }));
@@ -562,7 +562,7 @@ function useWorkflowExecution(workflowId: string | undefined, totalNodes: number
 
       // Connect WebSocket for live events
       const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const ws = new WebSocket(`${proto}//${window.location.host}/api/workflows/${workflowId}/runs/${run_id}/stream`);
+      const ws = new WebSocket(`${proto}//${window.location.host}/api/v1/workflows/${workflowId}/runs/${run_id}/stream`);
       wsRef.current = ws;
 
       ws.onmessage = (ev) => {
@@ -619,7 +619,7 @@ function useWorkflowExecution(workflowId: string | undefined, totalNodes: number
     if (!workflowId || !exec.runId) return;
 
     try {
-      await fetch(`/api/workflows/${workflowId}/runs/${exec.runId}`, { method: "DELETE" });
+      await fetch(`/api/v1/workflows/${workflowId}/runs/${exec.runId}`, { method: "DELETE" });
     } catch {
       // Ignore cancel errors
     }
@@ -710,7 +710,7 @@ function useDebugExecution(workflowId: string | undefined, totalNodes: number) {
     setElapsed(0);
 
     try {
-      const res = await fetch(`/api/workflows/${workflowId}/debug`, { method: "POST" });
+      const res = await fetch(`/api/v1/workflows/${workflowId}/debug`, { method: "POST" });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ detail: "Failed to start debug" }));
         setDbg((s) => ({ ...s, status: "failed" }));
@@ -728,7 +728,7 @@ function useDebugExecution(workflowId: string | undefined, totalNodes: number) {
 
       // Connect debug WebSocket
       const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const ws = new WebSocket(`${proto}//${window.location.host}/api/workflows/${workflowId}/runs/${run_id}/debug`);
+      const ws = new WebSocket(`${proto}//${window.location.host}/api/v1/workflows/${workflowId}/runs/${run_id}/debug`);
       wsRef.current = ws;
 
       ws.onmessage = (ev) => {
@@ -1007,7 +1007,7 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
       if (!workflowId) return;
       if (metaTimerRef.current) clearTimeout(metaTimerRef.current);
       metaTimerRef.current = setTimeout(() => {
-        fetch(`/api/workflows/${workflowId}`, {
+        fetch(`/api/v1/workflows/${workflowId}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ name, description }),
@@ -1039,7 +1039,7 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
   /* Export workflow as JSON download */
   const exportWorkflow = useCallback(() => {
     if (!workflowId) return;
-    fetch(`/api/workflows/${workflowId}/export`, { method: "POST" })
+    fetch(`/api/v1/workflows/${workflowId}/export`, { method: "POST" })
       .then((res) => {
         if (!res.ok) throw new Error("Export failed");
         return res.json();
@@ -1063,7 +1063,7 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
   /* Load canvas state from backend */
   useEffect(() => {
     if (!workflowId) return;
-    fetch(`/api/workflows/${workflowId}`)
+    fetch(`/api/v1/workflows/${workflowId}`)
       .then((res) => {
         if (!res.ok) throw new Error("Failed to load workflow");
         return res.json();
@@ -1283,7 +1283,7 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
       if (!workflowId) return;
       setSingleRunNodeId(null);
       try {
-        const res = await fetch(`/api/workflows/${workflowId}/nodes/${nodeId}/run`, {
+        const res = await fetch(`/api/v1/workflows/${workflowId}/nodes/${nodeId}/run`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ mock_input: mockInput }),

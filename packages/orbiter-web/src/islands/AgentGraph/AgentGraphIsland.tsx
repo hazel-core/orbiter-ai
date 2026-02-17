@@ -370,8 +370,8 @@ function AgentGraphInner({ projectId }: { projectId?: string }) {
   /* Fetch agents and build graph */
   useEffect(() => {
     const url = projectId
-      ? `/api/agents?project_id=${encodeURIComponent(projectId)}`
-      : "/api/agents";
+      ? `/api/v1/agents?project_id=${encodeURIComponent(projectId)}`
+      : "/api/v1/agents";
 
     fetch(url)
       .then((r) => {

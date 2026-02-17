@@ -254,8 +254,8 @@ const downloadIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" strok
     /* ------- Init ------- */
     async function init() {
       var [agentBody, evalBody] = await Promise.all([
-        api("/api/agents?limit=100"),
-        api("/api/evaluations?limit=100"),
+        api("/api/v1/agents?limit=100"),
+        api("/api/v1/evaluations?limit=100"),
       ]);
       (agentBody.data || []).forEach(function (a) { agents[a.id] = a.name; });
       (evalBody.data || []).forEach(function (e) { evaluations[e.id] = e.name; });
@@ -263,7 +263,7 @@ const downloadIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" strok
     }
 
     async function loadBenchmarks() {
-      var body = await api("/api/benchmarks?limit=100");
+      var body = await api("/api/v1/benchmarks?limit=100");
       benchmarks = body.data || [];
       renderList();
     }
@@ -302,8 +302,8 @@ const downloadIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" strok
 
       // Load runs + leaderboard
       var [runs, lb] = await Promise.all([
-        api("/api/benchmarks/" + bench.id + "/runs"),
-        api("/api/benchmarks/" + bench.id + "/leaderboard"),
+        api("/api/v1/benchmarks/" + bench.id + "/runs"),
+        api("/api/v1/benchmarks/" + bench.id + "/leaderboard"),
       ]);
       currentRuns = runs;
       leaderboard = lb;
@@ -330,7 +330,7 @@ const downloadIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" strok
 
     async function loadRunResults(runId) {
       if (!currentBench) return;
-      currentResults = await api("/api/benchmarks/" + currentBench.id + "/runs/" + runId + "/results");
+      currentResults = await api("/api/v1/benchmarks/" + currentBench.id + "/runs/" + runId + "/results");
     }
 
     function closeDetail() {
@@ -556,7 +556,7 @@ const downloadIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" strok
       var evalId = document.getElementById("create-eval").value;
       if (!name || !evalId) return;
 
-      await api("/api/benchmarks", {
+      await api("/api/v1/benchmarks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: name, description: desc, evaluation_id: evalId }),
@@ -590,7 +590,7 @@ const downloadIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" strok
       runningIndicator.classList.remove("hidden");
 
       try {
-        await api("/api/benchmarks/" + currentBench.id + "/run", {
+        await api("/api/v1/benchmarks/" + currentBench.id + "/run", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ agent_ids: agentIds }),
@@ -605,7 +605,7 @@ const downloadIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" strok
     /* ------- Delete ------- */
     async function handleDelete() {
       if (!currentBench) return;
-      await api("/api/benchmarks/" + currentBench.id, { method: "DELETE" });
+      await api("/api/v1/benchmarks/" + currentBench.id, { method: "DELETE" });
       deleteDialog.close();
       closeDetail();
       await loadBenchmarks();
@@ -617,7 +617,7 @@ const downloadIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" strok
       var sel = document.getElementById("run-select");
       var runId = sel.value;
       if (!runId) return;
-      window.open("/api/benchmarks/" + currentBench.id + "/runs/" + runId + "/export?fmt=" + fmt, "_blank");
+      window.open("/api/v1/benchmarks/" + currentBench.id + "/runs/" + runId + "/export?fmt=" + fmt, "_blank");
     }
 
     /* ------- Utility ------- */

@@ -358,7 +358,7 @@ const playIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
   /* ================================================================ */
   async function loadAgents() {
     try {
-      const resp = await fetch("/api/agents");
+      const resp = await fetch("/api/v1/agents");
       if (!resp.ok) throw new Error("Failed to load agents");
       const body = await resp.json();
       allAgents = body.data ?? body;
@@ -806,7 +806,7 @@ const playIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
       /* Create new agent if needed */
       if (supervisorData.isNew) {
         /* Get first project for placement */
-        var projResp = await fetch("/api/projects");
+        var projResp = await fetch("/api/v1/projects");
         var projBody = await projResp.json();
         var projects = projBody.data || projBody;
         var projectId = projects.length > 0 ? projects[0].id : null;
@@ -816,7 +816,7 @@ const playIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
           return;
         }
 
-        var createResp = await fetch("/api/agents", {
+        var createResp = await fetch("/api/v1/agents", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -836,7 +836,7 @@ const playIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
       for (var i = 0; i < selectedSubAgents.length; i++) {
         var sa = selectedSubAgents[i];
         var routingRule = sa.routing_rule ? JSON.stringify({ description: sa.routing_rule }) : "{}";
-        var addResp = await fetch("/api/agents/" + agentId + "/sub-agents", {
+        var addResp = await fetch("/api/v1/agents/" + agentId + "/sub-agents", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -853,13 +853,13 @@ const playIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
 
       /* Update hooks_json to track delegates for graph view */
       var delegateIds = selectedSubAgents.map(function(sa) { return sa.id; });
-      var agentResp = await fetch("/api/agents/" + agentId);
+      var agentResp = await fetch("/api/v1/agents/" + agentId);
       if (agentResp.ok) {
         var agentData = await agentResp.json();
         var hooks = {};
         try { hooks = JSON.parse(agentData.hooks_json || "{}"); } catch(e) {}
         hooks._delegates_to = delegateIds;
-        await fetch("/api/agents/" + agentId, {
+        await fetch("/api/v1/agents/" + agentId, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ hooks_json: JSON.stringify(hooks) }),

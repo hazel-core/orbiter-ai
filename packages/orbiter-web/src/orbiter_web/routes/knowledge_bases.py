@@ -18,7 +18,7 @@ from orbiter_web.services.document_processor import chunk_text, extract_text
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/knowledge-bases", tags=["knowledge-bases"])
+router = APIRouter(prefix="/api/v1/knowledge-bases", tags=["knowledge-bases"])
 
 # ---------------------------------------------------------------------------
 # Pydantic models

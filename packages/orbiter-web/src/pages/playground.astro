@@ -549,7 +549,7 @@ function resetCumulativeSummary() {
 
 async function loadPricing() {
   try {
-    const res = await fetch("/api/costs/pricing", { credentials: "same-origin" });
+    const res = await fetch("/api/v1/costs/pricing", { credentials: "same-origin" });
     if (res.ok) pricingData = await res.json();
   } catch (_e) {
     /* Pricing is non-critical — degrade gracefully */
@@ -734,7 +734,7 @@ async function saveMessageEdit(messageEl: HTMLElement, newContent: string) {
   if (!msgId || !currentConversationId) return;
 
   const resp = await fetch(
-    "/api/conversations/" + currentConversationId + "/messages/" + msgId,
+    "/api/v1/conversations/" + currentConversationId + "/messages/" + msgId,
     {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -752,7 +752,7 @@ async function showEditHistory(messageEl: HTMLElement) {
   if (!msgId || !currentConversationId) return;
 
   const resp = await fetch(
-    "/api/conversations/" + currentConversationId + "/messages/" + msgId + "/edits"
+    "/api/v1/conversations/" + currentConversationId + "/messages/" + msgId + "/edits"
   );
   if (!resp.ok) return;
   const edits: Array<{ original_content: string; edited_at: string }> = await resp.json();
@@ -796,7 +796,7 @@ async function deleteMessage(messageEl: HTMLElement) {
   if (!confirm("Delete this message?")) return;
 
   const resp = await fetch(
-    "/api/conversations/" + currentConversationId + "/messages/" + msgId,
+    "/api/v1/conversations/" + currentConversationId + "/messages/" + msgId,
     { method: "DELETE" }
   );
   if (!resp.ok) {
@@ -820,7 +820,7 @@ async function replayFromMessage(messageEl: HTMLElement) {
 
   /* Call replay API — truncates messages after this one */
   const resp = await fetch(
-    "/api/conversations/" + currentConversationId + "/messages/" + msgId + "/replay",
+    "/api/v1/conversations/" + currentConversationId + "/messages/" + msgId + "/replay",
     { method: "POST" }
   );
   if (!resp.ok) {
@@ -1642,7 +1642,7 @@ function clearContextSnapshots() {
 /* ---- Load agents ---- */
 async function loadAgents() {
   try {
-    const res = await fetch("/api/agents", { credentials: "same-origin" });
+    const res = await fetch("/api/v1/agents", { credentials: "same-origin" });
     if (!res.ok) return;
     const body = await res.json();
     agents = body.data ?? body;
@@ -1791,7 +1791,7 @@ function connectWebSocket(agentId: string, conversationId?: string, replayText?:
   currentAgentId = agentId;
   currentConversationId = conversationId || null;
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
-  const url = proto + "//" + location.host + "/api/playground/" + agentId + "/chat";
+  const url = proto + "//" + location.host + "/api/v1/playground/" + agentId + "/chat";
 
   connectionStatus.classList.add("hidden");
   connectionStatus.textContent = "";
@@ -2160,7 +2160,7 @@ annotationSaveBtn.addEventListener("click", async function() {
   if (!improved) return;
 
   try {
-    const resp = await fetch("/api/annotations", {
+    const resp = await fetch("/api/v1/annotations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "same-origin",
@@ -2560,7 +2560,7 @@ let compareStreamedContent: string[] = [];
 
 async function loadModelsForCompare() {
   try {
-    const res = await fetch("/api/models", { credentials: "same-origin" });
+    const res = await fetch("/api/v1/models", { credentials: "same-origin" });
     if (!res.ok) return;
     const data = await res.json();
     availableModels = data.map(function(m: any) {
@@ -2858,7 +2858,7 @@ function sendCompareMessage() {
 
   /* Open compare WebSocket */
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
-  const url = proto + "//" + location.host + "/api/playground/compare/chat";
+  const url = proto + "//" + location.host + "/api/v1/playground/compare/chat";
 
   if (compareWs) { compareWs.close(); compareWs = null; }
   compareWs = new WebSocket(url);
@@ -3150,7 +3150,7 @@ function formatRelativeTime(dateStr: string): string {
 
 async function loadThreads(agentId: string) {
   try {
-    const res = await fetch("/api/threads?agent_id=" + encodeURIComponent(agentId), { credentials: "same-origin" });
+    const res = await fetch("/api/v1/threads?agent_id=" + encodeURIComponent(agentId), { credentials: "same-origin" });
     if (!res.ok) return;
     threads = await res.json();
     renderThreadList();
@@ -3159,7 +3159,7 @@ async function loadThreads(agentId: string) {
 
 async function searchThreads(query: string) {
   try {
-    const res = await fetch("/api/threads/search?q=" + encodeURIComponent(query), { credentials: "same-origin" });
+    const res = await fetch("/api/v1/threads/search?q=" + encodeURIComponent(query), { credentials: "same-origin" });
     if (!res.ok) return;
     threads = await res.json();
     renderThreadList();
@@ -3245,7 +3245,7 @@ async function switchToThread(t: ThreadItem) {
 
   /* Load thread messages */
   try {
-    const res = await fetch("/api/threads/" + t.id + "/messages", { credentials: "same-origin" });
+    const res = await fetch("/api/v1/threads/" + t.id + "/messages", { credentials: "same-origin" });
     if (!res.ok) return;
     const messages = await res.json();
     if (messages.length === 0) {
@@ -3283,7 +3283,7 @@ async function switchToThread(t: ThreadItem) {
 async function createThread() {
   if (!currentAgentId) return;
   try {
-    const res = await fetch("/api/threads", {
+    const res = await fetch("/api/v1/threads", {
       method: "POST",
       credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
@@ -3301,7 +3301,7 @@ async function createThread() {
 
 async function deleteThread(threadId: string) {
   try {
-    const res = await fetch("/api/threads/" + threadId, {
+    const res = await fetch("/api/v1/threads/" + threadId, {
       method: "DELETE",
       credentials: "same-origin",
     });

@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from orbiter_web.database import get_db
 from orbiter_web.routes.auth import get_current_user
 
-router = APIRouter(prefix="/api/runs", tags=["checkpoints"])
+router = APIRouter(prefix="/api/v1/runs", tags=["checkpoints"])
 
 
 # ---------------------------------------------------------------------------

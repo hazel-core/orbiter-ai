@@ -16,7 +16,7 @@ from orbiter_web.database import get_db
 from orbiter_web.routes.auth import get_current_user
 from orbiter_web.sanitize import sanitize_html
 
-router = APIRouter(prefix="/api/crews", tags=["crews"])
+router = APIRouter(prefix="/api/v1/crews", tags=["crews"])
 
 # Keep references to background tasks so they aren't garbage-collected.
 _background_tasks: set[asyncio.Task[Any]] = set()

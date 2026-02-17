@@ -206,7 +206,7 @@ const dollarIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke=
 
   async function loadDashboard() {
     try {
-      const data = await fetchJSON("/api/metrics/dashboard?range=" + currentRange);
+      const data = await fetchJSON("/api/v1/metrics/dashboard?range=" + currentRange);
       document.getElementById("metric-total-runs").textContent = fmtNumber(data.total_runs);
       document.getElementById("metric-success-rate").textContent = fmtPercent(data.success_rate);
       document.getElementById("metric-avg-latency").textContent = fmtLatency(data.avg_latency_ms);
@@ -227,7 +227,7 @@ const dollarIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke=
   async function loadAgents() {
     const tbody = document.getElementById("agents-table-body");
     try {
-      const data = await fetchJSON("/api/metrics/agents?range=" + currentRange);
+      const data = await fetchJSON("/api/v1/metrics/agents?range=" + currentRange);
       if (!data.length) {
         tbody.innerHTML = '<tr><td colspan="5" class="px-5 py-8 text-center text-muted">No data for this time range</td></tr>';
         return;
@@ -254,7 +254,7 @@ const dollarIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke=
   async function loadTimeseries(metric, containerId, chartType) {
     const container = document.getElementById(containerId);
     try {
-      const data = await fetchJSON("/api/metrics/timeseries?range=" + currentRange + "&metric=" + metric);
+      const data = await fetchJSON("/api/v1/metrics/timeseries?range=" + currentRange + "&metric=" + metric);
       if (!data.length) {
         container.innerHTML = '<p class="text-sm text-muted">No data for this time range</p>';
         return;

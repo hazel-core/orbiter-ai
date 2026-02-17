@@ -585,7 +585,7 @@ const searchIcon = '<svg class="h-4 w-4 text-muted" viewBox="0 0 24 24" fill="no
        Data fetching
     --------------------------------------------------------------- */
     function fetchModels() {
-      fetch("/api/models")
+      fetch("/api/v1/models")
         .then(function (res) {
           if (!res.ok) throw new Error("Failed to load models");
           return res.json();
@@ -602,7 +602,7 @@ const searchIcon = '<svg class="h-4 w-4 text-muted" viewBox="0 0 24 24" fill="no
     }
 
     function fetchProviders() {
-      fetch("/api/providers")
+      fetch("/api/v1/providers")
         .then(function (res) {
           if (!res.ok) throw new Error("Failed to load providers");
           return res.json();
@@ -621,7 +621,7 @@ const searchIcon = '<svg class="h-4 w-4 text-muted" viewBox="0 0 24 24" fill="no
       button.disabled = true;
       button.innerHTML = '<span class="animate-pulse">Fetching...</span>';
 
-      fetch("/api/providers/" + providerId + "/discover", { method: "POST" })
+      fetch("/api/v1/providers/" + providerId + "/discover", { method: "POST" })
         .then(function (res) {
           if (!res.ok) return res.json().then(function (d) { throw new Error(d.detail || "Discovery failed"); });
           return res.json();
@@ -646,7 +646,7 @@ const searchIcon = '<svg class="h-4 w-4 text-muted" viewBox="0 0 24 24" fill="no
       var totalDiscovered = 0;
 
       providers.forEach(function (prov) {
-        fetch("/api/providers/" + prov.id + "/discover", { method: "POST" })
+        fetch("/api/v1/providers/" + prov.id + "/discover", { method: "POST" })
           .then(function (res) {
             if (res.ok) return res.json();
             return null;
@@ -714,7 +714,7 @@ const searchIcon = '<svg class="h-4 w-4 text-muted" viewBox="0 0 24 24" fill="no
         submitBtn.disabled = true;
         submitBtn.textContent = "Adding...";
 
-        fetch("/api/models", {
+        fetch("/api/v1/models", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

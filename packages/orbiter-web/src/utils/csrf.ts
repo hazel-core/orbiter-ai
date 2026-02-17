@@ -5,7 +5,7 @@
  *   import { getCsrfToken, clearCsrfToken } from "../utils/csrf";
  *
  *   const token = await getCsrfToken();
- *   fetch("/api/...", {
+ *   fetch("/api/v1/...", {
  *     method: "POST",
  *     headers: { "Content-Type": "application/json", "X-CSRF-Token": token },
  *     body: JSON.stringify(data),
@@ -21,7 +21,7 @@ let _cachedToken: string | null = null;
 export async function getCsrfToken(): Promise<string> {
   if (_cachedToken) return _cachedToken;
 
-  const res = await fetch("/api/auth/csrf", { credentials: "same-origin" });
+  const res = await fetch("/api/v1/auth/csrf", { credentials: "same-origin" });
   if (!res.ok) {
     throw new Error("Failed to fetch CSRF token");
   }

@@ -13,7 +13,7 @@ from orbiter_web.database import get_db
 from orbiter_web.routes.auth import get_current_user
 from orbiter_web.sanitize import sanitize_html
 
-router = APIRouter(prefix="/api/applications", tags=["applications"])
+router = APIRouter(prefix="/api/v1/applications", tags=["applications"])
 
 # ---------------------------------------------------------------------------
 # Constants

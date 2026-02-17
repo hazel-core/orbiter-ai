@@ -16,7 +16,7 @@ from orbiter_web.pagination import paginate
 from orbiter_web.routes.auth import get_current_user
 from orbiter_web.sanitize import sanitize_html
 
-router = APIRouter(prefix="/api/templates", tags=["agent_templates"])
+router = APIRouter(prefix="/api/v1/templates", tags=["agent_templates"])
 
 # ---------------------------------------------------------------------------
 # Pydantic models

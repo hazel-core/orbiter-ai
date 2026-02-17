@@ -13,9 +13,9 @@ _UNSAFE_METHODS = {"POST", "PUT", "DELETE", "PATCH"}
 
 # Paths exempt from CSRF checks (login must work without a token).
 _EXEMPT_PATHS = {
-    "/api/auth/login",
-    "/api/auth/forgot-password",
-    "/api/auth/reset-password",
+    "/api/v1/auth/login",
+    "/api/v1/auth/forgot-password",
+    "/api/v1/auth/reset-password",
     "/api/health",
 }
 

@@ -15,7 +15,7 @@ from orbiter_web.database import get_db
 from orbiter_web.routes.auth import require_role
 from orbiter_web.services.audit import audit_log
 
-router = APIRouter(prefix="/api/providers", tags=["provider-keys"])
+router = APIRouter(prefix="/api/v1/providers", tags=["provider-keys"])
 
 # ---------------------------------------------------------------------------
 # Constants

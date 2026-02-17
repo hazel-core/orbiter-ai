@@ -191,7 +191,7 @@ const chevronRight = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" strok
     // The API already sorts by created_at DESC which matches "Newest First"
 
     try {
-      var res = await fetch("/api/runs?" + params.toString());
+      var res = await fetch("/api/v1/runs?" + params.toString());
       if (!res.ok) throw new Error("API error " + res.status);
       var data = await res.json();
 

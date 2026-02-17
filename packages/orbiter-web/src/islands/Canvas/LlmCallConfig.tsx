@@ -83,7 +83,7 @@ export default function LlmCallConfig({ data, onChange }: LlmCallConfigProps) {
   useEffect(() => {
     if (fetchedProviders.current) return;
     fetchedProviders.current = true;
-    fetch("/api/providers")
+    fetch("/api/v1/providers")
       .then((r) => r.json())
       .then((list: Provider[]) => setProviders(list))
       .catch(() => {})
@@ -101,7 +101,7 @@ export default function LlmCallConfig({ data, onChange }: LlmCallConfigProps) {
       return;
     }
     setLoadingModels(true);
-    fetch(`/api/models?provider_id=${selectedProvider.id}`)
+    fetch(`/api/v1/models?provider_id=${selectedProvider.id}`)
       .then((r) => r.json())
       .then((list: Model[]) => setModels(list))
       .catch(() => setModels([]))

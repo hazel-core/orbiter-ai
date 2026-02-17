@@ -15,7 +15,7 @@ from orbiter_web.routes.auth import require_role
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/vector-stores", tags=["vector-stores"])
+router = APIRouter(prefix="/api/v1/vector-stores", tags=["vector-stores"])
 
 # ---------------------------------------------------------------------------
 # Constants

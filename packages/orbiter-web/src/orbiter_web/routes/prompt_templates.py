@@ -14,7 +14,7 @@ from orbiter_web.database import get_db
 from orbiter_web.routes.auth import get_current_user
 from orbiter_web.sanitize import sanitize_html
 
-router = APIRouter(prefix="/api/prompt-templates", tags=["prompt_templates"])
+router = APIRouter(prefix="/api/v1/prompt-templates", tags=["prompt_templates"])
 
 # ---------------------------------------------------------------------------
 # Pydantic models

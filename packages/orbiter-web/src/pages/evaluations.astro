@@ -411,7 +411,7 @@ const alertIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="
 
       /* ---------- API ---------- */
       function fetchEvaluations() {
-        fetch("/api/evaluations", { credentials: "same-origin" })
+        fetch("/api/v1/evaluations", { credentials: "same-origin" })
           .then(function (r) { return r.json(); })
           .then(function (body) {
             evaluations = body.data || body || [];
@@ -421,7 +421,7 @@ const alertIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="
       }
 
       function fetchAgents() {
-        fetch("/api/agents", { credentials: "same-origin" })
+        fetch("/api/v1/agents", { credentials: "same-origin" })
           .then(function (r) { return r.json(); })
           .then(function (body) {
             var list = body.data || body || [];
@@ -439,7 +439,7 @@ const alertIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="
       }
 
       function fetchResults(evalId) {
-        fetch("/api/evaluations/" + evalId + "/results", { credentials: "same-origin" })
+        fetch("/api/v1/evaluations/" + evalId + "/results", { credentials: "same-origin" })
           .then(function (r) { return r.json(); })
           .then(function (results) {
             currentResults = results || [];
@@ -451,7 +451,7 @@ const alertIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="
       }
 
       function fetchSafetyCategories() {
-        fetch("/api/evaluations/safety/categories", { credentials: "same-origin" })
+        fetch("/api/v1/evaluations/safety/categories", { credentials: "same-origin" })
           .then(function (r) { return r.json(); })
           .then(function (data) {
             safetyCategories = data.categories || {};
@@ -475,7 +475,7 @@ const alertIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="
       }
 
       function fetchSafetyResults(evalId) {
-        fetch("/api/evaluations/" + evalId + "/safety-results", { credentials: "same-origin" })
+        fetch("/api/v1/evaluations/" + evalId + "/safety-results", { credentials: "same-origin" })
           .then(function (r) { return r.json(); })
           .then(function (results) {
             currentSafetyResults = results || [];
@@ -661,7 +661,7 @@ const alertIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="
         if (saveTimer) clearTimeout(saveTimer);
         saveTimer = setTimeout(function () {
           var testCases = collectTestCases();
-          fetch("/api/evaluations/" + currentEval.id, {
+          fetch("/api/v1/evaluations/" + currentEval.id, {
             method: "PUT",
             credentials: "same-origin",
             headers: { "Content-Type": "application/json" },
@@ -818,7 +818,7 @@ const alertIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="
         }
         createSubmit.disabled = true;
         createSubmit.textContent = "Creating...";
-        fetch("/api/evaluations", {
+        fetch("/api/v1/evaluations", {
           method: "POST",
           credentials: "same-origin",
           headers: { "Content-Type": "application/json" },
@@ -886,7 +886,7 @@ const alertIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="
         }
         runBtn.disabled = true;
         runningIndicator.classList.remove("hidden");
-        fetch("/api/evaluations/" + currentEval.id + "/run", {
+        fetch("/api/v1/evaluations/" + currentEval.id + "/run", {
           method: "POST",
           credentials: "same-origin",
         })
@@ -914,7 +914,7 @@ const alertIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="
         if (!currentEval) return;
         deleteConfirm.disabled = true;
         deleteConfirm.textContent = "Deleting...";
-        fetch("/api/evaluations/" + currentEval.id, {
+        fetch("/api/v1/evaluations/" + currentEval.id, {
           method: "DELETE",
           credentials: "same-origin",
         })
@@ -974,7 +974,7 @@ const alertIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="
         safetySection.classList.remove("hidden");
         safetyRunning.classList.remove("hidden");
 
-        fetch("/api/evaluations/" + currentEval.id + "/safety-run", {
+        fetch("/api/v1/evaluations/" + currentEval.id + "/safety-run", {
           method: "POST",
           credentials: "same-origin",
           headers: { "Content-Type": "application/json" },

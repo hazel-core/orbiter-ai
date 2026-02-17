@@ -14,7 +14,7 @@ from orbiter_web.crypto import decrypt_api_key, encrypt_api_key
 from orbiter_web.database import get_db
 from orbiter_web.routes.auth import require_role
 
-router = APIRouter(prefix="/api/providers", tags=["providers"])
+router = APIRouter(prefix="/api/v1/providers", tags=["providers"])
 
 # ---------------------------------------------------------------------------
 # Constants

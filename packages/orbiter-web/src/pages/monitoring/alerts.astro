@@ -367,7 +367,7 @@ const refreshIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke
   // Rules CRUD
   // -----------------------------------------------------------------------
   function loadRules() {
-    fetch("/api/alerts/rules")
+    fetch("/api/v1/alerts/rules")
       .then(function (r) { return r.json(); })
       .then(function (data) {
         rules = data;
@@ -529,7 +529,7 @@ const refreshIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke
       enabled: ruleEnabled.checked,
     };
 
-    var url = id ? "/api/alerts/rules/" + id : "/api/alerts/rules";
+    var url = id ? "/api/v1/alerts/rules/" + id : "/api/v1/alerts/rules";
     var method = id ? "PUT" : "POST";
 
     fetch(url, {
@@ -556,7 +556,7 @@ const refreshIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke
   // -----------------------------------------------------------------------
   deleteConfirmBtn.addEventListener("click", function () {
     if (!deleteTargetId) return;
-    fetch("/api/alerts/rules/" + deleteTargetId, { method: "DELETE" })
+    fetch("/api/v1/alerts/rules/" + deleteTargetId, { method: "DELETE" })
       .then(function (r) {
         if (!r.ok) throw new Error("Failed to delete");
         deleteDialog.close();
@@ -578,7 +578,7 @@ const refreshIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke
     if (filterSeverity.value) params.set("severity", filterSeverity.value);
     if (filterAck.value) params.set("acknowledged", filterAck.value);
 
-    fetch("/api/alerts?" + params.toString())
+    fetch("/api/v1/alerts?" + params.toString())
       .then(function (r) { return r.json(); })
       .then(function (data) { renderAlerts(data); })
       .catch(function () {
@@ -640,7 +640,7 @@ const refreshIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke
   }
 
   function acknowledgeAlert(id) {
-    fetch("/api/alerts/" + id + "/acknowledge", { method: "PUT" })
+    fetch("/api/v1/alerts/" + id + "/acknowledge", { method: "PUT" })
       .then(function (r) {
         if (!r.ok) throw new Error("Failed");
         loadAlerts();

@@ -113,9 +113,9 @@ export default function AgentNodeConfig({
     fetchedOnce.current = true;
 
     Promise.all([
-      fetch("/api/agents").then((r) => r.json()).then((d) => d.data ?? d),
-      fetch("/api/providers").then((r) => r.json()),
-      fetch("/api/tools").then((r) => r.json()),
+      fetch("/api/v1/agents").then((r) => r.json()).then((d) => d.data ?? d),
+      fetch("/api/v1/providers").then((r) => r.json()),
+      fetch("/api/v1/tools").then((r) => r.json()),
     ])
       .then(([agentList, providerList, toolList]) => {
         setAgents(agentList);
@@ -137,7 +137,7 @@ export default function AgentNodeConfig({
       return;
     }
     setLoadingModels(true);
-    fetch(`/api/models?provider_id=${inlineProvider.id}`)
+    fetch(`/api/v1/models?provider_id=${inlineProvider.id}`)
       .then((r) => r.json())
       .then((list: Model[]) => setModels(list))
       .catch(() => setModels([]))

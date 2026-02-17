@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from orbiter_web.database import get_db
 from orbiter_web.routes.auth import get_current_user
 
-router = APIRouter(prefix="/api/threads", tags=["threads"])
+router = APIRouter(prefix="/api/v1/threads", tags=["threads"])
 
 
 class ThreadCreate(BaseModel):

@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends
 
 from orbiter_web.routes.auth import get_current_user
 
-router = APIRouter(prefix="/api/context-state", tags=["context-state"])
+router = APIRouter(prefix="/api/v1/context-state", tags=["context-state"])
 
 
 # ---------------------------------------------------------------------------

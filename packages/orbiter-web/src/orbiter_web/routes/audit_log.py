@@ -12,7 +12,7 @@ from orbiter_web.database import get_db
 from orbiter_web.pagination import PaginatedResponse, paginate
 from orbiter_web.routes.auth import require_role
 
-router = APIRouter(prefix="/api/audit-log", tags=["audit-log"])
+router = APIRouter(prefix="/api/v1/audit-log", tags=["audit-log"])
 
 
 class AuditLogEntry(BaseModel):

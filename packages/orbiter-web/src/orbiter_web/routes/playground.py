@@ -794,7 +794,7 @@ async def _run_stream(
         raise ValueError(msg)
 
 
-@router.websocket("/api/playground/{agent_id}/chat")
+@router.websocket("/api/v1/playground/{agent_id}/chat")
 async def playground_chat(websocket: WebSocket, agent_id: str) -> None:
     """WebSocket endpoint for streaming chat with an agent."""
     # Authenticate via session cookie
@@ -1285,7 +1285,7 @@ async def _stream_for_model(
         )
 
 
-@router.websocket("/api/playground/compare/chat")
+@router.websocket("/api/v1/playground/compare/chat")
 async def playground_compare(websocket: WebSocket) -> None:
     """WebSocket endpoint for multi-model comparison.
 

@@ -68,7 +68,7 @@ const backIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
       const backLink = document.getElementById("back-link");
 
       try {
-        const resp = await fetch(`/api/agents/${agentId}`);
+        const resp = await fetch(`/api/v1/agents/${agentId}`);
         if (!resp.ok) throw new Error("Not found");
         const agent = await resp.json();
 

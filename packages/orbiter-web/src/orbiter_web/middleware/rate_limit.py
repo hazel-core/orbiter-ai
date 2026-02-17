@@ -14,11 +14,11 @@ from orbiter_web.config import settings
 _WINDOW = 60
 
 # Paths that use the stricter auth rate limit (per IP).
-_AUTH_PATHS = {"/api/auth/login"}
+_AUTH_PATHS = {"/api/v1/auth/login"}
 
 # Path prefixes that use the agent execution rate limit (per user).
 _AGENT_EXEC_PREFIXES = (
-    "/api/workflows/",  # covers /{id}/run, /{id}/debug, /{id}/nodes/{id}/run
+    "/api/v1/workflows/",  # covers /{id}/run, /{id}/debug, /{id}/nodes/{id}/run
 )
 
 _AGENT_EXEC_SUFFIXES = ("/run", "/debug")

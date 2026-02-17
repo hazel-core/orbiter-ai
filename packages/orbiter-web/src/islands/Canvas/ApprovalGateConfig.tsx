@@ -100,7 +100,7 @@ export default function ApprovalGateConfig({ data, onChange, nodeId }: ApprovalG
   useEffect(() => {
     if (!nodeId) return;
     setHistoryLoading(true);
-    fetch(`/api/approvals/history?node_id=${encodeURIComponent(nodeId)}&limit=10`)
+    fetch(`/api/v1/approvals/history?node_id=${encodeURIComponent(nodeId)}&limit=10`)
       .then((r) => (r.ok ? r.json() : []))
       .then((rows: ApprovalHistoryEntry[]) => setHistory(rows))
       .catch(() => setHistory([]))

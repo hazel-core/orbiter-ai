@@ -269,7 +269,7 @@ const filterIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke=
 
     const qs = buildQueryString(append ? nextCursor : null);
     try {
-      const res = await fetch(`/api/audit-log?${qs}`);
+      const res = await fetch(`/api/v1/audit-log?${qs}`);
       if (!res.ok) throw new Error("Failed to load audit log");
       const body = await res.json();
       const entries = body.data || [];
@@ -317,7 +317,7 @@ const filterIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke=
 
   async function loadFilters() {
     try {
-      const res = await fetch("/api/audit-log/filters");
+      const res = await fetch("/api/v1/audit-log/filters");
       if (!res.ok) return;
       const data = await res.json();
 

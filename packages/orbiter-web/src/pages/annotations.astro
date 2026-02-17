@@ -288,7 +288,7 @@ let searchDebounce: ReturnType<typeof setTimeout> | null = null;
 /* --- Load annotations --- */
 async function loadAnnotations(search?: string) {
   try {
-    let url = "/api/annotations";
+    let url = "/api/v1/annotations";
     if (search) url += "?search=" + encodeURIComponent(search);
     const res = await fetch(url, { credentials: "same-origin" });
     if (!res.ok) return;
@@ -474,7 +474,7 @@ dialogSave.addEventListener("click", async function() {
 
   try {
     const id = editId.value;
-    const url = id ? "/api/annotations/" + id : "/api/annotations";
+    const url = id ? "/api/v1/annotations/" + id : "/api/v1/annotations";
     const method = id ? "PUT" : "POST";
     const res = await fetch(url, {
       method: method,
@@ -506,7 +506,7 @@ deleteDialog.addEventListener("click", function(e) {
 deleteConfirm.addEventListener("click", async function() {
   if (!deleteTargetId) return;
   try {
-    const res = await fetch("/api/annotations/" + deleteTargetId, {
+    const res = await fetch("/api/v1/annotations/" + deleteTargetId, {
       method: "DELETE",
       credentials: "same-origin",
     });
@@ -543,7 +543,7 @@ importUpload.addEventListener("click", async function() {
     importUpload.textContent = "Uploading...";
     importUpload.setAttribute("disabled", "true");
 
-    const res = await fetch("/api/annotations/import", {
+    const res = await fetch("/api/v1/annotations/import", {
       method: "POST",
       credentials: "same-origin",
       body: formData,

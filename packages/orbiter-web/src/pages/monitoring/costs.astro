@@ -233,7 +233,7 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
   }
 
   function loadSummary() {
-    fetchJSON("/api/costs/summary?range=" + currentRange)
+    fetchJSON("/api/v1/costs/summary?range=" + currentRange)
       .then(function (data) {
         document.getElementById("metric-total-cost").textContent = fmtCost(data.total_cost);
         document.getElementById("metric-total-runs").textContent = fmtNumber(data.total_runs);
@@ -252,7 +252,7 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
 
   function loadCostTimeseries() {
     var container = document.getElementById("chart-cost-time");
-    fetchJSON("/api/metrics/timeseries?range=" + currentRange + "&metric=cost")
+    fetchJSON("/api/v1/metrics/timeseries?range=" + currentRange + "&metric=cost")
       .then(function (data) {
         if (!data.length) {
           container.innerHTML = '<p class="text-sm text-muted">No data for this time range</p>';
@@ -266,7 +266,7 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
   }
 
   function loadBudgetCheck() {
-    fetchJSON("/api/costs/budget-check")
+    fetchJSON("/api/v1/costs/budget-check")
       .then(function (data) {
         if (!data) return;
         var banner = document.getElementById("budget-banner");
@@ -305,7 +305,7 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
     var empty = document.getElementById("budgets-empty");
     var list = document.getElementById("budgets-list");
 
-    fetchJSON("/api/costs/budgets")
+    fetchJSON("/api/v1/costs/budgets")
       .then(function (data) {
         if (loading) loading.classList.add("hidden");
         if (!data.length) {
@@ -354,7 +354,7 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
   }
 
   function deleteBudget(budgetId) {
-    fetch("/api/costs/budgets/" + budgetId, { method: "DELETE", credentials: "same-origin" })
+    fetch("/api/v1/costs/budgets/" + budgetId, { method: "DELETE", credentials: "same-origin" })
       .then(function (res) {
         if (res.ok || res.status === 204) {
           loadBudgets();
@@ -496,7 +496,7 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
   function loadAgentsForBudget() {
     var agentSelect = document.getElementById("budget-agent");
     if (!agentSelect) return;
-    fetchJSON("/api/agents")
+    fetchJSON("/api/v1/agents")
       .then(function (body) { return body.data || body; })
       .then(function (data) {
         agentSelect.innerHTML = '<option value="">Select an agent...</option>';
@@ -536,7 +536,7 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
         return;
       }
 
-      fetch("/api/costs/budgets", {
+      fetch("/api/v1/costs/budgets", {
         method: "PUT",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },

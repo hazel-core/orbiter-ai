@@ -237,7 +237,7 @@ const copyIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
     /* ---------------------------------------------------------------
        Load projects
     --------------------------------------------------------------- */
-    fetch("/api/projects")
+    fetch("/api/v1/projects")
       .then(function (res) {
         if (!res.ok) throw new Error("Failed");
         return res.json();
@@ -285,7 +285,7 @@ const copyIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
 
       analyzeBtn.textContent = "Analyzing...";
 
-      fetch("/api/tools/schema", {
+      fetch("/api/v1/tools/schema", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code: code }),
@@ -411,7 +411,7 @@ const copyIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
       testStatus.textContent = "";
       testStatus.className = "text-xs font-medium";
 
-      fetch("/api/tools/custom/" + savedToolId + "/test", {
+      fetch("/api/v1/tools/custom/" + savedToolId + "/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ inputs: inputs }),
@@ -458,7 +458,7 @@ const copyIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
 
       if (savedToolId) {
         /* Update existing */
-        fetch("/api/tools/custom/" + savedToolId, {
+        fetch("/api/v1/tools/custom/" + savedToolId, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -486,7 +486,7 @@ const copyIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
           });
       } else {
         /* Create new */
-        fetch("/api/tools/custom", {
+        fetch("/api/v1/tools/custom", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

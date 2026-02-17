@@ -26,7 +26,7 @@ from orbiter_web.services.safety import (
     judge_safety,
 )
 
-router = APIRouter(prefix="/api/evaluations", tags=["evaluations"])
+router = APIRouter(prefix="/api/v1/evaluations", tags=["evaluations"])
 
 
 # ---------------------------------------------------------------------------

@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from orbiter_web.database import get_db
 from orbiter_web.routes.auth import get_current_user
 
-router = APIRouter(prefix="/api/metrics", tags=["metrics"])
+router = APIRouter(prefix="/api/v1/metrics", tags=["metrics"])
 
 
 # ---------------------------------------------------------------------------

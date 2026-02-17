@@ -16,7 +16,7 @@ from orbiter_web.routes.auth import get_current_user
 from orbiter_web.sanitize import sanitize_html
 from orbiter_web.services.audit import audit_log
 
-router = APIRouter(prefix="/api/agents", tags=["agents"])
+router = APIRouter(prefix="/api/v1/agents", tags=["agents"])
 
 # ---------------------------------------------------------------------------
 # Pydantic models

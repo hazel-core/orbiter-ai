@@ -21,7 +21,7 @@ from orbiter_web.routes.auth import get_current_user
 from orbiter_web.sanitize import sanitize_html
 from orbiter_web.services.evaluators import EVALUATORS, run_evaluator
 
-router = APIRouter(prefix="/api/benchmarks", tags=["benchmarks"])
+router = APIRouter(prefix="/api/v1/benchmarks", tags=["benchmarks"])
 
 
 # ---------------------------------------------------------------------------

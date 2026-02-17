@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from orbiter_web.database import get_db
 from orbiter_web.routes.auth import get_current_user
 
-router = APIRouter(prefix="/api/settings/workspace", tags=["workspace-settings"])
+router = APIRouter(prefix="/api/v1/settings/workspace", tags=["workspace-settings"])
 
 
 class WorkspaceSettingUpdate(BaseModel):

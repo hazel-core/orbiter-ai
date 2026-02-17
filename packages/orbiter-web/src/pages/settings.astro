@@ -737,7 +737,7 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
     var profileForm = document.getElementById("profile-form");
     var logoutBtn = document.getElementById("logout-btn");
 
-    fetch("/api/auth/me", { credentials: "same-origin" })
+    fetch("/api/v1/auth/me", { credentials: "same-origin" })
       .then(function (res) {
         if (!res.ok) throw new Error("Not authenticated");
         return res.json();
@@ -766,7 +766,7 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
 
     if (logoutBtn) {
       logoutBtn.addEventListener("click", function () {
-        fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" })
+        fetch("/api/v1/auth/logout", { method: "POST", credentials: "same-origin" })
           .then(function () {
             if (window.clearCsrfToken) window.clearCsrfToken();
             window.location.replace("/login");
@@ -871,7 +871,7 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
     };
 
     function fetchProviders() {
-      fetch("/api/providers")
+      fetch("/api/v1/providers")
         .then(function (res) {
           if (!res.ok) throw new Error("Failed to load providers");
           return res.json();
@@ -993,7 +993,7 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
       resultEl.innerHTML = '<span class="text-muted">Testing connection...</span>';
       testBtn.disabled = true;
 
-      fetch("/api/providers/" + providerId + "/test", {
+      fetch("/api/v1/providers/" + providerId + "/test", {
         method: "POST",
         credentials: "same-origin"
       })
@@ -1055,7 +1055,7 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
         if (apiKey) body.api_key = apiKey;
         if (baseUrl) body.base_url = baseUrl;
 
-        fetch("/api/providers", {
+        fetch("/api/v1/providers", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body)
@@ -1123,7 +1123,7 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
           body.base_url = baseUrl;
         }
 
-        fetch("/api/providers/" + providerId, {
+        fetch("/api/v1/providers/" + providerId, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body)
@@ -1163,7 +1163,7 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
         confirmDeleteBtn.disabled = true;
         confirmDeleteBtn.textContent = "Deleting...";
 
-        fetch("/api/providers/" + deleteTargetId, {
+        fetch("/api/v1/providers/" + deleteTargetId, {
           method: "DELETE",
           credentials: "same-origin"
         })
@@ -1204,8 +1204,8 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
 
       // Fetch strategy and keys in parallel
       Promise.all([
-        fetch("/api/providers/" + providerId + "/strategy").then(function (r) { return r.ok ? r.json() : { strategy: "round_robin" }; }),
-        fetch("/api/providers/" + providerId + "/keys").then(function (r) { return r.ok ? r.json() : []; })
+        fetch("/api/v1/providers/" + providerId + "/strategy").then(function (r) { return r.ok ? r.json() : { strategy: "round_robin" }; }),
+        fetch("/api/v1/providers/" + providerId + "/keys").then(function (r) { return r.ok ? r.json() : []; })
       ]).then(function (results) {
         var strategyData = results[0];
         var keys = results[1];
@@ -1374,7 +1374,7 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
       var label = (labelInput.value || "").trim();
       if (label) body.label = label;
 
-      fetch("/api/providers/" + providerId + "/keys", {
+      fetch("/api/v1/providers/" + providerId + "/keys", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body)
@@ -1399,7 +1399,7 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
     }
 
     function updateStrategy(providerId, strategy) {
-      fetch("/api/providers/" + providerId + "/strategy", {
+      fetch("/api/v1/providers/" + providerId + "/strategy", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ strategy: strategy })
@@ -1423,7 +1423,7 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
         confirmDeleteKeyBtn.disabled = true;
         confirmDeleteKeyBtn.textContent = "Deleting...";
 
-        fetch("/api/providers/" + deleteKeyProviderId + "/keys/" + deleteKeyTargetId, {
+        fetch("/api/v1/providers/" + deleteKeyProviderId + "/keys/" + deleteKeyTargetId, {
           method: "DELETE",
           credentials: "same-origin"
         })
@@ -1510,7 +1510,7 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
     }
 
     function fetchVectorStoreConfig() {
-      fetch("/api/vector-stores", { credentials: "same-origin" })
+      fetch("/api/v1/vector-stores", { credentials: "same-origin" })
         .then(function (res) {
           if (!res.ok) throw new Error("Failed to load config");
           return res.json();
@@ -1574,7 +1574,7 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
           payload.collection_name = "";
         }
 
-        fetch("/api/vector-stores", {
+        fetch("/api/v1/vector-stores", {
           method: "PUT",
           credentials: "same-origin",
           headers: { "Content-Type": "application/json" },
@@ -1615,7 +1615,7 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
         }
         vsTestBtn.disabled = true;
 
-        fetch("/api/vector-stores/test", {
+        fetch("/api/v1/vector-stores/test", {
           method: "POST",
           credentials: "same-origin"
         })
@@ -1652,7 +1652,7 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
 
     // Populate model dropdown for workspace
     function fetchModelsForWorkspace() {
-      fetch("/api/models")
+      fetch("/api/v1/models")
         .then(function (res) { return res.ok ? res.json() : []; })
         .then(function (models) {
           if (!workspaceModelSelect) return;
@@ -1678,7 +1678,7 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
       if (providerSelect) providerSelect.value = savedProvider;
 
       // Load concurrent limit from DB
-      fetch("/api/settings/workspace")
+      fetch("/api/v1/settings/workspace")
         .then(function (r) { return r.json(); })
         .then(function (data) {
           if (limitInput && data.concurrent_run_limit) {
@@ -1702,7 +1702,7 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
         localStorage.setItem("orbiter_default_model", model);
 
         // Save concurrent limit to DB
-        fetch("/api/settings/workspace/concurrent_run_limit", {
+        fetch("/api/v1/settings/workspace/concurrent_run_limit", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ value: limit }),
@@ -1751,7 +1751,7 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
     var pricingSaved = document.getElementById("pricing-saved");
 
     function fetchPricingData() {
-      fetch("/api/costs/pricing", { credentials: "same-origin" })
+      fetch("/api/v1/costs/pricing", { credentials: "same-origin" })
         .then(function (res) {
           if (!res.ok) throw new Error("Failed to load pricing");
           return res.json();
@@ -1795,7 +1795,7 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
           var inputPrice = row.querySelector('[data-field="input"]').value;
           var outputPrice = row.querySelector('[data-field="output"]').value;
 
-          fetch("/api/costs/pricing/" + pricingId, {
+          fetch("/api/v1/costs/pricing/" + pricingId, {
             method: "PUT",
             credentials: "same-origin",
             headers: { "Content-Type": "application/json" },
@@ -1844,7 +1844,7 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
     var removeTargetId = null;
 
     // Show Team tab only for admins — fetch current user info
-    fetch("/api/auth/me", { credentials: "same-origin" })
+    fetch("/api/v1/auth/me", { credentials: "same-origin" })
       .then(function (res) {
         if (!res.ok) throw new Error("Not authenticated");
         return res.json();
@@ -1869,7 +1869,7 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
       if (teamTableWrap) teamTableWrap.classList.add("hidden");
       if (teamEmpty) teamEmpty.classList.add("hidden");
 
-      fetch("/api/settings/team", { credentials: "same-origin" })
+      fetch("/api/v1/settings/team", { credentials: "same-origin" })
         .then(function (res) {
           if (!res.ok) throw new Error("Failed to load team");
           return res.json();
@@ -1974,7 +1974,7 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
     function updateMemberRole(userId, newRole, selectEl) {
       selectEl.disabled = true;
 
-      fetch("/api/settings/team/" + userId, {
+      fetch("/api/v1/settings/team/" + userId, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         credentials: "same-origin",
@@ -2034,7 +2034,7 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
         inviteSubmit.disabled = true;
         inviteSubmit.textContent = "Inviting...";
 
-        fetch("/api/settings/team/invite", {
+        fetch("/api/v1/settings/team/invite", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "same-origin",
@@ -2077,7 +2077,7 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
         confirmRemoveBtn.disabled = true;
         confirmRemoveBtn.textContent = "Removing...";
 
-        fetch("/api/settings/team/" + removeTargetId, {
+        fetch("/api/v1/settings/team/" + removeTargetId, {
           method: "DELETE",
           credentials: "same-origin"
         })

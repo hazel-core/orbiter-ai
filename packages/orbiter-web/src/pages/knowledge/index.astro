@@ -218,7 +218,7 @@ const bookIcon = '<svg class="h-12 w-12 text-muted/40" viewBox="0 0 24 24" fill=
     }
 
     function fetchKbs() {
-      fetch("/api/knowledge-bases")
+      fetch("/api/v1/knowledge-bases")
         .then(function (res) {
           if (!res.ok) throw new Error("Failed to load knowledge bases");
           return res.json();
@@ -259,7 +259,7 @@ const bookIcon = '<svg class="h-12 w-12 text-muted/40" viewBox="0 0 24 24" fill=
         submitBtn.disabled = true;
         submitBtn.textContent = "Creating...";
 
-        fetch("/api/knowledge-bases", {
+        fetch("/api/v1/knowledge-bases", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -311,7 +311,7 @@ const bookIcon = '<svg class="h-12 w-12 text-muted/40" viewBox="0 0 24 24" fill=
         deleteConfirmBtn.disabled = true;
         deleteConfirmBtn.textContent = "Deleting...";
 
-        fetch("/api/knowledge-bases/" + pendingDeleteId, { method: "DELETE" })
+        fetch("/api/v1/knowledge-bases/" + pendingDeleteId, { method: "DELETE" })
           .then(function (res) {
             if (!res.ok && res.status !== 204)
               throw new Error("Failed to delete knowledge base");

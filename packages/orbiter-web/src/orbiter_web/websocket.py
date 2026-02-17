@@ -268,7 +268,7 @@ async def _handle_message(ws: WebSocket, raw: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-@router.websocket("/api/ws")
+@router.websocket("/api/v1/ws")
 async def websocket_endpoint(websocket: WebSocket) -> None:
     """Multiplexed WebSocket endpoint.
 

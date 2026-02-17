@@ -363,7 +363,7 @@ const chevronIcon = '<svg class="h-4 w-4 transition-transform" viewBox="0 0 24 2
     /* ---------------------------------------------------------------
        Load projects
     --------------------------------------------------------------- */
-    fetch("/api/projects")
+    fetch("/api/v1/projects")
       .then(function (res) {
         if (!res.ok) throw new Error("Failed");
         return res.json();
@@ -708,7 +708,7 @@ const chevronIcon = '<svg class="h-4 w-4 transition-transform" viewBox="0 0 24 2
 
       saveBtn.lastChild.textContent = " Saving...";
 
-      fetch("/api/tools/schema/save", {
+      fetch("/api/v1/tools/schema/save", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

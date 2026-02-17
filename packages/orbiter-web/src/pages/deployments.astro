@@ -180,7 +180,7 @@ const emptyIcon = '<svg class="h-12 w-12 text-muted/40" viewBox="0 0 24 24" fill
   /* ---- Fetch ---- */
   async function loadDeployments() {
     try {
-      const resp = await fetch("/api/deployments");
+      const resp = await fetch("/api/v1/deployments");
       if (!resp.ok) throw new Error("Failed");
       const body = await resp.json();
       deployments = body.data || body;
@@ -278,7 +278,7 @@ const emptyIcon = '<svg class="h-12 w-12 text-muted/40" viewBox="0 0 24 24" fill
       var id = btn.dataset.id;
       var newStatus = btn.dataset.status === "active" ? "inactive" : "active";
       try {
-        var resp = await fetch("/api/deployments/" + id, {
+        var resp = await fetch("/api/v1/deployments/" + id, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ status: newStatus }),
@@ -313,7 +313,7 @@ const emptyIcon = '<svg class="h-12 w-12 text-muted/40" viewBox="0 0 24 24" fill
     selectedId = id;
 
     var baseUrl = window.location.origin;
-    var url = baseUrl + "/api/deployed/" + d.id + "/run";
+    var url = baseUrl + "/api/v1/deployed/" + d.id + "/run";
     document.getElementById("detail-url").textContent = url;
     document.getElementById("detail-curl").textContent =
       'curl -X POST ' + url + ' \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d \'{"input": "Hello, world!"}\'';
@@ -341,7 +341,7 @@ const emptyIcon = '<svg class="h-12 w-12 text-muted/40" viewBox="0 0 24 24" fill
     var val = parseInt(document.getElementById("detail-rate-limit").value, 10);
     if (!val || val < 1) return;
     try {
-      var resp = await fetch("/api/deployments/" + selectedId, {
+      var resp = await fetch("/api/v1/deployments/" + selectedId, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ rate_limit: val }),
@@ -358,7 +358,7 @@ const emptyIcon = '<svg class="h-12 w-12 text-muted/40" viewBox="0 0 24 24" fill
   document.getElementById("confirm-delete-btn").addEventListener("click", async function () {
     if (!deleteId) return;
     try {
-      var resp = await fetch("/api/deployments/" + deleteId, { method: "DELETE" });
+      var resp = await fetch("/api/v1/deployments/" + deleteId, { method: "DELETE" });
       if (resp.ok || resp.status === 204) {
         deployments = deployments.filter(function (d) { return d.id !== deleteId; });
         render();

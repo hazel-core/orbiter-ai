@@ -19,7 +19,7 @@ from orbiter_web.routes.auth import get_current_user
 from orbiter_web.sanitize import sanitize_html
 from orbiter_web.services.audit import audit_log
 
-router = APIRouter(prefix="/api/deployments", tags=["deployments"])
+router = APIRouter(prefix="/api/v1/deployments", tags=["deployments"])
 
 
 # ---------------------------------------------------------------------------
@@ -424,7 +424,7 @@ def _escape_attr(value: str) -> str:
 # Runtime endpoint — POST /api/deployed/:id/run
 # ---------------------------------------------------------------------------
 
-deployed_router = APIRouter(prefix="/api/deployed", tags=["deployed"])
+deployed_router = APIRouter(prefix="/api/v1/deployed", tags=["deployed"])
 
 
 async def _check_cors(deployment_id: str, origin: str | None) -> str | None:

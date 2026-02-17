@@ -282,7 +282,7 @@ const searchIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke=
     params.set("offset", currentOffset);
 
     try {
-      var res = await fetch("/api/logs?" + params.toString());
+      var res = await fetch("/api/v1/logs?" + params.toString());
       if (!res.ok) throw new Error("API error " + res.status);
       var data = await res.json();
 
@@ -351,7 +351,7 @@ const searchIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke=
   // Load agents for filter
   async function loadAgents() {
     try {
-      var res = await fetch("/api/agents");
+      var res = await fetch("/api/v1/agents");
       if (!res.ok) return;
       var data = await res.json();
       agents = Array.isArray(data) ? data : (data.data || data.agents || []);
@@ -375,7 +375,7 @@ const searchIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke=
     }
 
     var proto = location.protocol === "https:" ? "wss:" : "ws:";
-    ws = new WebSocket(proto + "//" + location.host + "/api/logs/stream");
+    ws = new WebSocket(proto + "//" + location.host + "/api/v1/logs/stream");
 
     ws.onopen = function () {
       streamStatus.classList.remove("hidden");

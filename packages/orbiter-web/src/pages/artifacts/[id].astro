@@ -443,8 +443,8 @@ const diffIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
     diffContent.innerHTML = '<div class="text-center py-4 text-muted text-sm">Loading...</div>';
 
     Promise.all([
-      fetch("/api/artifacts/" + encodeURIComponent(artifactId) + "/versions/" + verA).then(function (r) { return r.json(); }),
-      fetch("/api/artifacts/" + encodeURIComponent(artifactId) + "/versions/" + verB).then(function (r) { return r.json(); }),
+      fetch("/api/v1/artifacts/" + encodeURIComponent(artifactId) + "/versions/" + verA).then(function (r) { return r.json(); }),
+      fetch("/api/v1/artifacts/" + encodeURIComponent(artifactId) + "/versions/" + verB).then(function (r) { return r.json(); }),
     ]).then(function (results) {
       var textA = results[0].content || "";
       var textB = results[1].content || "";
@@ -472,7 +472,7 @@ const diffIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
     saveStatus.textContent = "Saving...";
 
     try {
-      var res = await fetch("/api/artifacts/" + encodeURIComponent(artifactId) + "/content", {
+      var res = await fetch("/api/v1/artifacts/" + encodeURIComponent(artifactId) + "/content", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: editor.value }),
@@ -498,7 +498,7 @@ const diffIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
 
   async function loadArtifact() {
     try {
-      var res = await fetch("/api/artifacts/" + encodeURIComponent(artifactId));
+      var res = await fetch("/api/v1/artifacts/" + encodeURIComponent(artifactId));
       if (!res.ok) throw new Error("Not found");
       artifact = await res.json();
 
@@ -506,7 +506,7 @@ const diffIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
       artifactName.textContent = artifact.filename;
       artifactTypeBadge.innerHTML = typeBadge(artifact.filename);
       artifactSize.textContent = fmtSize(artifact.file_size);
-      downloadLink.href = "/api/artifacts/" + encodeURIComponent(artifactId) + "/download";
+      downloadLink.href = "/api/v1/artifacts/" + encodeURIComponent(artifactId) + "/download";
 
       // Update breadcrumb
       var crumbs = document.querySelectorAll("[data-breadcrumb-item]");
@@ -526,7 +526,7 @@ const diffIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
       }
 
       // Load content
-      var contentRes = await fetch("/api/artifacts/" + encodeURIComponent(artifactId) + "/content");
+      var contentRes = await fetch("/api/v1/artifacts/" + encodeURIComponent(artifactId) + "/content");
       if (!contentRes.ok) throw new Error("Cannot read content");
       content = await contentRes.text();
       originalContent = content;
@@ -554,7 +554,7 @@ const diffIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
 
   async function loadVersions() {
     try {
-      var res = await fetch("/api/artifacts/" + encodeURIComponent(artifactId) + "/versions");
+      var res = await fetch("/api/v1/artifacts/" + encodeURIComponent(artifactId) + "/versions");
       if (!res.ok) return;
       versions = await res.json();
       versionCount.textContent = versions.length + " version" + (versions.length !== 1 ? "s" : "");
@@ -605,7 +605,7 @@ const diffIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
 
   async function restoreVersion(versionNumber) {
     try {
-      var res = await fetch("/api/artifacts/" + encodeURIComponent(artifactId) + "/versions/" + versionNumber);
+      var res = await fetch("/api/v1/artifacts/" + encodeURIComponent(artifactId) + "/versions/" + versionNumber);
       if (!res.ok) throw new Error("Failed to load version");
       var data = await res.json();
       editor.value = data.content;
@@ -632,7 +632,7 @@ const diffIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
     regenError.classList.add("hidden");
 
     try {
-      var res = await fetch("/api/artifacts/" + encodeURIComponent(artifactId) + "/regenerate", {
+      var res = await fetch("/api/v1/artifacts/" + encodeURIComponent(artifactId) + "/regenerate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ instructions: instructions }),

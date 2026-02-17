@@ -589,7 +589,7 @@ const folderIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke=
        API helpers
     --------------------------------------------------------------- */
     function fetchMarketplace() {
-      fetch("/api/plugins/marketplace")
+      fetch("/api/v1/plugins/marketplace")
         .then(function (res) {
           if (!res.ok) throw new Error("Failed to load marketplace");
           return res.json();
@@ -606,7 +606,7 @@ const folderIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke=
     }
 
     function fetchInstalled() {
-      fetch("/api/plugins")
+      fetch("/api/v1/plugins")
         .then(function (res) {
           if (!res.ok) throw new Error("Failed to load plugins");
           return res.json();
@@ -632,7 +632,7 @@ const folderIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke=
     }
 
     function updatePluginStatus(pluginId, newStatus) {
-      fetch("/api/plugins/" + pluginId + "/status?status=" + newStatus, { method: "PUT" })
+      fetch("/api/v1/plugins/" + pluginId + "/status?status=" + newStatus, { method: "PUT" })
         .then(function (res) {
           if (!res.ok) throw new Error("Failed to update status");
           return res.json();
@@ -647,7 +647,7 @@ const folderIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke=
     }
 
     function uninstallPlugin(pluginId) {
-      fetch("/api/plugins/" + pluginId, { method: "DELETE" })
+      fetch("/api/v1/plugins/" + pluginId, { method: "DELETE" })
         .then(function (res) {
           if (!res.ok) throw new Error("Failed to uninstall");
           showToast("Plugin uninstalled", "success");
@@ -659,7 +659,7 @@ const folderIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke=
     }
 
     function loadFromDirectory(directory) {
-      return fetch("/api/plugins/load-directory", {
+      return fetch("/api/v1/plugins/load-directory", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ directory: directory }),

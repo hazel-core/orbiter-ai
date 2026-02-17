@@ -183,7 +183,7 @@ export class OrbiterSocket {
     this._intentionalClose = false;
 
     const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const url = `${proto}//${window.location.host}/api/ws`;
+    const url = `${proto}//${window.location.host}/api/v1/ws`;
 
     this._setState("connecting");
     const ws = new WebSocket(url);

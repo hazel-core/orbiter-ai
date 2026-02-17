@@ -558,7 +558,7 @@ export default function PlanPanelIsland({ agentId }: PlanPanelIslandProps) {
 
   const fetchActivePlan = useCallback(async () => {
     try {
-      const resp = await fetch(`/api/agents/${agentId}/plans/active`);
+      const resp = await fetch(`/api/v1/agents/${agentId}/plans/active`);
       if (resp.status === 404) {
         setPlan(null);
         return;
@@ -575,7 +575,7 @@ export default function PlanPanelIsland({ agentId }: PlanPanelIslandProps) {
 
   const fetchAllPlans = useCallback(async () => {
     try {
-      const resp = await fetch(`/api/agents/${agentId}/plans`);
+      const resp = await fetch(`/api/v1/agents/${agentId}/plans`);
       if (!resp.ok) return;
       const data: Plan[] = await resp.json();
       setAllPlans(data);
@@ -586,7 +586,7 @@ export default function PlanPanelIsland({ agentId }: PlanPanelIslandProps) {
 
   const fetchPlanById = useCallback(async (planId: string) => {
     try {
-      const resp = await fetch(`/api/agents/${agentId}/plans/${planId}`);
+      const resp = await fetch(`/api/v1/agents/${agentId}/plans/${planId}`);
       if (!resp.ok) return null;
       return (await resp.json()) as Plan;
     } catch {
@@ -615,7 +615,7 @@ export default function PlanPanelIsland({ agentId }: PlanPanelIslandProps) {
   const handleAddStep = useCallback(async (description: string) => {
     if (!plan) return;
     try {
-      const resp = await fetch(`/api/agents/${agentId}/plans/${plan.id}/steps`, {
+      const resp = await fetch(`/api/v1/agents/${agentId}/plans/${plan.id}/steps`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ description, dependencies: [] }),
@@ -632,7 +632,7 @@ export default function PlanPanelIsland({ agentId }: PlanPanelIslandProps) {
   const handleDeleteStep = useCallback(async (stepId: string) => {
     if (!plan) return;
     try {
-      const resp = await fetch(`/api/agents/${agentId}/plans/${plan.id}/steps/${stepId}`, {
+      const resp = await fetch(`/api/v1/agents/${agentId}/plans/${plan.id}/steps/${stepId}`, {
         method: "DELETE",
       });
       if (!resp.ok) throw new Error("Failed to remove step");
@@ -656,7 +656,7 @@ export default function PlanPanelIsland({ agentId }: PlanPanelIslandProps) {
     const stepIds = reordered.map((s) => s.id);
 
     try {
-      const resp = await fetch(`/api/agents/${agentId}/plans/${plan.id}/reorder`, {
+      const resp = await fetch(`/api/v1/agents/${agentId}/plans/${plan.id}/reorder`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ step_ids: stepIds }),

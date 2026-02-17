@@ -173,7 +173,7 @@ export default function RunHistoryPanel({
     if (endDate) params.set("end_date", endDate);
 
     try {
-      const res = await fetch(`/api/workflows/${workflowId}/runs?${params}`);
+      const res = await fetch(`/api/v1/workflows/${workflowId}/runs?${params}`);
       if (res.ok) {
         const data = await res.json();
         setRuns(data.runs);
@@ -212,7 +212,7 @@ export default function RunHistoryPanel({
   const fetchRunDetail = useCallback(async (runId: string) => {
     setDetailLoading(true);
     try {
-      const res = await fetch(`/api/workflows/${workflowId}/runs/${runId}`);
+      const res = await fetch(`/api/v1/workflows/${workflowId}/runs/${runId}`);
       if (res.ok) {
         const data: RunDetail = await res.json();
         setRunDetail(data);
@@ -287,8 +287,8 @@ export default function RunHistoryPanel({
 
     setCompareLoading(true);
     Promise.all([
-      fetch(`/api/workflows/${workflowId}/runs/${a}`).then((r) => r.ok ? r.json() : null),
-      fetch(`/api/workflows/${workflowId}/runs/${b}`).then((r) => r.ok ? r.json() : null),
+      fetch(`/api/v1/workflows/${workflowId}/runs/${a}`).then((r) => r.ok ? r.json() : null),
+      fetch(`/api/v1/workflows/${workflowId}/runs/${b}`).then((r) => r.ok ? r.json() : null),
     ]).then(([da, db]) => {
       setCompareDetails([da, db]);
     }).finally(() => {
@@ -300,7 +300,7 @@ export default function RunHistoryPanel({
   const fetchCheckpoints = useCallback(async (runId: string) => {
     setCheckpointsLoading(true);
     try {
-      const res = await fetch(`/api/runs/${runId}/checkpoints?limit=50`);
+      const res = await fetch(`/api/v1/runs/${runId}/checkpoints?limit=50`);
       if (res.ok) {
         const data = await res.json();
         setCheckpoints(data.checkpoints);
@@ -326,7 +326,7 @@ export default function RunHistoryPanel({
     if (!selectedRunId || !runDetail) return;
     setSavingCheckpoint(true);
     try {
-      const res = await fetch(`/api/runs/${selectedRunId}/checkpoints`, {
+      const res = await fetch(`/api/v1/runs/${selectedRunId}/checkpoints`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -345,7 +345,7 @@ export default function RunHistoryPanel({
 
   const handleRestoreCheckpoint = useCallback(async (cpId: string) => {
     if (!selectedRunId) return;
-    const res = await fetch(`/api/runs/${selectedRunId}/checkpoints/${cpId}/restore`, { method: "POST" });
+    const res = await fetch(`/api/v1/runs/${selectedRunId}/checkpoints/${cpId}/restore`, { method: "POST" });
     if (res.ok) {
       fetchRunDetail(selectedRunId);
     }
@@ -353,7 +353,7 @@ export default function RunHistoryPanel({
 
   const handleDeleteCheckpoint = useCallback(async (cpId: string) => {
     if (!selectedRunId) return;
-    const res = await fetch(`/api/runs/${selectedRunId}/checkpoints/${cpId}`, { method: "DELETE" });
+    const res = await fetch(`/api/v1/runs/${selectedRunId}/checkpoints/${cpId}`, { method: "DELETE" });
     if (res.ok || res.status === 204) {
       fetchCheckpoints(selectedRunId);
     }
@@ -363,7 +363,7 @@ export default function RunHistoryPanel({
     if (!selectedRunId) return;
     setDiffLoading(true);
     try {
-      const res = await fetch(`/api/runs/${selectedRunId}/checkpoints/diff?a=${idA}&b=${idB}`);
+      const res = await fetch(`/api/v1/runs/${selectedRunId}/checkpoints/diff?a=${idA}&b=${idB}`);
       if (res.ok) {
         const data: CheckpointDiff = await res.json();
         setCheckpointDiff(data);

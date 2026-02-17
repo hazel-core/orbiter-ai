@@ -12,7 +12,7 @@ from orbiter_web.routes.auth import get_current_user
 from orbiter_web.sanitize import sanitize_html
 from orbiter_web.services.memory import memory_service
 
-router = APIRouter(prefix="/api/conversations", tags=["conversations"])
+router = APIRouter(prefix="/api/v1/conversations", tags=["conversations"])
 
 
 class ConversationResponse(BaseModel):

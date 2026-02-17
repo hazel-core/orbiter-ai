@@ -334,7 +334,7 @@ const schemaIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke=
        Data fetching
     --------------------------------------------------------------- */
     function fetchTools() {
-      fetch("/api/tools")
+      fetch("/api/v1/tools")
         .then(function (res) {
           if (!res.ok) throw new Error("Failed to load tools");
           return res.json();

@@ -411,7 +411,7 @@ export default function NodeInspectionPanel({
     setLoading(true);
     setError(null);
 
-    fetch(`/api/workflows/${workflowId}/runs/${runId}/nodes/${node.id}`)
+    fetch(`/api/v1/workflows/${workflowId}/runs/${runId}/nodes/${node.id}`)
       .then((res) => {
         if (!res.ok) throw new Error(res.status === 404 ? "No execution data for this node" : "Failed to load");
         return res.json();

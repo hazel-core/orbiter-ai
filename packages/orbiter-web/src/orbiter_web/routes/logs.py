@@ -15,7 +15,7 @@ from orbiter_web.database import get_db
 from orbiter_web.routes.auth import get_current_user
 from orbiter_web.websocket import get_ws_user
 
-router = APIRouter(prefix="/api/logs", tags=["logs"])
+router = APIRouter(prefix="/api/v1/logs", tags=["logs"])
 
 
 # ---------------------------------------------------------------------------
