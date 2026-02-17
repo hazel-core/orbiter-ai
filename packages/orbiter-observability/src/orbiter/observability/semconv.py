@@ -99,6 +99,15 @@ METRIC_DIST_TASK_DURATION = "dist_task_duration"
 METRIC_DIST_TASK_WAIT_TIME = "dist_task_wait_time"
 
 # ---------------------------------------------------------------------------
+# Streaming event metric names and attributes
+# ---------------------------------------------------------------------------
+
+METRIC_STREAM_EVENTS_EMITTED = "stream_events_emitted"
+METRIC_STREAM_EVENT_PUBLISH_DURATION = "stream_event_publish_duration"
+
+STREAM_EVENT_TYPE = "orbiter.stream.event_type"
+
+# ---------------------------------------------------------------------------
 # Span name prefixes
 # ---------------------------------------------------------------------------
 

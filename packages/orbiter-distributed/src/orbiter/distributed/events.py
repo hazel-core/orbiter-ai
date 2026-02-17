@@ -4,11 +4,22 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from collections.abc import AsyncIterator
 from typing import Any
 
 import redis.asyncio as aioredis
 
+from orbiter.observability.metrics import (  # pyright: ignore[reportMissingImports]
+    HAS_OTEL,
+    _collector,
+    _get_meter,
+)
+from orbiter.observability.semconv import (  # pyright: ignore[reportMissingImports]
+    METRIC_STREAM_EVENT_PUBLISH_DURATION,
+    METRIC_STREAM_EVENTS_EMITTED,
+    STREAM_EVENT_TYPE,
+)
 from orbiter.types import (  # pyright: ignore[reportMissingImports]
     ErrorEvent,
     ReasoningEvent,
@@ -32,6 +43,30 @@ _EVENT_TYPE_MAP: dict[str, type[Any]] = {
     "status": StatusEvent,
     "usage": UsageEvent,
 }
+
+
+def _record_event_published(event_type: str, duration: float) -> None:
+    """Record metrics for a single event publish operation."""
+    attrs: dict[str, str] = {STREAM_EVENT_TYPE: event_type}
+    if HAS_OTEL:
+        meter = _get_meter()
+        meter.create_counter(
+            name=METRIC_STREAM_EVENTS_EMITTED,
+            unit="1",
+            description="Number of streaming events emitted",
+        ).add(1, attrs)
+        if duration > 0:
+            meter.create_histogram(
+                name=METRIC_STREAM_EVENT_PUBLISH_DURATION,
+                unit="s",
+                description="Duration of event publish operations",
+            ).record(duration, attrs)
+    else:
+        _collector.add_counter(METRIC_STREAM_EVENTS_EMITTED, 1.0, attrs)
+        if duration > 0:
+            _collector.record_histogram(
+                METRIC_STREAM_EVENT_PUBLISH_DURATION, duration, attrs
+            )
 
 
 def _deserialize_event(data: dict[str, Any]) -> StreamEvent:
@@ -96,6 +131,8 @@ class EventPublisher:
         r = self._client()
         payload = json.dumps(event.model_dump())
 
+        start = time.monotonic()
+
         # Publish to Pub/Sub for live subscribers.
         await r.publish(self._pubsub_channel(task_id), payload)  # type: ignore[misc]
 
@@ -103,6 +140,9 @@ class EventPublisher:
         stream_key = self._stream_key(task_id)
         await r.xadd(stream_key, {"event": payload})
         await r.expire(stream_key, self._stream_ttl_seconds)  # type: ignore[misc]
+
+        duration = time.monotonic() - start
+        _record_event_published(event.type, duration)
 
 
 class EventSubscriber:

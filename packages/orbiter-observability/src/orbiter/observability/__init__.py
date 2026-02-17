@@ -250,6 +250,9 @@ _SEMCONV_NAMES: list[str] = [
     "METRIC_DIST_QUEUE_DEPTH",
     "METRIC_DIST_TASK_DURATION",
     "METRIC_DIST_TASK_WAIT_TIME",
+    "METRIC_STREAM_EVENTS_EMITTED",
+    "METRIC_STREAM_EVENT_PUBLISH_DURATION",
+    "STREAM_EVENT_TYPE",
 ]
 for _name in _SEMCONV_NAMES:
     _LAZY_IMPORTS[_name] = ("orbiter.observability.semconv", _name)

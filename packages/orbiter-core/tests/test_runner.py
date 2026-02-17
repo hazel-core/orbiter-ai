@@ -1276,3 +1276,82 @@ class TestRunStreamEventFiltering:
 
         assert len(events) == 1
         assert isinstance(events[0], ErrorEvent)
+
+
+# ---------------------------------------------------------------------------
+# run.stream() streaming event metrics
+# ---------------------------------------------------------------------------
+
+
+class TestRunStreamEventMetrics:
+    """Verify that run.stream() with detailed=True records total events emitted."""
+
+    @pytest.fixture(autouse=True)
+    def _reset_metrics(self) -> None:
+        from unittest.mock import patch as mock_patch
+
+        from orbiter.observability.metrics import reset_metrics
+
+        reset_metrics()
+        with mock_patch("orbiter.runner.HAS_OTEL", False):
+            yield  # type: ignore[misc]
+
+    async def test_detailed_records_event_counts(self) -> None:
+        """detailed=True records stream_events_emitted counter."""
+        from orbiter.observability.metrics import get_metrics_snapshot
+
+        agent = Agent(name="bot", instructions="Be nice.")
+        chunks = [
+            _FakeStreamChunk(delta="Hello"),
+            _FakeStreamChunk(
+                delta="!",
+                finish_reason="stop",
+                usage=Usage(input_tokens=10, output_tokens=5, total_tokens=15),
+            ),
+        ]
+        provider = _make_stream_provider([chunks])
+
+        events: list[StreamEvent] = []
+        async for ev in run.stream(agent, "Hi", provider=provider, detailed=True):
+            events.append(ev)
+
+        snap = get_metrics_snapshot()
+        assert "stream_events_emitted" in snap["counters"]
+        assert snap["counters"]["stream_events_emitted"] > 0
+
+    async def test_detailed_false_no_event_metrics(self) -> None:
+        """detailed=False does not record stream event metrics."""
+        from orbiter.observability.metrics import get_metrics_snapshot
+
+        agent = Agent(name="bot")
+        chunks = [_FakeStreamChunk(delta="Hello")]
+        provider = _make_stream_provider([chunks])
+
+        events = [ev async for ev in run.stream(agent, "Hi", provider=provider)]
+        assert len(events) == 1
+
+        snap = get_metrics_snapshot()
+        assert "stream_events_emitted" not in snap["counters"]
+
+    async def test_event_type_breakdown(self) -> None:
+        """Event metrics include type breakdown via STREAM_EVENT_TYPE attribute."""
+        from orbiter.observability.metrics import get_metrics_snapshot
+
+        agent = Agent(name="bot")
+        chunks = [
+            _FakeStreamChunk(delta="Hello"),
+            _FakeStreamChunk(
+                delta="!",
+                finish_reason="stop",
+                usage=Usage(input_tokens=10, output_tokens=5, total_tokens=15),
+            ),
+        ]
+        provider = _make_stream_provider([chunks])
+
+        events = [
+            ev async for ev in run.stream(agent, "Hi", provider=provider, detailed=True)
+        ]
+
+        # Should have text, status, step, usage events
+        snap = get_metrics_snapshot()
+        assert snap["counters"]["stream_events_emitted"] == len(events)

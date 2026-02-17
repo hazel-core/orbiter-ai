@@ -24,6 +24,15 @@ from typing import Any
 from orbiter._internal.call_runner import call_runner
 from orbiter._internal.message_builder import build_messages
 from orbiter._internal.output_parser import parse_tool_arguments
+from orbiter.observability.metrics import (  # pyright: ignore[reportMissingImports]
+    HAS_OTEL,
+    _collector,
+    _get_meter,
+)
+from orbiter.observability.semconv import (  # pyright: ignore[reportMissingImports]
+    METRIC_STREAM_EVENTS_EMITTED,
+    STREAM_EVENT_TYPE,
+)
 from orbiter.types import (
     AssistantMessage,
     ErrorEvent,
@@ -181,8 +190,30 @@ async def _stream(
     """
     resolved = provider or _resolve_provider(agent)
 
+    # Track total events emitted for metrics (only recorded when detailed=True).
+    events_emitted: dict[str, int] = {}
+
     def _passes_filter(event: StreamEvent) -> bool:
-        return event_types is None or event.type in event_types
+        passes = event_types is None or event.type in event_types
+        if passes and detailed:
+            events_emitted[event.type] = events_emitted.get(event.type, 0) + 1
+        return passes
+
+    def _record_stream_metrics() -> None:
+        """Record total events emitted during this stream run."""
+        if not detailed or not events_emitted:
+            return
+        for evt_type, count in events_emitted.items():
+            attrs: dict[str, str] = {STREAM_EVENT_TYPE: evt_type}
+            if HAS_OTEL:
+                meter = _get_meter()
+                meter.create_counter(
+                    name=METRIC_STREAM_EVENTS_EMITTED,
+                    unit="1",
+                    description="Number of streaming events emitted",
+                ).add(count, attrs)
+            else:
+                _collector.add_counter(METRIC_STREAM_EVENTS_EMITTED, float(count), attrs)
 
     # Detect Swarm: delegate to its stream() method
     if hasattr(agent, "flow_order"):
@@ -323,6 +354,7 @@ async def _stream(
                     )
                     if _passes_filter(_ev):
                         yield _ev
+                _record_stream_metrics()
                 return
 
             # Yield ToolCallEvent for each tool call
@@ -400,6 +432,7 @@ async def _stream(
                 )
                 if _passes_filter(_ev):
                     yield _ev
+            _record_stream_metrics()
             raise
 
 
