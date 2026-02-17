@@ -142,7 +142,7 @@ async def list_deployments(
     limit: int = Query(20, ge=1, le=100),
     user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
 ) -> dict[str, Any]:
-    """List all deployments with stats."""
+    """List all deployments with stats and entity names."""
     async with get_db() as db:
         result = await paginate(
             db,
@@ -153,7 +153,106 @@ async def list_deployments(
             limit=limit,
             row_mapper=_row_to_dict,
         )
-        return result.model_dump()
+        data = result.model_dump()
+
+        # Resolve entity names
+        for dep in data.get("data", []):
+            if dep["entity_type"] == "agent":
+                cur = await db.execute(
+                    "SELECT name FROM agents WHERE id = ?", (dep["entity_id"],)
+                )
+            else:
+                cur = await db.execute(
+                    "SELECT name FROM workflows WHERE id = ?", (dep["entity_id"],)
+                )
+            row = await cur.fetchone()
+            dep["entity_name"] = row["name"] if row else "(deleted)"
+
+        return data
+
+
+@router.get("/{deployment_id}")
+async def get_deployment(
+    deployment_id: str,
+    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+) -> dict[str, Any]:
+    """Get a single deployment with entity name."""
+    async with get_db() as db:
+        cur = await db.execute(
+            "SELECT * FROM deployments WHERE id = ? AND user_id = ?",
+            (deployment_id, user["id"]),
+        )
+        row = await cur.fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Deployment not found")
+
+        dep = dict(row)
+        # Resolve entity name
+        if dep["entity_type"] == "agent":
+            cur2 = await db.execute(
+                "SELECT name FROM agents WHERE id = ?", (dep["entity_id"],)
+            )
+        else:
+            cur2 = await db.execute(
+                "SELECT name FROM workflows WHERE id = ?", (dep["entity_id"],)
+            )
+        entity_row = await cur2.fetchone()
+        dep["entity_name"] = entity_row["name"] if entity_row else "(deleted)"
+
+        return dep
+
+
+class DeploymentUpdate(BaseModel):
+    status: str | None = Field(None, pattern="^(active|inactive)$")
+    rate_limit: int | None = Field(None, ge=1, le=10000)
+    name: str | None = Field(None, min_length=1, max_length=255)
+
+
+@router.patch("/{deployment_id}")
+async def update_deployment(
+    deployment_id: str,
+    body: DeploymentUpdate,
+    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+) -> dict[str, Any]:
+    """Update deployment status, rate limit, or name."""
+    async with get_db() as db:
+        cur = await db.execute(
+            "SELECT * FROM deployments WHERE id = ? AND user_id = ?",
+            (deployment_id, user["id"]),
+        )
+        row = await cur.fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Deployment not found")
+
+        updates: list[str] = []
+        params: list[Any] = []
+        if body.status is not None:
+            updates.append("status = ?")
+            params.append(body.status)
+        if body.rate_limit is not None:
+            updates.append("rate_limit = ?")
+            params.append(body.rate_limit)
+        if body.name is not None:
+            updates.append("name = ?")
+            params.append(sanitize_html(body.name))
+
+        if not updates:
+            return dict(row)
+
+        updates.append("updated_at = ?")
+        params.append(datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S"))
+        params.append(deployment_id)
+
+        await db.execute(
+            f"UPDATE deployments SET {', '.join(updates)} WHERE id = ?",
+            params,
+        )
+        await db.commit()
+
+        cur2 = await db.execute(
+            "SELECT * FROM deployments WHERE id = ?", (deployment_id,)
+        )
+        return dict(await cur2.fetchone())  # type: ignore[arg-type]
 
 
 @router.delete("/{deployment_id}", status_code=204)
