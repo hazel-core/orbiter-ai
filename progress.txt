@@ -3378,3 +3378,13 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Plugin validation runs entry point with `--validate` flag in subprocess with 10s timeout
   - Permissions are declared in manifest: `network`, `api_keys`, `sandbox`, `file_system`
 ---
+
+## 2026-02-17 - US-200
+- What was implemented: REST API patterns and conventions guide at docs/contributing/api-conventions.md
+- Files changed:
+  - docs/contributing/api-conventions.md (new — comprehensive API conventions guide with 8 sections)
+- **Learnings for future iterations:**
+  - All 8 required sections (error envelope, pagination, auth, RBAC, naming, audit logging, testing, migrations) are documented with real code examples from the codebase
+  - The existing contributing docs (code-style.md, testing.md, etc.) use simple markdown with tables and code blocks — matched that style
+  - Astro typecheck (`npx astro check`) only checks .astro and .ts files, not markdown — markdown docs just need ruff check
+---
