@@ -2602,7 +2602,7 @@
         "Verify in browser using dev-browser skill"
       ],
       "priority": 149,
-      "passes": false,
+      "passes": true,
       "notes": "From PRD US-073"
     },
     {

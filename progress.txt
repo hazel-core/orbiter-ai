@@ -3221,3 +3221,18 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - The focusHandlers pattern (onFocus/onBlur for border color) needs to include HTMLSelectElement in the union type for select elements
   - Request log entries can be expanded to show payload preview — use expandedLogIndex state for accordion behavior
 ---
+
+## 2026-02-17 - US-149
+- What was implemented: External observability integration — Settings > Integrations > Observability section with full CRUD for Langfuse, LangSmith, Datadog, Opik, and Custom Webhook integrations. Enable/disable toggle, per-platform config forms, and Test Integration button.
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/migrations/069_create_observability_integrations.sql (new — table with encrypted_api_key, platform, endpoint, project, test status)
+  - packages/orbiter-web/src/orbiter_web/routes/observability.py (new — CRUD + test endpoint, platform-specific test senders using httpx)
+  - packages/orbiter-web/src/orbiter_web/app.py (updated — import and register observability_router)
+  - packages/orbiter-web/src/pages/settings.astro (updated — Observability section in Integrations tab, Add/Edit/Delete modals, JS for CRUD/test/toggle)
+- **Learnings for future iterations:**
+  - Observability routes at `/api/v1/observability` — CRUD + `POST /:id/test` for testing connections
+  - Each platform has its own test sender function (`_test_langfuse`, `_test_langsmith`, etc.) with platform-specific auth and payload formats
+  - Langfuse uses Basic auth (public_key:secret_key), stored in `extra_config_json.public_key`
+  - API keys encrypted via `encrypt_api_key()` from `orbiter_web.crypto` — never exposed in responses (use `api_key_set: bool`)
+  - Import ordering in app.py is strictly alphabetical — ruff I001 will flag unsorted imports
+---
