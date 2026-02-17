@@ -92,6 +92,7 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
 - Service layer: `orbiter_web/services/` directory for business logic separate from routes; AgentService bridges DB configs to live orbiter Agent objects
 - orbiter-web depends on orbiter-core + orbiter-models via workspace deps in pyproject.toml + `[tool.uv.sources]`
 - Rate limiting: custom in-memory `_SlidingWindow` in `middleware/rate_limit.py`; config via ORBITER_RATE_LIMIT_AUTH/GENERAL/AGENT env vars in settings
+- RBAC: `require_role("admin")` from auth.py is a FastAPI dependency factory — use `Depends(require_role("admin"))` to restrict endpoints; hierarchy: viewer < developer < admin
 - Agent runtime: `get_provider("provider:model", api_key=..., base_url=...)` creates ModelProvider; `Agent.run(input=..., messages=..., provider=...)` executes the tool loop
 - Agent node execution: `_execute_agent_node()` in engine.py handles both DB-referenced and inline agents; inject `_user_id` into node data for provider resolution
 - Upstream context: `_gather_upstream_inputs(node_id, edges, variables)` collects text from all upstream nodes — use for agent node input
@@ -2681,4 +2682,25 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - 6 places query `u.id, u.email, u.created_at` from sessions join (auth.py, websocket.py, playground.py, crews.py, runs.py, workflow_runs.py) — US-180 route guards will need these updated too
   - Existing is_admin column (migration 024) still present; role column is the new canonical source of truth
   - UserResponse is the only Pydantic model for user data — adding fields here affects /api/auth/me and /api/auth/login responses
+---
+
+## 2026-02-17 - US-180
+- What was implemented: RBAC role-based route guards via `require_role(min_role)` FastAPI dependency factory
+- Changes:
+  - `require_role()` in `routes/auth.py` — dependency factory with role hierarchy (viewer=0, developer=1, admin=2); returns 403 with "FORBIDDEN" detail if insufficient
+  - `routes/provider_keys.py` — all 7 endpoints now require admin role
+  - `routes/providers.py` — all 6 endpoints now require admin role
+  - `routes/vector_stores.py` — all 3 endpoints now require admin role (system config)
+  - `routes/sandbox.py` — PUT /config now requires admin role (system config); GET /config and POST /execute remain developer-accessible
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/routes/auth.py (added require_role + _ROLE_HIERARCHY)
+  - packages/orbiter-web/src/orbiter_web/routes/provider_keys.py (swapped get_current_user → require_role("admin"))
+  - packages/orbiter-web/src/orbiter_web/routes/providers.py (swapped get_current_user → require_role("admin"))
+  - packages/orbiter-web/src/orbiter_web/routes/vector_stores.py (swapped get_current_user → require_role("admin"))
+  - packages/orbiter-web/src/orbiter_web/routes/sandbox.py (PUT /config → require_role("admin"))
+- **Learnings for future iterations:**
+  - `require_role()` returns an inner async function that itself `Depends(get_current_user)` — it's a dependency factory, not middleware
+  - The user dict from `get_current_user` already includes `role` from the sessions JOIN, so no extra DB query needed
+  - No dedicated "user management" or "system settings" routes exist yet — guard those when they're created in future stories
+  - `_ROLE_HIERARCHY` dict maps role strings to ints for comparison — easy to extend with new roles later
 ---
