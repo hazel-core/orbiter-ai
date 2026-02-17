@@ -3286,3 +3286,18 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Navigation shortcuts: "G then X" pattern uses a timer-based two-key chord — set gPressed flag and clear after 1s timeout
   - Prose styling: use a `.prose-orbiter` class with explicit CSS rules for markdown content; include dark mode overrides for code blocks, tables, and borders
 ---
+
+## 2026-02-17 - US-153
+- What was implemented: Interactive onboarding tour with welcome dialog, spotlight-based step highlighting, and persistence
+- Files changed:
+  - packages/orbiter-web/src/components/OnboardingTour.astro (new — self-contained tour component with welcome dialog, spotlight overlay, tooltip positioning, step navigation)
+  - packages/orbiter-web/src/layouts/PageLayout.astro (updated — added OnboardingTour import + render, data-nav attributes on sidebar links)
+  - packages/orbiter-web/src/pages/settings.astro (updated — "Show Tour Again" button in Profile tab with click handler)
+- **Learnings for future iterations:**
+  - Tour targets sidebar links via `data-nav` attribute (e.g., `[data-nav='projects']`) — add this attribute to any new nav items
+  - Tour state persisted in localStorage under `orbiter-tour-completed` key
+  - `window.__orbiterStartTour()` global function resets tour state and shows welcome dialog — callable from anywhere
+  - Tour auto-triggers by hooking into `getCsrfToken()` which fires after successful auth check
+  - Spotlight overlay uses `box-shadow: 0 0 0 9999px` trick for the cutout effect
+  - Tooltip positioning: tries step.position first, falls back to bottom/top, clamps to viewport
+---
