@@ -39,6 +39,7 @@ from orbiter_web.routes.crews import router as crews_router
 from orbiter_web.routes.deployments import deployed_router
 from orbiter_web.routes.deployments import router as deployments_router
 from orbiter_web.routes.evaluations import router as evaluations_router
+from orbiter_web.routes.integrations import router as integrations_router
 from orbiter_web.routes.knowledge_bases import router as knowledge_bases_router
 from orbiter_web.routes.logs import router as logs_router
 from orbiter_web.routes.metrics import router as metrics_router
@@ -102,13 +103,16 @@ def _validate_startup() -> None:
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Validate config and run migrations on startup."""
     from orbiter_web.services.cleanup import start_cleanup, stop_cleanup
+    from orbiter_web.services.mcp_health import start_mcp_health, stop_mcp_health
     from orbiter_web.services.scheduler import start_scheduler, stop_scheduler
 
     _validate_startup()
     await run_migrations()
     await start_scheduler()
     await start_cleanup()
+    await start_mcp_health()
     yield
+    await stop_mcp_health()
     await stop_cleanup()
     await stop_scheduler()
 
@@ -158,6 +162,7 @@ app.include_router(deployments_router)
 app.include_router(deployed_router)
 app.include_router(benchmarks_router)
 app.include_router(evaluations_router)
+app.include_router(integrations_router)
 app.include_router(knowledge_bases_router)
 app.include_router(logs_router)
 app.include_router(auth_router)
