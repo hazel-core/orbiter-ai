@@ -2805,3 +2805,23 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Background task GC prevention: engine.py uses _queue_tasks set + add_done_callback pattern for process_queue tasks
   - run_queue status flow: queued → started (with run_id set) or queued → cancelled
 ---
+
+## 2026-02-17 - US-182
+- What was implemented: Storage cleanup and retention policies
+  - Migration 060: seeds default retention settings (retention_artifacts_days=90, retention_runs_days=30, retention_logs_days=14) into workspace_settings table
+  - GET/PUT /api/settings/retention endpoints for viewing/updating retention config
+  - GET /api/settings/storage endpoint returns total_db_size, artifact_dir_size, upload_dir_size in bytes
+  - Extended cleanup service with _run_retention_cleanup() that deletes old artifacts (+ files on disk), runs (with cascade delete of their artifacts), and logs based on retention settings
+  - Cascade deletes: when deleting a run, first deletes its artifacts (including artifact_versions and files on disk), then the run itself
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/migrations/060_seed_retention_settings.sql (new)
+  - packages/orbiter-web/src/orbiter_web/routes/retention.py (new)
+  - packages/orbiter-web/src/orbiter_web/services/cleanup.py (modified)
+  - packages/orbiter-web/src/orbiter_web/app.py (modified — added retention_router import and registration)
+- **Learnings for future iterations:**
+  - Retention settings stored as workspace_settings keys (retention_artifacts_days, retention_runs_days, retention_logs_days) — reuse _RETENTION_KEYS/DEFAULTS pattern
+  - Artifacts FK on run_id is ON DELETE SET NULL (not CASCADE), so must manually delete artifacts before deleting runs
+  - artifact_versions has ON DELETE CASCADE from artifacts, but explicit DELETE is safer for batch cleanup
+  - Storage endpoint: include WAL and SHM files in DB size calculation for accurate SQLite size reporting
+  - Ruff import sorting: retention comes after providers alphabetically — keep imports sorted
+---
