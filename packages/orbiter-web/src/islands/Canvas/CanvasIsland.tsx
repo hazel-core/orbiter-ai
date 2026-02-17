@@ -2260,6 +2260,7 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
         node={selectedNode}
         onClose={() => setSelectedNodeId(null)}
         onNodeUpdate={handleNodeDataUpdate}
+        workflowId={workflowId}
       />
 
       {/* Run history panel */}

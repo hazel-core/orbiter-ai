@@ -8,6 +8,8 @@ import CodeNodeConfig from "./CodeNodeConfig";
 import HttpRequestConfig from "./HttpRequestConfig";
 import KnowledgeRetrievalConfig from "./KnowledgeRetrievalConfig";
 import ApprovalGateConfig from "./ApprovalGateConfig";
+import WebhookTriggerConfig from "./WebhookTriggerConfig";
+import NotificationConfig from "./NotificationConfig";
 
 /* ------------------------------------------------------------------ */
 /* Types                                                                */
@@ -17,6 +19,7 @@ interface NodeConfigPanelProps {
   node: Node | null;
   onClose: () => void;
   onNodeUpdate: (id: string, data: Record<string, unknown>) => void;
+  workflowId?: string;
 }
 
 /* ------------------------------------------------------------------ */
@@ -40,6 +43,7 @@ const CODE_TYPES = new Set(["code_python", "code_javascript"]);
 function renderTypeConfig(
   node: Node,
   onDataChange: (updates: Record<string, unknown>) => void,
+  workflowId?: string,
 ) {
   const nodeType = node.data.nodeType as string;
 
@@ -152,6 +156,47 @@ function renderTypeConfig(
     );
   }
 
+  if (nodeType === "webhook") {
+    return (
+      <WebhookTriggerConfig
+        data={{
+          webhook_config_id: node.data.webhook_config_id as string | undefined,
+          webhook_enabled: node.data.webhook_enabled as boolean | undefined,
+        }}
+        onChange={onDataChange}
+        nodeId={node.id}
+        workflowId={workflowId}
+      />
+    );
+  }
+
+  if (nodeType === "notification") {
+    return (
+      <NotificationConfig
+        data={{
+          notification_type: node.data.notification_type as "slack" | "discord" | "email" | undefined,
+          template_id: node.data.template_id as string | undefined,
+          webhook_url: node.data.webhook_url as string | undefined,
+          channel: node.data.channel as string | undefined,
+          username: node.data.username as string | undefined,
+          icon_emoji: node.data.icon_emoji as string | undefined,
+          message_template: node.data.message_template as string | undefined,
+          avatar_url: node.data.avatar_url as string | undefined,
+          smtp_host: node.data.smtp_host as string | undefined,
+          smtp_port: node.data.smtp_port as number | undefined,
+          smtp_user: node.data.smtp_user as string | undefined,
+          smtp_password: node.data.smtp_password as string | undefined,
+          use_tls: node.data.use_tls as boolean | undefined,
+          from_address: node.data.from_address as string | undefined,
+          to_addresses: node.data.to_addresses as string | undefined,
+          subject_template: node.data.subject_template as string | undefined,
+          body_template: node.data.body_template as string | undefined,
+        }}
+        onChange={onDataChange}
+      />
+    );
+  }
+
   /* Default placeholder for other node types */
   return (
     <div
@@ -189,7 +234,7 @@ function renderTypeConfig(
 /* Panel component                                                      */
 /* ------------------------------------------------------------------ */
 
-export default function NodeConfigPanel({ node, onClose, onNodeUpdate }: NodeConfigPanelProps) {
+export default function NodeConfigPanel({ node, onClose, onNodeUpdate, workflowId }: NodeConfigPanelProps) {
   const [name, setName] = useState("");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -557,7 +602,7 @@ export default function NodeConfigPanel({ node, onClose, onNodeUpdate }: NodeCon
         />
 
         {/* Node-type-specific configuration */}
-        {renderTypeConfig(node, scheduleDataUpdate)}
+        {renderTypeConfig(node, scheduleDataUpdate, workflowId)}
       </div>
 
       {/* Inline keyframes for slide-in animation */}

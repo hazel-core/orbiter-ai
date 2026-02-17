@@ -3205,3 +3205,19 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - url_token is generated via secrets.token_urlsafe(32) for secure random tokens
   - No browser testing needed — this is a backend-only story
 ---
+
+## 2026-02-17 - US-148
+- What was implemented: Webhook trigger and notification node config panels for the workflow canvas
+- Files changed:
+  - packages/orbiter-web/src/islands/Canvas/WebhookTriggerConfig.tsx (new — webhook trigger config panel with URL display, copy, regenerate, enable/disable toggle, and request log viewer with payload preview)
+  - packages/orbiter-web/src/islands/Canvas/NotificationConfig.tsx (new — notification output node config with Slack/Discord/Email type selector, pre-built config forms for each, saved template loading, template variable reference)
+  - packages/orbiter-web/src/islands/Canvas/NodeConfigPanel.tsx (updated — added webhook and notification config panel imports and dispatch cases, added workflowId prop for webhook API integration)
+  - packages/orbiter-web/src/islands/Canvas/CanvasIsland.tsx (updated — pass workflowId to NodeConfigPanel)
+- **Learnings for future iterations:**
+  - Webhook trigger node ("webhook") and Notification output node ("notification") were already in NodeSidebar and handleTypes.ts — only config panels were missing
+  - NodeConfigPanel needed a `workflowId` prop to call webhook CRUD APIs — threaded from CanvasIsland
+  - Webhook config panel manages its own API calls (create, toggle, regenerate, load log) with local state — no global store needed
+  - Notification config supports 3 types (slack, discord, email) with type-specific sub-forms and saved template loading from `/api/v1/notification-templates`
+  - The focusHandlers pattern (onFocus/onBlur for border color) needs to include HTMLSelectElement in the union type for select elements
+  - Request log entries can be expanded to show payload preview — use expandedLogIndex state for accordion behavior
+---
