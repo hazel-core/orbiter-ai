@@ -99,6 +99,7 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
 - Neuron pipelines: separate `neuron_pipelines` table, CRUD at `/api/agents/:id/pipelines`; neurons stored as JSON array in `neurons_json` column; auto-save with debounce
 - Input sanitization: use `sanitize_html()` from `orbiter_web/sanitize.py` on all user-provided text fields before DB storage; apply in route handlers (not models)
 - Security headers: `SecurityHeadersMiddleware` in `middleware/security.py` adds CSP, X-Content-Type-Options, X-Frame-Options; add frameable paths to `_FRAMEABLE_PATHS` set
+- Time columns differ: `runs` table uses `start_time`/`end_time`; `workflow_runs` uses `started_at`/`completed_at` — always check migration SQL before writing queries
 
 ---
 
@@ -2180,4 +2181,20 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Expandable metadata: use `data-toggle` attribute + hidden div pattern for accordion-style expand/collapse
   - Export pattern: create Blob + temporary anchor element + `URL.createObjectURL()` for download
   - Time range filtering: convert relative ranges (1h, 24h, 7d, 30d) to ISO timestamps client-side, pass as `start_time` param
+---
+
+## 2026-02-17 - US-117
+- What was implemented: Alert rules backend with CRUD for alert rules and alerts, plus enhanced health check
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/migrations/039_create_alert_rules.sql (new — alert_rules table)
+  - packages/orbiter-web/src/orbiter_web/migrations/040_create_alerts.sql (new — alerts table with CASCADE delete from rules)
+  - packages/orbiter-web/src/orbiter_web/routes/alerts.py (new — full CRUD: POST/GET /rules, GET/PUT/DELETE /rules/:id, GET alerts, PUT /:id/acknowledge)
+  - packages/orbiter-web/src/orbiter_web/app.py (updated — added alerts_router, enhanced GET /api/health with per-agent and per-provider status)
+- **Learnings for future iterations:**
+  - Runs table uses `start_time`/`end_time` columns, NOT `started_at`/`completed_at` — check migration files before writing queries
+  - `workflow_runs` table uses `started_at`/`completed_at` but `runs` table uses `start_time`/`end_time` — inconsistent naming, always verify
+  - Alert rules use condition_type (error_rate, latency, cost) + condition_threshold (float) pattern — simple but extensible
+  - Action types (toast, email, webhook) with action_config_json for flexible action configuration
+  - Health endpoint returns per-agent status (healthy/degraded based on error_rate > 50%) and per-provider status (configured/no_keys)
+  - Foreign key ON DELETE CASCADE on alerts.rule_id means deleting a rule auto-deletes its alerts
 ---
