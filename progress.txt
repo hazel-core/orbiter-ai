@@ -2569,3 +2569,19 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Reset page uses BaseLayout (not PageLayout) since it's unauthenticated, same pattern as login page
   - Token passed via URL query param `?token=...` and read with `URLSearchParams` in inline script
 ---
+
+## 2026-02-17 09:10 - US-177
+- What was implemented: Session expiry frontend handling — global 401 interception, expired session toast on login page, WebSocket auth failure detection with connection banner
+- Files changed:
+  - packages/orbiter-web/src/utils/api.ts (new — apiFetch wrapper with 401 interception, AbortController-based request cancellation, expireSession helper)
+  - packages/orbiter-web/src/layouts/PageLayout.astro (updated — 401 interception in monkey-patched fetch, _pendingControllers for request cancellation, connection status banner for WS auth failures, WebSocket close code 4401/4403 handling)
+  - packages/orbiter-web/src/pages/login.astro (updated — session expired toast shown when ?expired=true, auto-dismiss after 8s, URL cleanup via history.replaceState)
+- **Learnings for future iterations:**
+  - The monkey-patched `window.fetch` in PageLayout is the right place for global 401 interception — it catches all API calls including those from inline scripts
+  - Skip 401 interception for `/api/auth/login` to avoid redirect loops when login itself returns 401
+  - Track pending requests with AbortController array — abort all on session expiry to prevent cascading error toasts from in-flight requests
+  - WebSocket close codes 4401/4403 are used for auth failures — detect in close event handler and trigger same expireSession flow
+  - `window.__orbiterExpireSession` is the global entry point for session expiry from any context (fetch, WebSocket, etc.)
+  - Use `history.replaceState` to clean up `?expired=true` query param after showing the toast (prevents re-showing on refresh)
+  - Connection status banner is a fixed top banner with z-[90] — sits above content but below modals
+---

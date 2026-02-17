@@ -3112,7 +3112,7 @@
         "Verify in browser using dev-browser skill"
       ],
       "priority": 51,
-      "passes": false,
+      "passes": true,
       "notes": "Gap fill: 401s after 72h session expiry currently produce silent failures with no user feedback"
     },
     {
