@@ -259,7 +259,7 @@
         "Pyright passes"
       ],
       "priority": 15,
-      "passes": false,
+      "passes": true,
       "notes": "Create packages/orbiter-distributed/src/orbiter/distributed/client.py. TaskHandle wraps TaskBroker, TaskStore, EventSubscriber. result() polls TaskStore until COMPLETED/FAILED. stream() delegates to EventSubscriber.subscribe(). cancel() delegates to TaskBroker.cancel(). This is the main public API for distributed execution."
     },
     {

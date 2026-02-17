@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from orbiter.distributed.broker import TaskBroker  # pyright: ignore[reportMissingImports]
 from orbiter.distributed.cancel import CancellationToken  # pyright: ignore[reportMissingImports]
+from orbiter.distributed.client import (  # pyright: ignore[reportMissingImports]
+    TaskHandle,
+    distributed,
+)
 from orbiter.distributed.events import (  # pyright: ignore[reportMissingImports]
     EventPublisher,
     EventSubscriber,
@@ -21,9 +25,11 @@ __all__: list[str] = [
     "EventPublisher",
     "EventSubscriber",
     "TaskBroker",
+    "TaskHandle",
     "TaskPayload",
     "TaskResult",
     "TaskStatus",
     "TaskStore",
     "Worker",
+    "distributed",
 ]
