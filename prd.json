@@ -2911,7 +2911,7 @@
         "Typecheck passes"
       ],
       "priority": 22,
-      "passes": false,
+      "passes": true,
       "notes": "Gap fill: US-099, US-128, US-123 all need file uploads but no shared infrastructure exists"
     },
     {

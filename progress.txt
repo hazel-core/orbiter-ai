@@ -3,6 +3,7 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
 ---
 
 ## Codebase Patterns
+- File uploads: use `handle_upload(file, allowed_types, max_size_mb)` from `orbiter_web/upload.py`; returns `UploadResult` with path, metadata; use `cleanup_upload(path)` on processing failure
 - Pagination: list endpoints return `{data: [...], pagination: {next_cursor, has_more, total}}`; use `paginate()` from `orbiter_web/pagination.py`; frontend extracts `.data` via `.then(body => body.data || body)`
 - CSRF: window.fetch is monkey-patched in PageLayout to auto-include X-CSRF-Token on POST/PUT/DELETE; no need to manually add headers in page scripts
 - CSRF exempt paths are in `middleware/csrf.py` `_EXEMPT_PATHS` — add new exempt routes there when needed
@@ -2251,4 +2252,17 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - paginate() fetches limit+1 rows to detect `has_more` without a separate query
   - Total count query runs against base conditions (ignoring cursor) to give total count of all matching rows
   - When changing list endpoint response shapes, ALL frontend consumers must be updated — grep for `fetch("/api/<endpoint>")` in both .astro and .tsx files
+---
+
+## 2026-02-17 - US-166
+- Implemented shared file upload infrastructure
+- Files changed:
+  - `packages/orbiter-web/src/orbiter_web/upload.py` (NEW) — handle_upload(), cleanup_upload(), UploadResult dataclass, MIME/extension validation, UUID filename generation
+  - `packages/orbiter-web/src/orbiter_web/config.py` — added max_upload_mb and upload_dir settings
+- **Learnings for future iterations:**
+  - Upload config: ORBITER_MAX_UPLOAD_MB (default 50) and ORBITER_UPLOAD_DIR (default data/uploads/) env vars
+  - Use `handle_upload(file, allowed_types={"pdf","csv"}, max_size_mb=10)` for any route needing file upload
+  - Use `cleanup_upload(path)` in except blocks when processing fails after upload
+  - _MIME_MAP in upload.py maps extensions to valid MIME types — add new types there when needed
+  - UploadResult.path is a Path object, use str() if you need string path for DB storage
 ---
