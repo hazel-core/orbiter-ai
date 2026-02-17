@@ -2328,3 +2328,22 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Ruff doesn't have S608 (SQL injection) enabled in this project — don't add noqa: S608 comments
   - Annotation FTS5 follows same pattern as migration 042: content table + content_rowid + insert/update/delete triggers
 ---
+
+## 2026-02-17 - US-168
+- What was implemented: Global search backend (Cmd+K) — GET /api/search?q=&types= endpoint
+  - Cross-entity search across agents, workflows, tools, and knowledge_bases
+  - Uses FTS5 infrastructure from US-167 for agents, workflows, tools
+  - LIKE fallback for knowledge_bases (no FTS5 table exists for it)
+  - Empty query returns recent items (ORDER BY created_at DESC LIMIT 5 per type)
+  - Each result includes: id, name, type, snippet, url path
+  - Max 5 results per entity type (20 total)
+  - Authenticated via get_current_user dependency
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/routes/search.py (new — global search endpoint)
+  - packages/orbiter-web/src/orbiter_web/app.py (updated — registered search_router)
+- **Learnings for future iterations:**
+  - search_entities() in search.py returns {} for empty queries — need separate logic for "recent items" fallback
+  - knowledge_bases has no FTS5 virtual table — use LIKE fallback for entities without FTS5
+  - search_entities() doesn't filter by user_id — the route handles user scoping for knowledge_bases but FTS results are unscoped
+  - _URL_TEMPLATES pattern maps entity types to frontend URL paths — extend when adding new searchable types
+---

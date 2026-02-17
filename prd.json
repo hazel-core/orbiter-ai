@@ -2944,7 +2944,7 @@
         "Typecheck passes"
       ],
       "priority": 23,
-      "passes": false,
+      "passes": true,
       "notes": "Gap fill: US-014 has Cmd+K placeholder in top bar, API contract defines GET /api/v1/search"
     },
     {
