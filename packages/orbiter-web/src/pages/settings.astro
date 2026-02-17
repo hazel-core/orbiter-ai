@@ -94,6 +94,15 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
       >
         Workspace
       </button>
+      <button
+        role="tab"
+        aria-selected="false"
+        data-settings-tab="team"
+        id="team-tab"
+        class="settings-tab px-4 py-2.5 text-sm font-medium text-muted border-b-2 border-transparent hover:text-dark transition-colors duration-150 cursor-pointer whitespace-nowrap hidden"
+      >
+        Team
+      </button>
     </div>
 
     <!-- Profile section -->
@@ -381,6 +390,45 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
         <div id="workspace-saved" class="hidden text-sm text-zen-green mt-3">Workspace settings saved.</div>
       </div>
     </div>
+
+    <!-- Team section (admin only) -->
+    <div id="panel-team" class="settings-panel hidden" role="tabpanel">
+      <div class="rounded-xl bg-subtle/80 border border-dark/[0.08] p-6">
+        <div class="flex items-center justify-between mb-6">
+          <div>
+            <h2 class="text-lg font-semibold text-dark mb-1">Team</h2>
+            <p class="text-sm text-muted">Manage team members and roles</p>
+          </div>
+          <Button variant="primary" id="invite-user-btn">
+            <span set:html={plusIcon} />
+            Invite User
+          </Button>
+        </div>
+
+        <!-- Loading state -->
+        <div id="team-loading" class="text-sm text-muted py-4">Loading team members...</div>
+
+        <!-- Team table -->
+        <div id="team-table-wrap" class="hidden">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-dark/[0.08]">
+                <th class="text-left text-xs font-medium text-muted uppercase tracking-wide py-2 pr-4">Email</th>
+                <th class="text-left text-xs font-medium text-muted uppercase tracking-wide py-2 px-4">Role</th>
+                <th class="text-left text-xs font-medium text-muted uppercase tracking-wide py-2 px-4">Joined</th>
+                <th class="text-right text-xs font-medium text-muted uppercase tracking-wide py-2 pl-4">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="team-tbody" class="divide-y divide-dark/[0.04]"></tbody>
+          </table>
+        </div>
+
+        <!-- Empty state -->
+        <div id="team-empty" class="hidden flex flex-col items-center py-8 text-center">
+          <p class="text-sm text-muted">No team members found.</p>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- Add Provider Modal -->
@@ -483,6 +531,58 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
       </Button>
       <Button variant="primary" type="button" id="confirm-delete-key-btn" class="!bg-coral !text-white">
         Delete Key
+      </Button>
+    </div>
+  </Modal>
+
+  <!-- Invite User Modal -->
+  <Modal id="invite-user-modal" title="Invite User">
+    <form id="invite-user-form" class="flex flex-col gap-4">
+      <Input
+        label="Email"
+        name="email"
+        type="email"
+        placeholder="user@example.com"
+        required
+      />
+      <Input
+        label="Temporary Password"
+        name="password"
+        type="password"
+        placeholder="Min 8 characters"
+        required
+      />
+      <Select
+        label="Role"
+        name="role"
+        options={[
+          { value: "viewer", label: "Viewer" },
+          { value: "developer", label: "Developer" },
+          { value: "admin", label: "Admin" },
+        ]}
+      />
+      <div id="invite-user-error" class="text-sm text-coral hidden"></div>
+      <div class="flex justify-end gap-3 mt-2">
+        <Button variant="default" type="button" data-modal-close="invite-user-modal">
+          Cancel
+        </Button>
+        <Button variant="primary" type="submit" id="invite-user-submit">
+          Invite
+        </Button>
+      </div>
+    </form>
+  </Modal>
+
+  <!-- Remove User Confirmation Modal -->
+  <Modal id="remove-user-modal" title="Remove User">
+    <p class="text-sm text-muted mb-1">Are you sure you want to remove <strong id="remove-user-email" class="text-dark"></strong>?</p>
+    <p class="text-sm text-muted mb-6">Their sessions will be revoked and they will no longer be able to log in.</p>
+    <div class="flex justify-end gap-3">
+      <Button variant="default" type="button" data-modal-close="remove-user-modal">
+        Cancel
+      </Button>
+      <Button variant="primary" type="button" id="confirm-remove-user-btn" class="!bg-coral !text-white">
+        Remove User
       </Button>
     </div>
   </Modal>
@@ -623,6 +723,11 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
         // Load pricing when Pricing tab is first shown
         if (target === "pricing" && !pricingLoaded) {
           fetchPricingData();
+        }
+
+        // Load team members when Team tab is first shown
+        if (target === "team" && !teamLoaded) {
+          fetchTeamMembers();
         }
       });
     });
@@ -1611,6 +1716,32 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
         }
       });
     }
+    // ------- Toast helper -------
+    var toastTimer = null;
+    function showToast(msg, type) {
+      // Remove any existing toast
+      var existing = document.getElementById("settings-toast");
+      if (existing) existing.remove();
+
+      var cls = type === "error"
+        ? "border-coral/30 bg-coral/10 text-dark"
+        : "border-zen-green/30 bg-zen-green/10 text-dark";
+      var iconSvg = type === "error"
+        ? '<svg class="h-4 w-4 text-coral" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>'
+        : '<svg class="h-4 w-4 text-zen-green" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>';
+
+      var toast = document.createElement("div");
+      toast.id = "settings-toast";
+      toast.className = "fixed bottom-4 right-4 z-[100] flex items-center gap-3 rounded-lg border px-4 py-3 shadow-lg max-w-sm w-full " + cls;
+      toast.innerHTML = iconSvg + '<span class="flex-1 text-sm font-medium">' + msg + '</span>';
+      document.body.appendChild(toast);
+
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(function () {
+        if (toast.parentNode) toast.remove();
+      }, 4000);
+    }
+
     // ------- Pricing -------
     var pricingLoaded = false;
     var pricingLoading = document.getElementById("pricing-loading");
@@ -1689,6 +1820,282 @@ const plusIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
               }, 2000);
             });
         });
+      });
+    }
+
+    // ------- Team Management (admin only) -------
+    var teamLoaded = false;
+    var teamData = [];
+    var currentUserId = null;
+    var currentUserRole = null;
+    var teamTab = document.getElementById("team-tab");
+    var teamLoading = document.getElementById("team-loading");
+    var teamTableWrap = document.getElementById("team-table-wrap");
+    var teamTbody = document.getElementById("team-tbody");
+    var teamEmpty = document.getElementById("team-empty");
+    var inviteUserBtn = document.getElementById("invite-user-btn");
+    var inviteModal = document.getElementById("invite-user-modal");
+    var inviteForm = document.getElementById("invite-user-form");
+    var inviteError = document.getElementById("invite-user-error");
+    var inviteSubmit = document.getElementById("invite-user-submit");
+    var removeModal = document.getElementById("remove-user-modal");
+    var removeEmailEl = document.getElementById("remove-user-email");
+    var confirmRemoveBtn = document.getElementById("confirm-remove-user-btn");
+    var removeTargetId = null;
+
+    // Show Team tab only for admins — fetch current user info
+    fetch("/api/auth/me", { credentials: "same-origin" })
+      .then(function (res) {
+        if (!res.ok) throw new Error("Not authenticated");
+        return res.json();
+      })
+      .then(function (user) {
+        currentUserId = user.id;
+        currentUserRole = user.role;
+        if (user.role === "admin" && teamTab) {
+          teamTab.classList.remove("hidden");
+        }
+      })
+      .catch(function () {});
+
+    var roleBadgeClasses = {
+      admin: "bg-coral/10 text-coral",
+      developer: "bg-zen-blue/10 text-zen-blue",
+      viewer: "bg-dark/5 text-muted"
+    };
+
+    function fetchTeamMembers() {
+      if (teamLoading) teamLoading.classList.remove("hidden");
+      if (teamTableWrap) teamTableWrap.classList.add("hidden");
+      if (teamEmpty) teamEmpty.classList.add("hidden");
+
+      fetch("/api/settings/team", { credentials: "same-origin" })
+        .then(function (res) {
+          if (!res.ok) throw new Error("Failed to load team");
+          return res.json();
+        })
+        .then(function (data) {
+          teamLoaded = true;
+          teamData = data;
+          renderTeamTable(data);
+        })
+        .catch(function () {
+          if (teamLoading) teamLoading.textContent = "Failed to load team members. You may not have permission.";
+        });
+    }
+
+    function renderTeamTable(members) {
+      if (teamLoading) teamLoading.classList.add("hidden");
+
+      if (!members || members.length === 0) {
+        if (teamEmpty) teamEmpty.classList.remove("hidden");
+        return;
+      }
+
+      if (teamEmpty) teamEmpty.classList.add("hidden");
+      if (teamTableWrap) teamTableWrap.classList.remove("hidden");
+      if (!teamTbody) return;
+
+      teamTbody.innerHTML = "";
+
+      members.forEach(function (member) {
+        var tr = document.createElement("tr");
+        var isMe = member.id === currentUserId;
+
+        // Email cell
+        var emailTd = document.createElement("td");
+        emailTd.className = "py-2.5 pr-4 text-dark font-medium";
+        emailTd.textContent = member.email;
+        if (isMe) {
+          var youBadge = document.createElement("span");
+          youBadge.className = "ml-2 text-xs text-muted";
+          youBadge.textContent = "(you)";
+          emailTd.appendChild(youBadge);
+        }
+
+        // Role cell with dropdown
+        var roleTd = document.createElement("td");
+        roleTd.className = "py-2.5 px-4";
+        if (isMe) {
+          // Cannot change own role — show badge only
+          var badge = document.createElement("span");
+          var badgeCls = roleBadgeClasses[member.role] || roleBadgeClasses.viewer;
+          badge.className = "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium " + badgeCls;
+          badge.textContent = member.role;
+          roleTd.appendChild(badge);
+        } else {
+          var roleSelect = document.createElement("select");
+          roleSelect.className = "text-xs bg-paper border border-dark/[0.08] rounded-md px-2 py-1 text-dark cursor-pointer focus:outline-none focus:ring-1 focus:ring-coral/30";
+          ["viewer", "developer", "admin"].forEach(function (r) {
+            var opt = document.createElement("option");
+            opt.value = r;
+            opt.textContent = r;
+            if (r === member.role) opt.selected = true;
+            roleSelect.appendChild(opt);
+          });
+          roleSelect.addEventListener("change", function () {
+            updateMemberRole(member.id, roleSelect.value, roleSelect);
+          });
+          roleTd.appendChild(roleSelect);
+        }
+
+        // Joined cell
+        var joinedTd = document.createElement("td");
+        joinedTd.className = "py-2.5 px-4 text-muted text-xs";
+        try {
+          var d = new Date(member.created_at + "Z");
+          joinedTd.textContent = d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+        } catch (_e) {
+          joinedTd.textContent = member.created_at;
+        }
+
+        // Actions cell
+        var actionsTd = document.createElement("td");
+        actionsTd.className = "py-2.5 pl-4 text-right";
+        if (!isMe) {
+          var removeBtn = document.createElement("button");
+          removeBtn.type = "button";
+          removeBtn.className = "inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-md text-muted hover:bg-coral/10 hover:text-coral transition-colors cursor-pointer";
+          removeBtn.innerHTML = '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg> Remove';
+          removeBtn.addEventListener("click", function () {
+            openRemoveModal(member.id, member.email);
+          });
+          actionsTd.appendChild(removeBtn);
+        }
+
+        tr.appendChild(emailTd);
+        tr.appendChild(roleTd);
+        tr.appendChild(joinedTd);
+        tr.appendChild(actionsTd);
+        teamTbody.appendChild(tr);
+      });
+    }
+
+    function updateMemberRole(userId, newRole, selectEl) {
+      selectEl.disabled = true;
+
+      fetch("/api/settings/team/" + userId, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ role: newRole })
+      })
+        .then(function (res) {
+          if (!res.ok) return res.json().then(function (d) { throw new Error(d.detail || "Failed to update role"); });
+          return res.json();
+        })
+        .then(function () {
+          showToast("Role updated to " + newRole, "success");
+        })
+        .catch(function (err) {
+          showToast(err.message, "error");
+          // Revert dropdown to previous value
+          fetchTeamMembers();
+        })
+        .finally(function () {
+          selectEl.disabled = false;
+        });
+    }
+
+    // Invite user
+    if (inviteUserBtn) {
+      inviteUserBtn.addEventListener("click", function () {
+        if (inviteForm) inviteForm.reset();
+        if (inviteError) inviteError.classList.add("hidden");
+        if (inviteModal) inviteModal.showModal();
+      });
+    }
+
+    if (inviteForm) {
+      inviteForm.addEventListener("submit", function (e) {
+        e.preventDefault();
+        if (inviteError) inviteError.classList.add("hidden");
+
+        var formData = new FormData(inviteForm);
+        var email = (formData.get("email") || "").toString().trim();
+        var password = (formData.get("password") || "").toString();
+        var role = (formData.get("role") || "developer").toString();
+
+        if (!email) {
+          if (inviteError) {
+            inviteError.textContent = "Email is required";
+            inviteError.classList.remove("hidden");
+          }
+          return;
+        }
+        if (password.length < 8) {
+          if (inviteError) {
+            inviteError.textContent = "Password must be at least 8 characters";
+            inviteError.classList.remove("hidden");
+          }
+          return;
+        }
+
+        inviteSubmit.disabled = true;
+        inviteSubmit.textContent = "Inviting...";
+
+        fetch("/api/settings/team/invite", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({ email: email, password: password, role: role })
+        })
+          .then(function (res) {
+            if (!res.ok) return res.json().then(function (d) { throw new Error(d.detail || "Failed to invite user"); });
+            return res.json();
+          })
+          .then(function () {
+            inviteForm.reset();
+            inviteModal.close();
+            showToast("Team member invited", "success");
+            fetchTeamMembers();
+          })
+          .catch(function (err) {
+            if (inviteError) {
+              inviteError.textContent = err.message;
+              inviteError.classList.remove("hidden");
+            }
+          })
+          .finally(function () {
+            inviteSubmit.disabled = false;
+            inviteSubmit.textContent = "Invite";
+          });
+      });
+    }
+
+    // Remove user
+    function openRemoveModal(id, email) {
+      removeTargetId = id;
+      if (removeEmailEl) removeEmailEl.textContent = email;
+      if (removeModal) removeModal.showModal();
+    }
+
+    if (confirmRemoveBtn) {
+      confirmRemoveBtn.addEventListener("click", function () {
+        if (!removeTargetId) return;
+
+        confirmRemoveBtn.disabled = true;
+        confirmRemoveBtn.textContent = "Removing...";
+
+        fetch("/api/settings/team/" + removeTargetId, {
+          method: "DELETE",
+          credentials: "same-origin"
+        })
+          .then(function (res) {
+            if (!res.ok) return res.json().then(function (d) { throw new Error(d.detail || "Failed to remove user"); });
+            removeModal.close();
+            removeTargetId = null;
+            showToast("Team member removed", "success");
+            fetchTeamMembers();
+          })
+          .catch(function (err) {
+            showToast(err.message, "error");
+            removeModal.close();
+          })
+          .finally(function () {
+            confirmRemoveBtn.disabled = false;
+            confirmRemoveBtn.textContent = "Remove User";
+          });
       });
     }
 
