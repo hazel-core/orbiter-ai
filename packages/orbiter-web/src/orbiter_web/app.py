@@ -54,6 +54,7 @@ from orbiter_web.routes.runs import router as runs_router
 from orbiter_web.routes.sandbox import router as sandbox_router
 from orbiter_web.routes.schedules import router as schedules_router
 from orbiter_web.routes.search import router as search_router
+from orbiter_web.routes.team import router as team_router
 from orbiter_web.routes.threads import router as threads_router
 from orbiter_web.routes.tools import router as tools_router
 from orbiter_web.routes.vector_stores import router as vector_stores_router
@@ -165,6 +166,7 @@ app.include_router(search_router)
 app.include_router(prompt_templates_router)
 app.include_router(provider_keys_router)
 app.include_router(providers_router)
+app.include_router(team_router)
 app.include_router(threads_router)
 app.include_router(tools_router)
 app.include_router(vector_stores_router)
