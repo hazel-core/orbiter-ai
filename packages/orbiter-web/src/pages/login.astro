@@ -20,6 +20,31 @@ import Input from "../components/Input.astro";
         <p class="text-sm text-muted">Sign in to your workspace</p>
       </div>
 
+      <!-- Session expired toast (shown when redirected from expired session) -->
+      <div
+        id="expired-toast"
+        class="hidden mb-4 flex items-start gap-3 rounded-lg border border-coral/30 bg-coral/10 px-4 py-3 text-sm font-medium text-dark animate-[toastSlideIn_200ms_ease-out]"
+        role="alert"
+      >
+        <svg class="mt-0.5 shrink-0 text-coral" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10" />
+          <line x1="12" y1="16" x2="12" y2="12" />
+          <line x1="12" y1="8" x2="12.01" y2="8" />
+        </svg>
+        <span>Session expired, please log in again</span>
+        <button
+          type="button"
+          id="expired-toast-close"
+          class="shrink-0 ml-auto flex h-5 w-5 items-center justify-center rounded text-muted hover:text-dark transition-colors cursor-pointer"
+          aria-label="Close"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+
       <!-- Login form -->
       <form id="login-form" class="rounded-xl bg-subtle/80 border border-dark/[0.08] p-6 flex flex-col gap-4">
         <Input
@@ -49,8 +74,34 @@ import Input from "../components/Input.astro";
   </div>
 </BaseLayout>
 
+<style>
+  @keyframes toastSlideIn {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+</style>
+
 <script is:inline>
   (function () {
+    // Show session expired toast if redirected with ?expired=true.
+    var params = new URLSearchParams(window.location.search);
+    if (params.get("expired") === "true") {
+      var toast = document.getElementById("expired-toast");
+      if (toast) toast.classList.remove("hidden");
+      // Clean up the URL query param.
+      var cleanUrl = window.location.pathname;
+      window.history.replaceState(null, "", cleanUrl);
+      // Auto-dismiss after 8s.
+      setTimeout(function () {
+        if (toast) toast.style.display = "none";
+      }, 8000);
+      // Close button.
+      var closeBtn = document.getElementById("expired-toast-close");
+      if (closeBtn) closeBtn.addEventListener("click", function () {
+        toast.style.display = "none";
+      });
+    }
+
     // If already logged in, redirect to projects
     fetch("/api/auth/me", { credentials: "same-origin" })
       .then(function (res) {

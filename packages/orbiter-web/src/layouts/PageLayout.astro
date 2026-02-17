@@ -339,9 +339,42 @@ const bellIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="c
     </aside>
   </div>
 
+  <!-- Connection status banner (shown on WebSocket auth failure / disconnect) -->
+  <div
+    id="connection-banner"
+    class="hidden fixed top-0 left-0 right-0 z-[90] flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium bg-coral/10 border-b border-coral/20 text-coral"
+  >
+    <svg class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="1" y1="1" x2="23" y2="23"/>
+      <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/>
+      <path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/>
+      <path d="M10.71 5.05A16 16 0 0 1 22.56 9"/>
+      <path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/>
+      <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>
+      <line x1="12" y1="20" x2="12.01" y2="20"/>
+    </svg>
+    <span id="connection-banner-text">Connection lost. Reconnecting...</span>
+  </div>
+
   <!-- Auth check: redirect unauthenticated users to /login -->
   <script is:inline>
     (function () {
+      /* ---------- Session expiry state ---------- */
+      var _sessionExpired = false;
+      var _pendingControllers = [];
+
+      /** Cancel all in-flight requests and redirect to login. */
+      window.__orbiterExpireSession = function () {
+        if (_sessionExpired) return;
+        _sessionExpired = true;
+        // Abort all tracked requests to prevent cascading error toasts.
+        for (var i = 0; i < _pendingControllers.length; i++) {
+          try { _pendingControllers[i].abort(); } catch (_) {}
+        }
+        _pendingControllers = [];
+        window.location.replace("/login?expired=true");
+      };
+
       /* ---------- CSRF auto-include ---------- */
       var _csrfToken = null;
       var _csrfPromise = null;
@@ -365,28 +398,67 @@ const bellIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="c
       /** Clear cached CSRF token (call on logout). */
       window.clearCsrfToken = function () { _csrfToken = null; };
 
-      /** Patched fetch: auto-includes X-CSRF-Token on unsafe same-origin requests. */
+      /**
+       * Patched fetch: auto-includes X-CSRF-Token on unsafe same-origin requests
+       * AND intercepts 401 responses to trigger session expiry.
+       */
       window.fetch = function (input, init) {
-        init = init || {};
-        var method = (init.method || "GET").toUpperCase();
-        if (!_unsafeMethods[method]) return _origFetch(input, init);
-
-        // Only patch same-origin requests.
-        var url = typeof input === "string" ? input : (input.url || "");
-        if (url.indexOf("://") !== -1 && url.indexOf(location.origin) !== 0) {
-          return _origFetch(input, init);
+        if (_sessionExpired) {
+          return Promise.reject(new DOMException("Session expired", "AbortError"));
         }
 
-        return window.getCsrfToken().then(function (token) {
-          if (token) {
-            init.headers = init.headers || {};
-            if (typeof init.headers.set === "function") {
-              init.headers.set("X-CSRF-Token", token);
-            } else {
-              init.headers["X-CSRF-Token"] = token;
-            }
+        init = init || {};
+        var method = (init.method || "GET").toUpperCase();
+
+        // Determine if this is a same-origin API request.
+        var url = typeof input === "string" ? input : (input.url || "");
+        var isSameOrigin = url.indexOf("://") === -1 || url.indexOf(location.origin) === 0;
+        var isApiRequest = isSameOrigin && url.indexOf("/api/") !== -1;
+
+        // Track request with AbortController for cancellation on expiry.
+        var controller = null;
+        if (isApiRequest && !init.signal) {
+          controller = new AbortController();
+          _pendingControllers.push(controller);
+          init.signal = controller.signal;
+        }
+
+        function removeController() {
+          if (controller) {
+            var idx = _pendingControllers.indexOf(controller);
+            if (idx !== -1) _pendingControllers.splice(idx, 1);
           }
-          return _origFetch(input, init);
+        }
+
+        // For non-unsafe or non-same-origin requests, skip CSRF but still intercept 401.
+        var fetchPromise;
+        if (!_unsafeMethods[method] || !isSameOrigin) {
+          fetchPromise = _origFetch(input, init);
+        } else {
+          fetchPromise = window.getCsrfToken().then(function (token) {
+            if (token) {
+              init.headers = init.headers || {};
+              if (typeof init.headers.set === "function") {
+                init.headers.set("X-CSRF-Token", token);
+              } else {
+                init.headers["X-CSRF-Token"] = token;
+              }
+            }
+            return _origFetch(input, init);
+          });
+        }
+
+        return fetchPromise.then(function (res) {
+          removeController();
+          // Intercept 401 on API requests (skip /api/auth/login to avoid redirect loops).
+          if (isApiRequest && res.status === 401 && url.indexOf("/api/auth/login") === -1) {
+            window.__orbiterExpireSession();
+            return Promise.reject(new DOMException("Session expired", "AbortError"));
+          }
+          return res;
+        }).catch(function (err) {
+          removeController();
+          throw err;
         });
       };
 
@@ -1207,14 +1279,36 @@ const bellIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="c
           var proto = window.location.protocol === "https:" ? "wss:" : "ws:";
           var wsUrl = proto + "//" + window.location.host + "/api/ws";
           var ws = new WebSocket(wsUrl);
+          var banner = document.getElementById("connection-banner");
+          var bannerText = document.getElementById("connection-banner-text");
+
+          function showBanner(msg) {
+            if (banner && bannerText) {
+              bannerText.textContent = msg;
+              banner.classList.remove("hidden");
+            }
+          }
+
+          function hideBanner() {
+            if (banner) banner.classList.add("hidden");
+          }
 
           ws.addEventListener("open", function () {
+            hideBanner();
             ws.send(JSON.stringify({ type: "subscribe", channel: "notifications" }));
           });
 
           ws.addEventListener("message", function (event) {
             try {
               var msg = JSON.parse(event.data);
+
+              // Handle auth_error from server (session expired over WS).
+              if (msg.type === "auth_error" || (msg.channel === "system" && msg.type === "auth_error")) {
+                showBanner("Session expired. Redirecting to login...");
+                if (window.__orbiterExpireSession) window.__orbiterExpireSession();
+                return;
+              }
+
               if (msg.channel === "notifications" && msg.type === "notification_created") {
                 var p = msg.payload || msg;
                 var newNotif = {
@@ -1236,9 +1330,19 @@ const bellIcon = '<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="c
             } catch (_) {}
           });
 
-          ws.addEventListener("close", function () {
-            // Reconnect after delay
-            setTimeout(setupWebSocket, 5000);
+          ws.addEventListener("close", function (event) {
+            // Close codes 4401/4403 = auth failure → expire session.
+            if (event.code === 4401 || event.code === 4403) {
+              showBanner("Session expired. Redirecting to login...");
+              if (window.__orbiterExpireSession) window.__orbiterExpireSession();
+              return;
+            }
+
+            // Normal disconnect — show reconnecting banner and retry.
+            showBanner("Connection lost. Reconnecting...");
+            setTimeout(function () {
+              setupWebSocket();
+            }, 5000);
           });
 
           ws.addEventListener("error", function () {
