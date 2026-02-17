@@ -2614,3 +2614,15 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Bulk download without server-side ZIP: trigger multiple `<a download>` clicks programmatically
   - New sidebar icons must be added to both the `navSections` array AND the `icons` Record in PageLayout.astro
 ---
+
+## 2026-02-17 - US-178
+- Implemented background cleanup task for expired sessions, stale password reset tokens, and orphaned upload files
+- Files changed:
+  - `packages/orbiter-web/src/orbiter_web/services/cleanup.py` (new) — cleanup loop with `_run_cleanup()`, `start_cleanup()`, `stop_cleanup()`
+  - `packages/orbiter-web/src/orbiter_web/config.py` — added `cleanup_interval_hours` setting (ORBITER_CLEANUP_INTERVAL_HOURS env var, default 6)
+  - `packages/orbiter-web/src/orbiter_web/app.py` — integrated cleanup start/stop into lifespan
+- **Learnings for future iterations:**
+  - Background tasks follow the scheduler.py pattern: module-level `_task` sentinel, `start_*`/`stop_*` async functions, cancellation with `contextlib.suppress(asyncio.CancelledError)`
+  - Cleanup service checks documents table for referenced files before deleting uploads — prevents removing files that are still in use
+  - ORBITER_CLEANUP_INTERVAL_HOURS env var configurable at `settings.cleanup_interval_hours`
+---

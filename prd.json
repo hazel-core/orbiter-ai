@@ -3129,7 +3129,7 @@
         "Typecheck passes"
       ],
       "priority": 51,
-      "passes": false,
+      "passes": true,
       "notes": "Gap fill: expired sessions accumulate forever. No cleanup for any temporary data"
     },
     {
