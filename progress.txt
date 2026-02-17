@@ -2149,3 +2149,21 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - For update endpoints using `model_dump(exclude_none=True)`, sanitize the dict values before building the SQL SET clause
   - Ruff N806: don't use UPPER_CASE for local variables inside functions — use tuple/set literal directly in for-loop
 ---
+
+## 2026-02-17 - US-164
+- Implemented standardized error response format for all API errors
+- Created `orbiter_web/errors.py` with:
+  - `_STATUS_CODE_MAP` mapping HTTP status codes to standard error codes (VALIDATION_ERROR, UNAUTHORIZED, FORBIDDEN, RESOURCE_NOT_FOUND, CONFLICT, RATE_LIMITED, INTERNAL_ERROR, BAD_GATEWAY, SERVICE_UNAVAILABLE)
+  - `_http_exception_handler` — catches all `HTTPException` and wraps into `{error: {code, message, details}}`
+  - `_validation_exception_handler` — catches Pydantic `RequestValidationError` with field-level details (field path, message, type)
+  - `_generic_exception_handler` — catches unhandled exceptions as INTERNAL_ERROR
+  - `register_error_handlers(app)` convenience function
+- Registered handlers in `app.py` after FastAPI instantiation
+- All existing `HTTPException(detail=...)` calls throughout routes now automatically produce the structured format — no route changes needed
+- Files changed: `errors.py` (new), `app.py`
+- **Learnings for future iterations:**
+  - FastAPI exception handlers replace the default response format globally — no need to modify individual route files
+  - Starlette's `HTTPException` is the base class FastAPI's `HTTPException` inherits from — register handler for `starlette.exceptions.HTTPException` to catch both
+  - The `request` parameter is required by FastAPI's handler signature even if unused — ruff ARG rules are not enabled in this project so no noqa needed
+  - Pydantic validation error `loc` tuple starts with "body"/"query"/"path" — skip first element for user-friendly field paths
+---

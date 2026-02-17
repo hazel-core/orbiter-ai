@@ -2875,7 +2875,7 @@
         "Typecheck passes"
       ],
       "priority": 20,
-      "passes": false,
+      "passes": true,
       "notes": "Gap fill: PRD API contract defines error envelope but implementation uses FastAPI default {detail: '...'}"
     },
     {
