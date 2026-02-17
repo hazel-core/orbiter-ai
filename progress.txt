@@ -1950,3 +1950,29 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - loadPipelines() call must be placed in showAgent() after context fields are populated
   - Neuron type metadata (labels, colors, icons) defined as a JS object for consistent rendering across list, budget, and preview
 ---
+
+## 2026-02-17 - US-106
+- Implemented context state inspector panel in playground trace panel
+- Added tabbed interface to trace panel: "Trace" (existing) and "Context" (new)
+- Context inspector shows hierarchical tree view matching Orbiter's ContextState parent-child hierarchy
+- Each node displays: task_id, key-value pairs table, token usage breakdown
+- Expand/collapse on all tree nodes with chevron toggle
+- Change highlighting between steps: green dots for new values, yellow for modified, red for removed (with strikethrough)
+- Fork visualization: fork icon badge on nodes with fork_event, shows parent_task_id
+- Merge visualization: merge icon badge + green merge info row with net token delta
+- Step navigator (prev/next) to browse context state at each step
+- Context snapshots auto-generated from trace entries during chat (synthesized from trace data)
+- WebSocket protocol extended with `context_state` message type for real agent runtime data
+- Backend REST endpoint: GET /api/context-state/conversation/:id for fetching context state
+- Files changed:
+  - packages/orbiter-web/src/pages/playground.astro (added ~540 lines: tabs, context inspector tree, diff engine, snapshot builder)
+  - packages/orbiter-web/src/orbiter_web/routes/context_state.py (new, 56 lines)
+  - packages/orbiter-web/src/orbiter_web/app.py (registered context_state_router)
+- **Learnings for future iterations:**
+  - Trace panel tabs: use data-tab attributes and toggle bg-subtle/text-dark vs text-muted for active/inactive state
+  - Context snapshots are diffed against previous snapshot to compute entry status (new/modified/removed/unchanged)
+  - Tree rendering is recursive: renderContextNode(node, depth) with depth-based indentation via marginLeft
+  - The WebSocket `context_state` message type carries a full tree — frontend just calls addContextSnapshot(data.tree)
+  - Until agent runtime is wired, context snapshots are synthesized from trace entries in buildContextSnapshotFromTrace()
+  - clearTraceEntries() must also call clearContextSnapshots() to keep both panels in sync
+---
