@@ -2511,6 +2511,7 @@ version = "0.1.0"
 source = { editable = "packages/orbiter-distributed" }
 dependencies = [
     { name = "orbiter-core" },
+    { name = "orbiter-observability" },
     { name = "redis", extra = ["hiredis"] },
 ]
 
@@ -2528,6 +2529,7 @@ test = [
 requires-dist = [
     { name = "fakeredis", extras = ["lua"], marker = "extra == 'test'" },
     { name = "orbiter-core", editable = "packages/orbiter-core" },
+    { name = "orbiter-observability", editable = "packages/orbiter-observability" },
     { name = "pytest", marker = "extra == 'test'" },
     { name = "pytest-asyncio", marker = "extra == 'test'" },
     { name = "redis", extras = ["hiredis"], specifier = ">=5.0" },

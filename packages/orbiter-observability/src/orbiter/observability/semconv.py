@@ -78,6 +78,27 @@ COST_OUTPUT_TOKENS = "orbiter.cost.output_tokens"
 COST_TOTAL_USD = "orbiter.cost.total_usd"
 
 # ---------------------------------------------------------------------------
+# Distributed task conventions — orbiter.distributed.*
+# ---------------------------------------------------------------------------
+
+DIST_TASK_ID = "orbiter.distributed.task_id"
+DIST_WORKER_ID = "orbiter.distributed.worker_id"
+DIST_QUEUE_NAME = "orbiter.distributed.queue_name"
+DIST_TASK_STATUS = "orbiter.distributed.task_status"
+
+# ---------------------------------------------------------------------------
+# Distributed task metric names
+# ---------------------------------------------------------------------------
+
+METRIC_DIST_TASKS_SUBMITTED = "dist_tasks_submitted"
+METRIC_DIST_TASKS_COMPLETED = "dist_tasks_completed"
+METRIC_DIST_TASKS_FAILED = "dist_tasks_failed"
+METRIC_DIST_TASKS_CANCELLED = "dist_tasks_cancelled"
+METRIC_DIST_QUEUE_DEPTH = "dist_queue_depth"
+METRIC_DIST_TASK_DURATION = "dist_task_duration"
+METRIC_DIST_TASK_WAIT_TIME = "dist_task_wait_time"
+
+# ---------------------------------------------------------------------------
 # Span name prefixes
 # ---------------------------------------------------------------------------
 

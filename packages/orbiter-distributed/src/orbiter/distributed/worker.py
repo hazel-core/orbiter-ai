@@ -16,6 +16,11 @@ import redis.asyncio as aioredis
 from orbiter.distributed.broker import TaskBroker  # pyright: ignore[reportMissingImports]
 from orbiter.distributed.cancel import CancellationToken  # pyright: ignore[reportMissingImports]
 from orbiter.distributed.events import EventPublisher  # pyright: ignore[reportMissingImports]
+from orbiter.distributed.metrics import (  # pyright: ignore[reportMissingImports]
+    record_task_cancelled,
+    record_task_completed,
+    record_task_failed,
+)
 from orbiter.distributed.models import (  # pyright: ignore[reportMissingImports]
     TaskPayload,
     TaskStatus,
@@ -171,13 +176,16 @@ class Worker:
             self._listen_for_cancel(task.task_id, token)
         )
 
+        started_at = time.time()
+        wait_time = started_at - task.created_at if task.created_at > 0 else 0.0
+
         try:
             # Mark as RUNNING
             await self._store.set_status(
                 task.task_id,
                 TaskStatus.RUNNING,
                 worker_id=self._worker_id,
-                started_at=time.time(),
+                started_at=started_at,
             )
 
             # Reconstruct agent from config
@@ -185,6 +193,8 @@ class Worker:
 
             # Execute via run.stream()
             result_text = await self._run_agent(agent, task, token)
+
+            duration = time.time() - started_at
 
             if token.cancelled:
                 # Cancellation took effect during execution
@@ -194,6 +204,10 @@ class Worker:
                     completed_at=time.time(),
                 )
                 await self._broker.ack(task.task_id)
+                record_task_cancelled(
+                    task_id=task.task_id,
+                    worker_id=self._worker_id,
+                )
             else:
                 # Mark as COMPLETED
                 await self._store.set_status(
@@ -204,14 +218,26 @@ class Worker:
                 )
                 await self._broker.ack(task.task_id)
                 self._tasks_processed += 1
+                record_task_completed(
+                    task_id=task.task_id,
+                    worker_id=self._worker_id,
+                    duration=duration,
+                    wait_time=wait_time,
+                )
 
         except Exception as exc:
             self._tasks_failed += 1
+            duration = time.time() - started_at
             await self._store.set_status(
                 task.task_id,
                 TaskStatus.FAILED,
                 completed_at=time.time(),
                 error=str(exc),
+            )
+            record_task_failed(
+                task_id=task.task_id,
+                worker_id=self._worker_id,
+                duration=duration,
             )
 
             # Check if retries remain

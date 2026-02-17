@@ -17,6 +17,7 @@ classifiers = [
 ]
 dependencies = [
     "orbiter-core",
+    "orbiter-observability",
     "redis[hiredis]>=5.0",
 ]
 

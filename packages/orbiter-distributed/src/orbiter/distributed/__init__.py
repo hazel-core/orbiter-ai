@@ -17,6 +17,13 @@ from orbiter.distributed.health import (  # pyright: ignore[reportMissingImports
     WorkerHealthCheck,
     get_worker_fleet_status,
 )
+from orbiter.distributed.metrics import (  # pyright: ignore[reportMissingImports]
+    record_queue_depth,
+    record_task_cancelled,
+    record_task_completed,
+    record_task_failed,
+    record_task_submitted,
+)
 from orbiter.distributed.models import (  # pyright: ignore[reportMissingImports]
     TaskPayload,
     TaskResult,
@@ -40,4 +47,9 @@ __all__: list[str] = [
     "WorkerHealthCheck",
     "distributed",
     "get_worker_fleet_status",
+    "record_queue_depth",
+    "record_task_cancelled",
+    "record_task_completed",
+    "record_task_failed",
+    "record_task_submitted",
 ]
