@@ -18,6 +18,12 @@ Started: Mon Feb 17 2026
 - `run.stream()` detects Swarm via `hasattr(agent, 'flow_order')` and delegates to `Swarm.stream()`, same pattern as `run()`
 - Swarm `stream()` imports `run` inside methods to avoid circular imports (runner.py → swarm.py cycle)
 - Event filtering via `event_types: set[str] | None` — Swarm workflow/handoff must filter at yield points (not inner `run.stream()`) to preserve TextEvent collection for output chaining
+- Distributed models use `StrEnum` (not `str, Enum`) per ruff UP042, and frozen Pydantic BaseModels with `Field(default_factory=...)` for mutable defaults
+- Distributed package exports from `orbiter.distributed.__init__` — update `__all__` when adding new public types
+- Use `# pyright: ignore[reportMissingImports]` on all `from orbiter.distributed.*` imports in source and test files — pyright can't resolve namespace packages across workspace members (same pattern as orbiter-observability)
+- fakeredis.aioredis.FakeRedis(decode_responses=True) for Redis integration tests — supports Streams (XADD/XREADGROUP/XACK/XRANGE)
+- TaskBroker uses Redis Streams consumer groups: `{queue_name}:group` as group name, worker_id as consumer name, `>` for new messages
+- TaskBroker._pending_ids maps task_id → stream message_id for ack/nack correlation
 
 ---
 
@@ -133,4 +139,44 @@ Started: Mon Feb 17 2026
   - `orbiter-core`'s `orbiter/__init__.py` has `pkgutil.extend_path()` which enables namespace package splitting across packages
   - Root `pyproject.toml` needs updates in 3 sections when adding a new package: `[tool.uv.workspace] members`, `[dependency-groups] dev`, `[tool.uv.sources]`
   - `fakeredis[lua]` added to root dev deps since it's needed for Redis Stream tests (Streams use Lua scripting internally)
+---
+
+## 2026-02-17 - US-009
+- Created `TaskPayload`, `TaskResult`, and `TaskStatus` models in `orbiter/distributed/models.py`
+- `TaskStatus` is a `StrEnum` with 6 values: PENDING, RUNNING, COMPLETED, FAILED, CANCELLED, RETRYING
+- `TaskPayload` is a frozen Pydantic BaseModel with auto-generated `task_id` (uuid4().hex), `agent_config`, `input`, `messages`, `model`, `detailed`, `metadata`, `created_at`, `timeout_seconds`
+- `TaskResult` is a frozen Pydantic BaseModel with `task_id`, `status`, `result`, `error`, `started_at`, `completed_at`, `worker_id`, `retries`
+- Updated `__init__.py` to export `TaskPayload`, `TaskResult`, `TaskStatus`
+- Added 15 tests covering defaults, custom fields, frozen enforcement, JSON serialization round-trips, and all statuses
+- Files changed: `packages/orbiter-distributed/src/orbiter/distributed/models.py`, `packages/orbiter-distributed/src/orbiter/distributed/__init__.py`, `packages/orbiter-distributed/tests/test_models.py`
+- **Learnings for future iterations:**
+  - Use `StrEnum` (not `str, Enum`) per ruff UP042 rule
+  - `uuid4().hex` gives a 32-char hex string without dashes — good for task IDs
+  - `Field(default_factory=dict)` and `Field(default_factory=list)` for mutable defaults in frozen models
+  - All distributed models are in `orbiter.distributed.models` and re-exported from `orbiter.distributed.__init__`
+  - Tests at `packages/orbiter-distributed/tests/test_models.py` — use `uv run pytest` to execute
+  - Total tests: 765 (15 new distributed + 750 existing)
+---
+
+## 2026-02-17 - US-008
+- Created `TaskBroker` class in `orbiter/distributed/broker.py` backed by Redis Streams
+- Constructor: `TaskBroker(redis_url, *, queue_name='orbiter:tasks', max_retries=3)`
+- `connect()` creates Redis client via `redis.asyncio.from_url()` and ensures consumer group exists (XGROUP CREATE with MKSTREAM)
+- `disconnect()` closes the Redis connection
+- `submit(task)` serializes TaskPayload to JSON and adds to stream via XADD, returns task_id
+- `claim(worker_id, *, timeout=5.0)` uses XREADGROUP with blocking to pop next task from consumer group
+- `ack(task_id)` acknowledges processing via XACK
+- `nack(task_id)` reads original message via XRANGE, acks it, then re-adds to stream for retry by any consumer
+- Updated `__init__.py` to export `TaskBroker`
+- Added `# pyright: ignore[reportMissingImports]` to all distributed package cross-imports (source + tests) following orbiter-observability pattern
+- Added 18 tests across 3 test classes: `TestTaskBrokerInit` (3), `TestTaskBrokerConnect` (4), `TestTaskBrokerWithFakeRedis` (11)
+- Files changed: `packages/orbiter-distributed/src/orbiter/distributed/broker.py`, `packages/orbiter-distributed/src/orbiter/distributed/__init__.py`, `packages/orbiter-distributed/tests/test_broker.py`, `packages/orbiter-distributed/tests/test_models.py`
+- **Learnings for future iterations:**
+  - Use `# pyright: ignore[reportMissingImports]` for all `orbiter.distributed.*` imports — pyright can't resolve namespace packages via .pth editable installs
+  - `fakeredis.aioredis.FakeRedis(decode_responses=True)` provides full Redis Streams support for integration tests
+  - Redis Streams consumer group pattern: XADD for submit, XREADGROUP with `>` for new messages, XACK for acknowledgment
+  - For nack/retry: XRANGE to read original message → XACK to remove from PEL → XADD to re-enqueue
+  - `_pending_ids` dict maps task_id → stream message_id for ack/nack correlation — must be initialized in `__init__`
+  - `aioredis.ResponseError` with "BUSYGROUP" indicates consumer group already exists — safe to ignore on reconnect
+  - Total tests: 783 (33 distributed + 750 existing)
 ---

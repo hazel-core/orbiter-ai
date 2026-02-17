@@ -5,7 +5,11 @@ from __future__ import annotations
 import json
 import time
 
-from orbiter.distributed.models import TaskPayload, TaskResult, TaskStatus
+from orbiter.distributed.models import (  # pyright: ignore[reportMissingImports]
+    TaskPayload,
+    TaskResult,
+    TaskStatus,
+)
 
 
 class TestTaskStatus:

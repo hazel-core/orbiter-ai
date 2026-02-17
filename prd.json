@@ -132,7 +132,7 @@
         "Pyright passes"
       ],
       "priority": 8,
-      "passes": false,
+      "passes": true,
       "notes": "Create packages/orbiter-distributed/src/orbiter/distributed/models.py. Use StrEnum (not str, Enum) per ruff UP042. Use uuid4().hex for task_id default_factory. Use frozen=True on Pydantic models where appropriate (TaskPayload and TaskResult are data carriers)."
     },
     {
@@ -153,7 +153,7 @@
         "Pyright passes"
       ],
       "priority": 9,
-      "passes": false,
+      "passes": true,
       "notes": "Create packages/orbiter-distributed/src/orbiter/distributed/broker.py. Use redis.asyncio for async Redis client. Redis Streams pattern: XADD to submit, XREADGROUP with consumer group for claim, XACK for ack. Create consumer group on connect() with XGROUP CREATE (use MKSTREAM). Use fakeredis[lua] for tests — it supports Streams."
     },
     {

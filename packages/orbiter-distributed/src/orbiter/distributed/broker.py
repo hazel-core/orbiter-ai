@@ -1,0 +1,116 @@
+"""Redis Streams-backed task broker for distributed agent execution."""
+
+from __future__ import annotations
+
+import json
+
+import redis.asyncio as aioredis
+
+from orbiter.distributed.models import TaskPayload  # pyright: ignore[reportMissingImports]
+
+
+class TaskBroker:
+    """Enqueues and distributes agent execution tasks via Redis Streams.
+
+    Uses Redis Streams (XADD/XREADGROUP/XACK) with consumer groups for
+    durable, multi-worker task distribution.
+    """
+
+    def __init__(
+        self,
+        redis_url: str,
+        *,
+        queue_name: str = "orbiter:tasks",
+        max_retries: int = 3,
+    ) -> None:
+        self._redis_url = redis_url
+        self._queue_name = queue_name
+        self._max_retries = max_retries
+        self._group_name = f"{queue_name}:group"
+        self._redis: aioredis.Redis | None = None
+        self._pending_ids: dict[str, str] = {}
+
+    @property
+    def max_retries(self) -> int:
+        return self._max_retries
+
+    async def connect(self) -> None:
+        """Connect to Redis and ensure the consumer group exists."""
+        self._redis = aioredis.from_url(self._redis_url, decode_responses=True)
+        try:
+            await self._redis.xgroup_create(
+                self._queue_name, self._group_name, id="0", mkstream=True
+            )
+        except aioredis.ResponseError as exc:
+            # Group already exists — safe to ignore.
+            if "BUSYGROUP" not in str(exc):
+                raise
+
+    async def disconnect(self) -> None:
+        """Close the Redis connection."""
+        if self._redis is not None:
+            await self._redis.aclose()
+            self._redis = None
+
+    def _client(self) -> aioredis.Redis:
+        if self._redis is None:
+            msg = "TaskBroker is not connected. Call connect() first."
+            raise RuntimeError(msg)
+        return self._redis
+
+    async def submit(self, task: TaskPayload) -> str:
+        """Enqueue a task and return its task_id."""
+        r = self._client()
+        data = task.model_dump()
+        await r.xadd(self._queue_name, {"payload": json.dumps(data)})
+        return task.task_id
+
+    async def claim(
+        self, worker_id: str, *, timeout: float = 5.0
+    ) -> TaskPayload | None:
+        """Pop the next task from the queue (blocking with *timeout* seconds).
+
+        Returns ``None`` if no task is available within the timeout.
+        """
+        r = self._client()
+        block_ms = int(timeout * 1000)
+        result = await r.xreadgroup(
+            self._group_name,
+            worker_id,
+            {self._queue_name: ">"},
+            count=1,
+            block=block_ms,
+        )
+        if not result:
+            return None
+
+        _stream_name, messages = result[0]
+        msg_id, fields = messages[0]
+        payload_json: str = fields["payload"]
+        payload = TaskPayload(**json.loads(payload_json))
+        # Store the stream message id so ack/nack can reference it.
+        self._pending_ids[payload.task_id] = msg_id
+        return payload
+
+    async def ack(self, task_id: str) -> None:
+        """Acknowledge successful processing of a task."""
+        r = self._client()
+        msg_id = self._pending_ids.pop(task_id, None)
+        if msg_id is not None:
+            await r.xack(self._queue_name, self._group_name, msg_id)
+
+    async def nack(self, task_id: str) -> None:
+        """Return a task to the queue for retry by another consumer.
+
+        The message is acknowledged (removed from this consumer's PEL) and
+        re-added to the stream so any consumer in the group can pick it up.
+        """
+        r = self._client()
+        msg_id = self._pending_ids.pop(task_id, None)
+        if msg_id is not None:
+            # Read the original message data before acking.
+            msgs = await r.xrange(self._queue_name, min=msg_id, max=msg_id)
+            await r.xack(self._queue_name, self._group_name, msg_id)
+            if msgs:
+                _mid, fields = msgs[0]
+                await r.xadd(self._queue_name, {"payload": fields["payload"]})
