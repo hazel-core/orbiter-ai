@@ -21,6 +21,7 @@ from orbiter_web.routes.conversations import router as conversations_router
 from orbiter_web.routes.costs import router as costs_router
 from orbiter_web.routes.crews import router as crews_router
 from orbiter_web.routes.knowledge_bases import router as knowledge_bases_router
+from orbiter_web.routes.logs import router as logs_router
 from orbiter_web.routes.metrics import router as metrics_router
 from orbiter_web.routes.models import router as models_router
 from orbiter_web.routes.neuron_pipelines import router as neuron_pipelines_router
@@ -77,6 +78,7 @@ app.include_router(conversations_router)
 app.include_router(costs_router)
 app.include_router(crews_router)
 app.include_router(knowledge_bases_router)
+app.include_router(logs_router)
 app.include_router(auth_router)
 app.include_router(metrics_router)
 app.include_router(models_router)
