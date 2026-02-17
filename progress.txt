@@ -2380,3 +2380,20 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Replay flow: call POST /replay API to truncate → reconnect WebSocket → reload conversation → auto-send last message
   - Edit history stored in `message_edits` table with CASCADE delete — automatically cleaned up when message/conversation deleted
 ---
+
+## 2026-02-17 - US-169
+- Implemented global search modal (Cmd+K / Ctrl+K) in PageLayout.astro
+- Search dialog with autofocus input, debounced 300ms API calls to GET /api/search
+- Results grouped by type (Agents, Workflows, Tools, Knowledge Bases) with type-specific icons
+- Arrow key navigation + Enter to open selected result
+- Escape or backdrop click closes modal
+- Recent searches stored in localStorage, shown when input is empty
+- HTML snippet highlights converted to `<mark>` tags with coral highlight
+- Files changed: packages/orbiter-web/src/layouts/PageLayout.astro
+- **Learnings for future iterations:**
+  - Backend search route (`routes/search.py`) and FTS5 infrastructure were already in place from earlier stories
+  - Search API returns results grouped by type key, with `snippet` containing `<b>` tags for highlights
+  - Empty query to `/api/search` returns recent items per type (not actual search results)
+  - Dialog element with `.showModal()` automatically handles Escape key and focus trapping
+  - Use delegated event listeners on the results container for click handling (results are dynamically rendered)
+---
