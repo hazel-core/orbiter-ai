@@ -2299,3 +2299,18 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Frontend inject flow: addUserMessage() + ws.send({type:"inject"}) + startAgentMessage() — mirrors sendMessage() but with inject type
   - contextlib.suppress(asyncio.CancelledError) is the clean pattern for awaiting cancelled tasks in finally blocks
 ---
+
+## 2026-02-17 - US-167
+- Implemented FTS5 full-text search infrastructure
+- Migration 042_create_fts5_tables.sql: FTS5 virtual tables for agents (name, description, instructions), workflows (name, description), tools (name, description), thread_messages (content)
+- Triggers for INSERT/UPDATE/DELETE sync on all four tables
+- Initial data population from existing rows
+- search_entities() in orbiter_web/search.py: async search across entity types with FTS5 MATCH, snippet highlighting, prefix matching, relevance ranking
+- Files changed: migrations/042_create_fts5_tables.sql, search.py
+- **Learnings for future iterations:**
+  - agents table uses `instructions` column (not `system_prompt`) for the system prompt text
+  - FTS5 content tables use `content='table_name'` and `content_rowid='rowid'` for external content mode
+  - FTS5 delete operations use the special syntax: `INSERT INTO fts_table(fts_table, rowid, ...) VALUES ('delete', old.rowid, ...)`
+  - Thread messages are in `thread_messages` table (not `messages`); join via `thread_id` to `threads` for entity-level results
+  - SQLite FTS5 rank is negative (more negative = better match); ORDER BY rank ascending gives best results first
+---

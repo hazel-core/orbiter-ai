@@ -2927,7 +2927,7 @@
         "Typecheck passes"
       ],
       "priority": 23,
-      "passes": false,
+      "passes": true,
       "notes": "Gap fill: many stories mention 'search' but no FTS infrastructure. Naive LIKE queries don't scale"
     },
     {
