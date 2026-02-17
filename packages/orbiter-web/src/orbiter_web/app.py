@@ -22,7 +22,6 @@ from orbiter_web.middleware.versioning import APIVersionRedirectMiddleware
 from orbiter_web.routes.agent_templates import router as agent_templates_router
 from orbiter_web.routes.agents import router as agents_router
 from orbiter_web.routes.alerts import router as alerts_router
-from orbiter_web.routes.config_versions import router as config_versions_router
 from orbiter_web.routes.annotations import router as annotations_router
 from orbiter_web.routes.applications import router as applications_router
 from orbiter_web.routes.approvals import router as approvals_router
@@ -31,6 +30,7 @@ from orbiter_web.routes.audit_log import router as audit_log_router
 from orbiter_web.routes.auth import router as auth_router
 from orbiter_web.routes.benchmarks import router as benchmarks_router
 from orbiter_web.routes.checkpoints import router as checkpoints_router
+from orbiter_web.routes.config_versions import router as config_versions_router
 from orbiter_web.routes.context_state import router as context_state_router
 from orbiter_web.routes.conversations import router as conversations_router
 from orbiter_web.routes.costs import router as costs_router
@@ -63,6 +63,7 @@ from orbiter_web.routes.tools import router as tools_router
 from orbiter_web.routes.vector_stores import router as vector_stores_router
 from orbiter_web.routes.workflow_runs import router as workflow_runs_router
 from orbiter_web.routes.workflows import router as workflows_router
+from orbiter_web.routes.workspace_export import router as workspace_export_router
 from orbiter_web.routes.workspace_settings import router as workspace_settings_router
 from orbiter_web.websocket import router as ws_router
 
@@ -178,6 +179,7 @@ app.include_router(tools_router)
 app.include_router(vector_stores_router)
 app.include_router(workflow_runs_router)
 app.include_router(workflows_router)
+app.include_router(workspace_export_router)
 app.include_router(workspace_settings_router)
 app.include_router(ws_router)
 
