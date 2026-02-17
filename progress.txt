@@ -2881,3 +2881,23 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Expandable table rows: use pairs of <tr> elements — main row + hidden detail row toggled by click
   - Cursor-based pagination on frontend: pass next_cursor from response to subsequent fetch, append rows to tbody
 ---
+
+## 2026-02-17 - US-185
+- What was implemented: Team management backend — admin-only REST API for managing users
+  - GET /api/settings/team — list all users with id, email, role, created_at
+  - POST /api/settings/team/invite — create new user with email, password, role
+  - PUT /api/settings/team/:userId — update user role
+  - DELETE /api/settings/team/:userId — delete user and revoke all sessions
+  - Guards: cannot delete yourself, cannot demote/delete the last admin
+  - All endpoints require admin role via `require_role("admin")`
+  - Audit logging on all write operations
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/routes/team.py (new — team management endpoints)
+  - packages/orbiter-web/src/orbiter_web/app.py (register team_router)
+- **Learnings for future iterations:**
+  - No migration needed — team management reuses existing users/sessions tables
+  - `_hash_password` from auth.py is importable for creating new users from admin routes
+  - Use `sanitize_html()` on email input before DB storage
+  - Admin guard pattern: every endpoint uses `Depends(require_role("admin"))` with `# noqa: B008`
+  - Last-admin check: `SELECT COUNT(*) AS cnt FROM users WHERE role = 'admin'` before demotion or deletion
+---

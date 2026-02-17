@@ -3246,7 +3246,7 @@
         "Typecheck passes"
       ],
       "priority": 56,
-      "passes": false,
+      "passes": true,
       "notes": "Gap fill: API contract defines team management endpoints. Currently no way to manage users after creation"
     },
     {
