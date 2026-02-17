@@ -66,6 +66,7 @@ def topological_sort(nodes: list[dict[str, Any]], edges: list[dict[str, Any]]) -
 
 _AGENT_NODE_TYPES = {"agent_node", "sub_agent"}
 _RETRIEVAL_NODE_TYPE = "knowledge_retrieval"
+_APPROVAL_GATE_TYPE = "approval_gate"
 
 
 def _gather_upstream_inputs(
@@ -350,11 +351,97 @@ async def _execute_retrieval_node(
     }
 
 
+async def _execute_approval_gate(
+    node: dict[str, Any],
+    run_id: str,
+    user_id: str,
+    event_callback: Any | None = None,
+    cancel_event: asyncio.Event | None = None,
+) -> dict[str, Any]:
+    """Execute an approval_gate node — pause until a human approves or rejects.
+
+    Creates a workflow_approval record, updates run status to 'awaiting_approval',
+    and polls until the approval is resolved or times out.
+    """
+    from orbiter_web.routes.approvals import create_approval, poll_approval
+
+    node_data = node.get("data", {})
+    node_id = node["id"]
+    timeout_minutes = node_data.get("timeout_minutes", 60)
+
+    async def emit(event: dict[str, Any]) -> None:
+        if event_callback is not None:
+            with contextlib.suppress(Exception):
+                await event_callback(event)
+
+    # Create the approval record.
+    approval_id = await create_approval(run_id, node_id, user_id, timeout_minutes)
+
+    # Mark the run as awaiting approval.
+    await _update_run_status(run_id, "awaiting_approval")
+
+    # Create a notification in the alerts table for the user.
+    notification_id = str(uuid.uuid4())
+    async with get_db() as db:
+        await db.execute(
+            """
+            INSERT INTO alerts (id, rule_id, severity, message, acknowledged, user_id)
+            VALUES (?, '', 'info', ?, 0, ?)
+            """,
+            (notification_id, f"Workflow approval required for node '{node_data.get('label', node_id)}'", user_id),
+        )
+        await db.commit()
+
+    await emit({
+        "type": "approval_required",
+        "node_id": node_id,
+        "approval_id": approval_id,
+        "timeout_minutes": timeout_minutes,
+    })
+
+    # Poll for approval resolution.
+    while True:
+        if cancel_event is not None and cancel_event.is_set():
+            return {
+                "node_id": node_id,
+                "node_type": _APPROVAL_GATE_TYPE,
+                "label": node_data.get("label", ""),
+                "result": "Cancelled",
+                "logs": "Approval gate cancelled by run cancellation",
+            }
+
+        status = await poll_approval(approval_id)
+
+        if status == "approved":
+            # Restore run status to running.
+            await _update_run_status(run_id, "running")
+            return {
+                "node_id": node_id,
+                "node_type": _APPROVAL_GATE_TYPE,
+                "label": node_data.get("label", ""),
+                "result": "Approved",
+                "logs": f"Approval gate approved (approval_id={approval_id})",
+            }
+
+        if status in ("rejected", "timed_out"):
+            # Restore run status to running (the caller will handle the failure).
+            await _update_run_status(run_id, "running")
+            reason = "Rejected by user" if status == "rejected" else "Timed out"
+            raise RuntimeError(f"Approval gate {status}: {reason}")
+
+        # Still pending — wait before polling again.
+        await asyncio.sleep(2)
+
+
 async def _execute_node(
     node: dict[str, Any],
     edges: list[dict[str, Any]] | None = None,
     variables: dict[str, Any] | None = None,
     event_callback: Any | None = None,
+    *,
+    run_id: str = "",
+    user_id: str = "",
+    cancel_event: asyncio.Event | None = None,
 ) -> dict[str, Any]:
     """Execute a single workflow node and return its output.
 
@@ -384,6 +471,13 @@ async def _execute_node(
     if node_type == _RETRIEVAL_NODE_TYPE:
         query_text = _gather_upstream_inputs(node["id"], edges, variables)
         return await _execute_retrieval_node(node, query_text)
+
+    # --- Approval gate node ---
+    if node_type == _APPROVAL_GATE_TYPE:
+        return await _execute_approval_gate(
+            node, run_id=run_id, user_id=user_id,
+            event_callback=event_callback, cancel_event=cancel_event,
+        )
 
     # --- Other node types: stub execution ---
     await asyncio.sleep(0.01)
@@ -621,7 +715,10 @@ async def execute_workflow(
 
             await emit({"type": "node_started", "node_id": nid})
             tasks[nid] = asyncio.create_task(
-                _execute_node(node, edges=edges, variables=variables, event_callback=emit)
+                _execute_node(
+                    node, edges=edges, variables=variables, event_callback=emit,
+                    run_id=run_id, user_id=user_id, cancel_event=cancel_event,
+                )
             )
 
         # Gather results.
@@ -849,7 +946,10 @@ async def execute_workflow_debug(
         await emit({"type": "node_started", "node_id": nid})
 
         try:
-            output = await _execute_node(node, edges=edges, variables=variables, event_callback=emit)
+            output = await _execute_node(
+                node, edges=edges, variables=variables, event_callback=emit,
+                run_id=run_id, user_id=user_id, cancel_event=cancel_event,
+            )
             completed_at = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
 
             logs_text = output.pop("logs", None)

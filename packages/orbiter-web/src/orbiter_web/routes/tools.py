@@ -597,6 +597,10 @@ _NODE_HANDLE_MAP: dict[str, list[dict[str, Any]]] = {
         {"id": "input", "type": "target", "dataType": "text"},
         {"id": "output", "type": "source", "dataType": "json"},
     ],
+    "approval_gate": [
+        {"id": "input", "type": "target", "dataType": "any"},
+        {"id": "output", "type": "source", "dataType": "any"},
+    ],
     "chat_response": [{"id": "input", "type": "target", "dataType": "message"}],
     "api_response": [{"id": "input", "type": "target", "dataType": "json"}],
 }

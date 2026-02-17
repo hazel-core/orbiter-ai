@@ -175,6 +175,12 @@ const NODE_HANDLE_MAP: Record<string, HandleSpec[]> = {
     { id: "output", type: "source", dataType: "json" },
   ],
 
+  // Flow control
+  approval_gate: [
+    { id: "input", type: "target", dataType: "any" },
+    { id: "output", type: "source", dataType: "any" },
+  ],
+
   // Output — input only (they end the flow)
   chat_response: [
     { id: "input", type: "target", dataType: "message" },
