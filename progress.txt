@@ -2643,3 +2643,24 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Markdown preview uses simple regex-based rendering — no external library needed for basic formatting
   - JSON validation: `JSON.parse()` in try/catch; red border on editor + warning banner on invalid
 ---
+
+## 2026-02-17 - US-131
+- Implemented evaluation framework backend with built-in evaluators
+- Created migrations 053 (evaluations table) and 054 (eval_results table)
+- Built 5 evaluators: exact_match, contains, regex_match, llm_as_judge, semantic_similarity
+- Created full CRUD routes at /api/evaluations with pagination
+- POST /api/evaluations/:id/run sends all test cases to agent, scores responses, persists results
+- GET /api/evaluations/:id/results returns scored results history
+- Registered evaluations_router in app.py
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/migrations/053_create_evaluations.sql (new)
+  - packages/orbiter-web/src/orbiter_web/migrations/054_create_eval_results.sql (new)
+  - packages/orbiter-web/src/orbiter_web/services/evaluators.py (new)
+  - packages/orbiter-web/src/orbiter_web/routes/evaluations.py (new)
+  - packages/orbiter-web/src/orbiter_web/app.py (modified)
+- **Learnings for future iterations:**
+  - Evaluators service uses async dispatch so sync and async evaluators (like llm_as_judge) can be called uniformly via `await run_evaluator()`
+  - Use `_send_to_agent()` helper in evaluations.py for simple single-turn agent calls (builds messages + resolves provider inline)
+  - The llm_as_judge evaluator falls back to semantic_similarity if no provider is available — keeps evals runnable even without API keys
+  - Ruff RUF002 catches en-dash (–) in docstrings — use hyphen-minus (-) instead for ranges like "0.0-1.0"
+---
