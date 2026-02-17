@@ -2072,3 +2072,19 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - WebSocket reconnect pattern: connect on page load if run status is running/pending, reload full data on step events
   - Client-side sort works for current page of API results — sort by cost/tokens/time-asc applied locally after fetch
 ---
+
+## 2026-02-17 - US-113
+- What was implemented: Cost estimation backend with model pricing catalog, budget management, and budget enforcement on workflow runs
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/migrations/036_create_model_pricing.sql (new — model_pricing table with pre-seeded pricing for 6 models)
+  - packages/orbiter-web/src/orbiter_web/migrations/037_create_cost_budgets.sql (new — cost_budgets table with scope/period/alert_threshold)
+  - packages/orbiter-web/src/orbiter_web/routes/costs.py (rewritten — GET/PUT /api/costs/pricing from model_pricing table, GET /api/costs/summary with aggregate data, GET/PUT /api/costs/budgets for budget CRUD, GET /api/costs/budget-check, check_budget() helper)
+  - packages/orbiter-web/src/orbiter_web/engine.py (updated — budget check at start of execute_workflow: warns at threshold, pauses at 100%)
+- **Learnings for future iterations:**
+  - model_pricing is a global catalog (not per-user), separate from the per-user models table
+  - Budget check uses both `runs` and `workflow_runs` tables to compute total spend in period
+  - PUT /api/costs/budgets uses upsert pattern (unique on user_id + scope + scope_id) — simpler than separate POST/PUT
+  - Budget periods: "daily" resets at midnight UTC, "monthly" resets on 1st of month
+  - check_budget() checks agent-specific budget first, falls back to workspace-level — hierarchical scoping
+  - Engine imports check_budget from routes.costs — this creates a dependency from engine to routes module
+---
