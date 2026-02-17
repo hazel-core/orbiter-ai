@@ -16,6 +16,7 @@ const backIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="c
 const saveIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>';
 const deployIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 4 0 4 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-4 0-4"/></svg>';
 const copyIcon = '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+const agentTplIcon = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>';
 ---
 
 <PageLayout
@@ -50,6 +51,15 @@ const copyIcon = '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" strok
         </a>
         <div class="flex items-center gap-3">
           <span id="save-status" class="text-xs text-muted hidden"></span>
+          <button
+            type="button"
+            id="save-agent-template-btn"
+            class="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium border border-dark/[0.08] text-dark rounded-lg hover:bg-dark/5 transition-colors cursor-pointer"
+            title="Save as agent template"
+          >
+            <span set:html={agentTplIcon} />
+            Save as Template
+          </button>
           <button
             type="button"
             id="deploy-api-btn"
@@ -1117,6 +1127,27 @@ const copyIcon = '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" strok
     <div class="flex flex-col gap-3">
       <p class="text-xs text-muted">This is the full system prompt that will be sent to the model, including persona fields.</p>
       <div id="persona-preview-content" class="rounded-lg border border-dark/[0.08] bg-subtle/50 p-4 text-sm text-dark whitespace-pre-wrap font-mono leading-relaxed max-h-96 overflow-y-auto"></div>
+    </div>
+  </Modal>
+
+  <!-- Save as Agent Template modal -->
+  <Modal id="save-agent-template-modal" title="Save as Agent Template">
+    <div class="flex flex-col gap-4">
+      <div class="flex flex-col gap-1.5">
+        <label for="agent-tpl-name-input" class="text-sm font-medium text-dark">Template Name</label>
+        <input type="text" id="agent-tpl-name-input" placeholder="My agent template"
+          class="w-full bg-paper border border-dark/[0.08] rounded-lg px-3 py-2 text-sm text-dark placeholder:text-muted/60 outline-none focus:border-coral focus:ring-2 focus:ring-coral/20" />
+      </div>
+      <div class="flex flex-col gap-1.5">
+        <label for="agent-tpl-desc-input" class="text-sm font-medium text-dark">Description</label>
+        <textarea id="agent-tpl-desc-input" rows="2" placeholder="What this template does..."
+          class="w-full bg-paper border border-dark/[0.08] rounded-lg px-3 py-2 text-sm text-dark placeholder:text-muted/60 outline-none focus:border-coral focus:ring-2 focus:ring-coral/20 resize-none"></textarea>
+      </div>
+      <p class="text-xs text-muted">The agent's full configuration (instructions, model, tools, hooks) will be saved as a reusable template. Credentials are automatically stripped.</p>
+      <div class="flex items-center justify-end gap-2">
+        <button type="button" data-modal-close="save-agent-template-modal" class="rounded-lg px-3 py-1.5 text-sm text-muted hover:text-dark transition-colors cursor-pointer">Cancel</button>
+        <button type="button" id="confirm-save-agent-template" class="rounded-lg bg-dark text-paper px-4 py-1.5 text-sm font-medium hover:bg-dark/80 transition-colors cursor-pointer">Save Template</button>
+      </div>
     </div>
   </Modal>
 
@@ -3580,6 +3611,64 @@ const copyIcon = '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" strok
     if (copyEndpointBtn) {
       copyEndpointBtn.addEventListener("click", function () {
         navigator.clipboard.writeText(document.getElementById("deploy-endpoint-url").textContent);
+      });
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Save as Agent Template                                              */
+    /* ------------------------------------------------------------------ */
+    var saveAgentTplBtn = document.getElementById("save-agent-template-btn");
+    var saveAgentTplModal = document.getElementById("save-agent-template-modal");
+    var agentTplNameInput = document.getElementById("agent-tpl-name-input");
+    var agentTplDescInput = document.getElementById("agent-tpl-desc-input");
+    var confirmSaveAgentTpl = document.getElementById("confirm-save-agent-template");
+
+    if (saveAgentTplBtn) {
+      saveAgentTplBtn.addEventListener("click", function () {
+        agentTplNameInput.value = nameInput ? nameInput.value : "";
+        agentTplDescInput.value = descriptionInput ? descriptionInput.value : "";
+        saveAgentTplModal.showModal();
+        agentTplNameInput.focus();
+      });
+    }
+
+    if (confirmSaveAgentTpl) {
+      confirmSaveAgentTpl.addEventListener("click", function () {
+        var name = agentTplNameInput.value.trim();
+        if (!name) {
+          agentTplNameInput.classList.add("border-coral");
+          return;
+        }
+        agentTplNameInput.classList.remove("border-coral");
+        confirmSaveAgentTpl.disabled = true;
+        confirmSaveAgentTpl.textContent = "Saving...";
+
+        fetch("/api/v1/templates/from-agent", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: name,
+            description: agentTplDescInput.value.trim(),
+            agent_id: agentId,
+          }),
+        })
+          .then(function (res) {
+            if (!res.ok) throw new Error("Failed to save agent template");
+            return res.json();
+          })
+          .then(function (tpl) {
+            saveAgentTplModal.close();
+            saveStatus.textContent = "Saved as template!";
+            saveStatus.classList.remove("hidden");
+            setTimeout(function () { saveStatus.classList.add("hidden"); }, 3000);
+          })
+          .catch(function (err) {
+            alert(err.message);
+          })
+          .finally(function () {
+            confirmSaveAgentTpl.disabled = false;
+            confirmSaveAgentTpl.textContent = "Save Template";
+          });
       });
     }
 
