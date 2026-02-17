@@ -20,66 +20,67 @@ const liveIcon = '<svg class="h-3 w-3" viewBox="0 0 24 24" fill="currentColor"><
   activeSection="monitoring"
   breadcrumbs={breadcrumbs}
 >
-  <div class="p-6 max-w-5xl mx-auto">
+  <div class="p-4 sm:p-6 max-w-5xl mx-auto">
     <!-- Back link -->
-    <a href="/monitoring/runs" class="inline-flex items-center gap-1.5 text-sm text-muted hover:text-dark transition-colors mb-6">
+    <a href="/monitoring/runs" class="inline-flex items-center gap-1.5 text-sm text-muted hover:text-dark transition-colors mb-4 sm:mb-6 min-h-[44px]">
       <span set:html={backIcon} />
       Back to Runs
     </a>
 
     <!-- Run summary header -->
-    <div id="run-header" class="bg-white rounded-xl border border-dark/[0.06] shadow-sm p-6 mb-6">
-      <div class="flex items-start justify-between gap-4 mb-4">
+    <div id="run-header" class="bg-white rounded-xl border border-dark/[0.06] shadow-sm p-4 sm:p-6 mb-4 sm:mb-6">
+      <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-4 mb-4">
         <div>
-          <div class="flex items-center gap-3">
-            <h1 id="run-name" class="text-xl font-semibold text-dark">Loading...</h1>
+          <div class="flex items-center gap-2 sm:gap-3 flex-wrap">
+            <h1 id="run-name" class="text-lg sm:text-xl font-semibold text-dark">Loading...</h1>
             <span id="run-status-badge"></span>
             <span id="live-indicator" class="hidden items-center gap-1.5 text-xs text-red-500 font-medium">
               <span set:html={liveIcon} class="animate-pulse" />
               LIVE
             </span>
           </div>
-          <p id="run-id-label" class="text-xs text-muted mt-1 font-mono"></p>
+          <p id="run-id-label" class="text-xs text-muted mt-1 font-mono truncate max-w-[250px] sm:max-w-none"></p>
         </div>
-        <span id="run-type-badge" class="text-xs font-medium text-muted bg-dark/[0.05] px-2.5 py-1 rounded-full"></span>
+        <span id="run-type-badge" class="text-xs font-medium text-muted bg-dark/[0.05] px-2.5 py-1 rounded-full self-start"></span>
       </div>
 
-      <!-- Summary stats -->
-      <div class="grid grid-cols-2 sm:grid-cols-5 gap-4">
+      <!-- Summary stats — responsive grid -->
+      <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 sm:gap-4">
         <div>
           <p class="text-xs text-muted font-medium uppercase tracking-wide mb-1">Steps</p>
-          <p id="stat-steps" class="text-lg font-semibold text-dark tabular-nums">—</p>
+          <p id="stat-steps" class="text-base sm:text-lg font-semibold text-dark tabular-nums">—</p>
         </div>
         <div>
           <p class="text-xs text-muted font-medium uppercase tracking-wide mb-1">Tokens</p>
-          <p id="stat-tokens" class="text-lg font-semibold text-dark tabular-nums">—</p>
+          <p id="stat-tokens" class="text-base sm:text-lg font-semibold text-dark tabular-nums">—</p>
         </div>
         <div>
           <p class="text-xs text-muted font-medium uppercase tracking-wide mb-1">Cost</p>
-          <p id="stat-cost" class="text-lg font-semibold text-dark tabular-nums">—</p>
+          <p id="stat-cost" class="text-base sm:text-lg font-semibold text-dark tabular-nums">—</p>
         </div>
         <div>
           <p class="text-xs text-muted font-medium uppercase tracking-wide mb-1">Duration</p>
-          <p id="stat-duration" class="text-lg font-semibold text-dark tabular-nums">—</p>
+          <p id="stat-duration" class="text-base sm:text-lg font-semibold text-dark tabular-nums">—</p>
         </div>
-        <div>
+        <div class="col-span-2 sm:col-span-1">
           <p class="text-xs text-muted font-medium uppercase tracking-wide mb-1">Finish Reason</p>
-          <p id="stat-finish" class="text-lg font-semibold text-dark">—</p>
+          <p id="stat-finish" class="text-base sm:text-lg font-semibold text-dark">—</p>
         </div>
       </div>
     </div>
 
     <!-- Tabs -->
-    <div class="mb-6">
+    <div class="mb-4 sm:mb-6">
       <div class="flex border-b border-dark/[0.08]" role="tablist">
         <button type="button" role="tab" aria-selected="true" data-tab-btn="timeline"
-          class="relative px-4 py-2.5 text-sm font-medium transition-colors cursor-pointer text-dark hover:text-dark">
-          Execution Timeline
+          class="relative px-3 sm:px-4 py-2.5 text-sm font-medium transition-colors cursor-pointer text-dark hover:text-dark min-h-[44px]">
+          <span class="hidden sm:inline">Execution Timeline</span>
+          <span class="sm:hidden">Timeline</span>
           <span class="absolute bottom-0 left-0 right-0 h-0.5 rounded-full bg-coral transition-all duration-200"></span>
         </button>
         <button type="button" role="tab" aria-selected="false" data-tab-btn="sandbox"
-          class="relative px-4 py-2.5 text-sm font-medium transition-colors cursor-pointer text-muted hover:text-dark">
-          Sandbox View
+          class="relative px-3 sm:px-4 py-2.5 text-sm font-medium transition-colors cursor-pointer text-muted hover:text-dark min-h-[44px]">
+          Sandbox
           <span class="absolute bottom-0 left-0 right-0 h-0.5 rounded-full bg-transparent scale-x-0 transition-all duration-200"></span>
         </button>
       </div>
@@ -88,12 +89,12 @@ const liveIcon = '<svg class="h-3 w-3" viewBox="0 0 24 24" fill="currentColor"><
     <!-- Tab: Execution Timeline -->
     <div id="panel-timeline" data-tab-panel="timeline">
       <div class="bg-white rounded-xl border border-dark/[0.06] shadow-sm overflow-hidden">
-        <div class="px-6 py-4 border-b border-dark/[0.06] flex items-center justify-between">
+        <div class="px-4 sm:px-6 py-3 sm:py-4 border-b border-dark/[0.06] flex items-center justify-between">
           <h2 class="text-sm font-semibold text-dark">Execution Timeline</h2>
-          <button id="expand-all-btn" class="text-xs text-muted hover:text-dark transition-colors cursor-pointer">Expand All</button>
+          <button id="expand-all-btn" class="text-xs text-muted hover:text-dark transition-colors cursor-pointer min-h-[44px] flex items-center">Expand All</button>
         </div>
         <div id="steps-container" class="divide-y divide-dark/[0.04]">
-          <div class="px-6 py-12 text-center text-muted text-sm">Loading steps...</div>
+          <div class="px-4 sm:px-6 py-12 text-center text-muted text-sm">Loading steps...</div>
         </div>
       </div>
     </div>
@@ -101,7 +102,7 @@ const liveIcon = '<svg class="h-3 w-3" viewBox="0 0 24 24" fill="currentColor"><
     <!-- Tab: Sandbox View -->
     <div id="panel-sandbox" data-tab-panel="sandbox" class="hidden">
       <!-- Sandbox stats bar -->
-      <div id="sandbox-stats" class="flex items-center gap-4 mb-4 text-xs text-muted">
+      <div id="sandbox-stats" class="flex flex-wrap items-center gap-2 sm:gap-4 mb-4 text-xs text-muted">
         <span id="sandbox-exec-count">0 executions</span>
         <span>·</span>
         <span id="sandbox-file-count">0 files generated</span>
@@ -109,7 +110,7 @@ const liveIcon = '<svg class="h-3 w-3" viewBox="0 0 24 24" fill="currentColor"><
         <span id="sandbox-total-time">0ms total</span>
       </div>
 
-      <!-- Two-column layout: file tree + terminal/preview -->
+      <!-- Layout: stacked on mobile, 3-col on desktop -->
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <!-- File tree panel -->
         <div class="lg:col-span-1">
@@ -117,7 +118,7 @@ const liveIcon = '<svg class="h-3 w-3" viewBox="0 0 24 24" fill="currentColor"><
             <div class="px-4 py-3 border-b border-dark/[0.06]">
               <h3 class="text-xs font-semibold text-dark uppercase tracking-wide">Workspace Files</h3>
             </div>
-            <div id="file-tree" class="p-2 max-h-[500px] overflow-y-auto">
+            <div id="file-tree" class="p-2 max-h-[300px] sm:max-h-[500px] overflow-y-auto">
               <div class="px-3 py-8 text-center text-muted text-xs">No sandbox files</div>
             </div>
           </div>
@@ -127,7 +128,7 @@ const liveIcon = '<svg class="h-3 w-3" viewBox="0 0 24 24" fill="currentColor"><
             <div class="px-4 py-3 border-b border-dark/[0.06]">
               <h3 class="text-xs font-semibold text-dark uppercase tracking-wide">Artifacts</h3>
             </div>
-            <div id="artifact-list" class="p-2 max-h-[300px] overflow-y-auto">
+            <div id="artifact-list" class="p-2 max-h-[200px] sm:max-h-[300px] overflow-y-auto">
               <div class="px-3 py-6 text-center text-muted text-xs">No artifacts</div>
             </div>
           </div>
@@ -144,22 +145,22 @@ const liveIcon = '<svg class="h-3 w-3" viewBox="0 0 24 24" fill="currentColor"><
                 streaming
               </span>
             </div>
-            <div id="terminal-output" class="bg-[#1e1e1e] text-[#d4d4d4] p-4 font-mono text-xs leading-relaxed max-h-[350px] overflow-y-auto whitespace-pre-wrap">
+            <div id="terminal-output" class="bg-[#1e1e1e] text-[#d4d4d4] p-3 sm:p-4 font-mono text-[11px] sm:text-xs leading-relaxed max-h-[250px] sm:max-h-[350px] overflow-y-auto whitespace-pre-wrap overflow-x-hidden">
               <span class="text-[#6a9955]"># Waiting for sandbox executions...</span>
             </div>
           </div>
 
           <!-- File preview panel -->
           <div id="file-preview-panel" class="bg-white rounded-xl border border-dark/[0.06] shadow-sm overflow-hidden hidden">
-            <div class="px-4 py-3 border-b border-dark/[0.06] flex items-center justify-between">
-              <h3 id="preview-filename" class="text-xs font-semibold text-dark font-mono">file.txt</h3>
-              <div class="flex items-center gap-2">
-                <span id="preview-size" class="text-xs text-muted"></span>
-                <button id="preview-download" class="text-xs text-coral hover:text-coral/80 transition-colors cursor-pointer font-medium">Download</button>
-                <button id="preview-close" class="text-xs text-muted hover:text-dark transition-colors cursor-pointer">Close</button>
+            <div class="px-4 py-3 border-b border-dark/[0.06] flex items-center justify-between gap-2">
+              <h3 id="preview-filename" class="text-xs font-semibold text-dark font-mono truncate">file.txt</h3>
+              <div class="flex items-center gap-2 shrink-0">
+                <span id="preview-size" class="text-xs text-muted hidden sm:inline"></span>
+                <button id="preview-download" class="text-xs text-coral hover:text-coral/80 transition-colors cursor-pointer font-medium min-h-[44px] flex items-center">Download</button>
+                <button id="preview-close" class="text-xs text-muted hover:text-dark transition-colors cursor-pointer min-h-[44px] flex items-center">Close</button>
               </div>
             </div>
-            <div id="file-preview-content" class="p-4 max-h-[400px] overflow-auto">
+            <div id="file-preview-content" class="p-3 sm:p-4 max-h-[300px] sm:max-h-[400px] overflow-auto">
             </div>
           </div>
         </div>
@@ -350,7 +351,7 @@ const liveIcon = '<svg class="h-3 w-3" viewBox="0 0 24 24" fill="currentColor"><
   // ---------------------------------------------------------------------------
   function renderSteps(steps) {
     if (!steps.length) {
-      stepsContainer.innerHTML = '<div class="px-6 py-12 text-center text-muted text-sm">No steps recorded</div>';
+      stepsContainer.innerHTML = '<div class="px-4 sm:px-6 py-12 text-center text-muted text-sm">No steps recorded</div>';
       return;
     }
 
@@ -368,12 +369,12 @@ const liveIcon = '<svg class="h-3 w-3" viewBox="0 0 24 24" fill="currentColor"><
           + '<p class="text-xs font-medium text-muted uppercase tracking-wide">Tool Calls</p>'
           + toolCalls.map(function (tc) {
             return '<div class="bg-amber-50 border border-amber-200/60 rounded-lg px-3 py-2">'
-              + '<div class="flex items-center gap-2 text-xs">'
-              + '<span class="font-mono font-medium text-amber-800">' + escapeHtml(tc.name || tc.function || "unknown") + '</span>'
+              + '<div class="flex items-center gap-2 text-xs flex-wrap">'
+              + '<span class="font-mono font-medium text-amber-800 break-all">' + escapeHtml(tc.name || tc.function || "unknown") + '</span>'
               + (tc.duration ? '<span class="text-muted">' + tc.duration + 'ms</span>' : '')
               + '</div>'
-              + (tc.arguments ? '<pre class="mt-1 text-xs text-dark/70 overflow-x-auto whitespace-pre-wrap break-all max-h-32 overflow-y-auto">' + escapeHtml(typeof tc.arguments === "string" ? tc.arguments : JSON.stringify(tc.arguments, null, 2)) + '</pre>' : '')
-              + (tc.result ? '<pre class="mt-1 text-xs text-dark/70 overflow-x-auto whitespace-pre-wrap break-all max-h-32 overflow-y-auto border-t border-amber-200/40 pt-1">' + escapeHtml(typeof tc.result === "string" ? tc.result : JSON.stringify(tc.result, null, 2)) + '</pre>' : '')
+              + (tc.arguments ? '<pre class="mt-1 text-[11px] sm:text-xs text-dark/70 overflow-x-auto whitespace-pre-wrap break-all max-h-32 overflow-y-auto">' + escapeHtml(typeof tc.arguments === "string" ? tc.arguments : JSON.stringify(tc.arguments, null, 2)) + '</pre>' : '')
+              + (tc.result ? '<pre class="mt-1 text-[11px] sm:text-xs text-dark/70 overflow-x-auto whitespace-pre-wrap break-all max-h-32 overflow-y-auto border-t border-amber-200/40 pt-1">' + escapeHtml(typeof tc.result === "string" ? tc.result : JSON.stringify(tc.result, null, 2)) + '</pre>' : '')
               + '</div>';
           }).join("")
           + '</div>';
@@ -383,44 +384,55 @@ const liveIcon = '<svg class="h-3 w-3" viewBox="0 0 24 24" fill="currentColor"><
       if (step.input) {
         detailHtml += '<div>'
           + '<p class="text-xs font-medium text-muted uppercase tracking-wide mb-1">Input</p>'
-          + '<pre class="bg-dark/[0.03] rounded-lg p-3 text-xs text-dark overflow-x-auto whitespace-pre-wrap break-all max-h-48 overflow-y-auto">' + escapeHtml(step.input) + '</pre>'
+          + '<pre class="bg-dark/[0.03] rounded-lg p-2 sm:p-3 text-[11px] sm:text-xs text-dark overflow-x-auto whitespace-pre-wrap break-all max-h-48 overflow-y-auto">' + escapeHtml(step.input) + '</pre>'
           + '</div>';
       }
       if (step.output) {
         detailHtml += '<div>'
           + '<p class="text-xs font-medium text-muted uppercase tracking-wide mb-1">Output</p>'
-          + '<pre class="bg-dark/[0.03] rounded-lg p-3 text-xs text-dark overflow-x-auto whitespace-pre-wrap break-all max-h-48 overflow-y-auto">' + escapeHtml(step.output) + '</pre>'
+          + '<pre class="bg-dark/[0.03] rounded-lg p-2 sm:p-3 text-[11px] sm:text-xs text-dark overflow-x-auto whitespace-pre-wrap break-all max-h-48 overflow-y-auto">' + escapeHtml(step.output) + '</pre>'
           + '</div>';
       }
       if (step.error) {
         detailHtml += '<div>'
           + '<p class="text-xs font-medium text-red-600 uppercase tracking-wide mb-1">Error</p>'
-          + '<pre class="bg-red-50 border border-red-200/60 rounded-lg p-3 text-xs text-red-800 overflow-x-auto whitespace-pre-wrap break-all max-h-48 overflow-y-auto">' + escapeHtml(step.error) + '</pre>'
+          + '<pre class="bg-red-50 border border-red-200/60 rounded-lg p-2 sm:p-3 text-[11px] sm:text-xs text-red-800 overflow-x-auto whitespace-pre-wrap break-all max-h-48 overflow-y-auto">' + escapeHtml(step.error) + '</pre>'
           + '</div>';
       }
       detailHtml += toolCallsHtml;
       detailHtml += '</div>';
 
-      return '<div class="step-row px-6 py-4 hover:bg-dark/[0.01] cursor-pointer transition-colors" data-step="' + i + '">'
-        + '<div class="flex items-center gap-4">'
-        + '<div class="flex items-center gap-3 min-w-0">'
+      // Mobile-friendly step row: stacked layout on small screens, inline on desktop
+      return '<div class="step-row px-3 sm:px-6 py-3 sm:py-4 hover:bg-dark/[0.01] cursor-pointer transition-colors min-h-[44px]" data-step="' + i + '">'
+        + '<div class="flex items-start sm:items-center gap-2 sm:gap-4">'
+        + '<div class="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">'
         + '<span class="text-xs text-muted tabular-nums w-6 text-right shrink-0">#' + stepNum + '</span>'
         + stepTypeIcon(type)
-        + '<div class="min-w-0">'
+        + '<div class="min-w-0 flex-1">'
+        + '<div class="flex items-center gap-1 flex-wrap">'
         + '<span class="text-sm font-medium text-dark capitalize">' + type + '</span>'
-        + (step.model ? '<span class="text-xs text-muted ml-2">' + escapeHtml(step.model) + '</span>' : '')
-        + (step.name ? '<span class="text-xs text-muted ml-2">— ' + escapeHtml(step.name) + '</span>' : '')
+        + (hasError ? '<span class="w-2 h-2 rounded-full bg-red-500 shrink-0 sm:hidden"></span>' : '')
+        + '</div>'
+        + (step.model ? '<span class="text-xs text-muted block sm:inline sm:ml-2 truncate">' + escapeHtml(step.model) + '</span>' : '')
+        + (step.name ? '<span class="text-xs text-muted block sm:inline sm:ml-2 truncate">— ' + escapeHtml(step.name) + '</span>' : '')
+        // Mobile stats row
+        + '<div class="flex items-center gap-3 mt-1 sm:hidden text-[11px] text-muted tabular-nums">'
+        + '<span>' + tokens + ' tok</span>'
+        + '<span>' + (step.cost ? fmtCost(step.cost) : '') + '</span>'
+        + '<span>' + duration + '</span>'
         + '</div>'
         + '</div>'
-        + '<div class="flex items-center gap-6 ml-auto shrink-0">'
+        + '</div>'
+        // Desktop stats (hidden on mobile)
+        + '<div class="hidden sm:flex items-center gap-6 ml-auto shrink-0">'
         + '<span class="text-xs tabular-nums text-dark w-16 text-right">' + tokens + ' tok</span>'
         + '<span class="text-xs tabular-nums text-dark w-16 text-right">' + (step.cost ? fmtCost(step.cost) : '—') + '</span>'
         + '<span class="text-xs tabular-nums text-muted w-16 text-right">' + duration + '</span>'
         + (hasError ? '<span class="w-2 h-2 rounded-full bg-red-500 shrink-0"></span>' : '<span class="w-2 shrink-0"></span>')
-        + '<span class="step-chevron text-muted transition-transform">'
+        + '</div>'
+        + '<span class="step-chevron text-muted transition-transform shrink-0 mt-1 sm:mt-0">'
         + '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>'
         + '</span>'
-        + '</div>'
         + '</div>'
         + detailHtml
         + '</div>';
@@ -749,7 +761,7 @@ const liveIcon = '<svg class="h-3 w-3" viewBox="0 0 24 24" fill="currentColor"><
       var res = await fetch("/api/v1/runs/" + encodeURIComponent(runId));
       if (!res.ok) {
         if (res.status === 404) {
-          stepsContainer.innerHTML = '<div class="px-6 py-12 text-center text-muted text-sm">Run not found</div>';
+          stepsContainer.innerHTML = '<div class="px-4 sm:px-6 py-12 text-center text-muted text-sm">Run not found</div>';
           runName.textContent = "Not Found";
           return;
         }
@@ -758,7 +770,7 @@ const liveIcon = '<svg class="h-3 w-3" viewBox="0 0 24 24" fill="currentColor"><
       var run = await res.json();
       renderRun(run);
     } catch (err) {
-      stepsContainer.innerHTML = '<div class="px-6 py-12 text-center text-red-500 text-sm">Failed to load run: ' + escapeHtml(err.message) + '</div>';
+      stepsContainer.innerHTML = '<div class="px-4 sm:px-6 py-12 text-center text-red-500 text-sm">Failed to load run: ' + escapeHtml(err.message) + '</div>';
     }
   }
 

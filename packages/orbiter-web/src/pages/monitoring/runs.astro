@@ -19,20 +19,28 @@ const chevronRight = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" strok
   activeSection="monitoring"
   breadcrumbs={breadcrumbs}
 >
-  <div class="p-6 max-w-7xl mx-auto">
+  <!-- Pull-to-refresh indicator -->
+  <div id="ptr-indicator" class="md:hidden fixed top-0 left-0 right-0 z-50 flex items-center justify-center pointer-events-none transition-transform duration-200 -translate-y-full">
+    <div class="bg-coral text-white text-xs font-medium px-4 py-2 rounded-b-lg shadow-lg flex items-center gap-2">
+      <span id="ptr-spinner" set:html={refreshIcon} />
+      <span id="ptr-text">Pull to refresh</span>
+    </div>
+  </div>
+
+  <div id="runs-content" class="p-4 sm:p-6 max-w-7xl mx-auto">
     <!-- Header -->
     <div class="flex items-center justify-between mb-6 flex-wrap gap-3">
-      <div class="flex items-center gap-4">
-        <a href="/monitoring" class="inline-flex items-center gap-1.5 text-sm text-muted hover:text-dark transition-colors">
+      <div class="flex items-center gap-3 sm:gap-4">
+        <a href="/monitoring" class="inline-flex items-center gap-1.5 text-sm text-muted hover:text-dark transition-colors min-h-[44px] min-w-[44px] justify-center sm:justify-start">
           <span set:html={backIcon} />
-          Dashboard
+          <span class="hidden sm:inline">Dashboard</span>
         </a>
         <div>
-          <h1 class="text-2xl font-semibold text-dark">Runs</h1>
-          <p class="text-sm text-muted mt-0.5">All agent and workflow execution traces</p>
+          <h1 class="text-xl sm:text-2xl font-semibold text-dark">Runs</h1>
+          <p class="text-sm text-muted mt-0.5 hidden sm:block">All agent and workflow execution traces</p>
         </div>
       </div>
-      <button id="refresh-btn" class="p-2 rounded-lg hover:bg-dark/[0.05] text-muted hover:text-dark transition-colors cursor-pointer" title="Refresh">
+      <button id="refresh-btn" class="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-dark/[0.05] text-muted hover:text-dark transition-colors cursor-pointer" title="Refresh">
         <span set:html={refreshIcon} />
       </button>
     </div>
@@ -40,7 +48,7 @@ const chevronRight = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" strok
     <!-- Filters -->
     <div class="flex flex-wrap items-center gap-3 mb-6">
       <!-- Status filter -->
-      <select id="filter-status" class="bg-paper border border-dark/[0.08] rounded-lg px-3 py-2 text-sm text-dark outline-none focus:border-coral focus:ring-2 focus:ring-coral/20 transition-all cursor-pointer">
+      <select id="filter-status" class="bg-paper border border-dark/[0.08] rounded-lg px-3 py-2 text-sm text-dark outline-none focus:border-coral focus:ring-2 focus:ring-coral/20 transition-all cursor-pointer min-h-[44px]">
         <option value="">All Statuses</option>
         <option value="pending">Pending</option>
         <option value="running">Running</option>
@@ -50,7 +58,7 @@ const chevronRight = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" strok
       </select>
 
       <!-- Sort -->
-      <select id="sort-field" class="bg-paper border border-dark/[0.08] rounded-lg px-3 py-2 text-sm text-dark outline-none focus:border-coral focus:ring-2 focus:ring-coral/20 transition-all cursor-pointer">
+      <select id="sort-field" class="bg-paper border border-dark/[0.08] rounded-lg px-3 py-2 text-sm text-dark outline-none focus:border-coral focus:ring-2 focus:ring-coral/20 transition-all cursor-pointer min-h-[44px]">
         <option value="time">Newest First</option>
         <option value="time-asc">Oldest First</option>
         <option value="cost">Highest Cost</option>
@@ -58,18 +66,18 @@ const chevronRight = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" strok
       </select>
 
       <!-- Auto-refresh toggle -->
-      <label class="flex items-center gap-2 text-sm text-muted cursor-pointer select-none ml-auto">
+      <label class="flex items-center gap-2 text-sm text-muted cursor-pointer select-none ml-auto min-h-[44px]">
         <span class="relative inline-flex">
           <input type="checkbox" id="auto-refresh-toggle" class="sr-only peer" />
           <div class="w-9 h-5 bg-dark/10 peer-checked:bg-coral rounded-full transition-colors duration-200"></div>
           <div class="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform duration-200 peer-checked:translate-x-4"></div>
         </span>
-        <span>Auto-refresh</span>
+        <span class="hidden sm:inline">Auto-refresh</span>
       </label>
     </div>
 
-    <!-- Runs table -->
-    <div class="bg-white rounded-xl border border-dark/[0.06] shadow-sm overflow-hidden mb-6">
+    <!-- Runs table — desktop -->
+    <div class="bg-white rounded-xl border border-dark/[0.06] shadow-sm overflow-hidden mb-6 hidden sm:block">
       <div class="overflow-x-auto">
         <table class="w-full text-sm">
           <thead>
@@ -90,14 +98,19 @@ const chevronRight = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" strok
       </div>
     </div>
 
+    <!-- Runs cards — mobile -->
+    <div id="runs-cards" class="sm:hidden space-y-3 mb-6">
+      <div class="bg-white rounded-xl border border-dark/[0.06] p-4 shadow-sm text-center text-muted text-sm">Loading...</div>
+    </div>
+
     <!-- Pagination -->
     <div class="flex items-center justify-between">
       <p id="pagination-info" class="text-sm text-muted"></p>
       <div class="flex items-center gap-2">
-        <button id="prev-btn" disabled class="p-2 rounded-lg border border-dark/[0.08] text-muted hover:text-dark hover:bg-dark/[0.03] transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer">
+        <button id="prev-btn" disabled class="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg border border-dark/[0.08] text-muted hover:text-dark hover:bg-dark/[0.03] transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer">
           <span set:html={chevronLeft} />
         </button>
-        <button id="next-btn" disabled class="p-2 rounded-lg border border-dark/[0.08] text-muted hover:text-dark hover:bg-dark/[0.03] transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer">
+        <button id="next-btn" disabled class="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg border border-dark/[0.08] text-muted hover:text-dark hover:bg-dark/[0.03] transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer">
           <span set:html={chevronRight} />
         </button>
       </div>
@@ -115,6 +128,7 @@ const chevronRight = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" strok
 
   // DOM refs
   const tbody = document.getElementById("runs-tbody");
+  const runsCards = document.getElementById("runs-cards");
   const filterStatus = document.getElementById("filter-status");
   const sortField = document.getElementById("sort-field");
   const refreshBtn = document.getElementById("refresh-btn");
@@ -200,12 +214,14 @@ const chevronRight = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" strok
       updatePagination();
     } catch (err) {
       tbody.innerHTML = '<tr><td colspan="7" class="px-5 py-12 text-center text-muted">Failed to load runs</td></tr>';
+      runsCards.innerHTML = '<div class="bg-white rounded-xl border border-dark/[0.06] p-4 shadow-sm text-center text-muted text-sm">Failed to load runs</div>';
     }
   }
 
   function renderRuns(runs) {
     if (!runs.length) {
       tbody.innerHTML = '<tr><td colspan="7" class="px-5 py-12 text-center text-muted">No runs found</td></tr>';
+      runsCards.innerHTML = '<div class="bg-white rounded-xl border border-dark/[0.06] p-4 shadow-sm text-center text-muted text-sm">No runs found</div>';
       return;
     }
 
@@ -220,6 +236,7 @@ const chevronRight = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" strok
     }
     // "time" (newest) is already the default API order
 
+    // Desktop table
     tbody.innerHTML = runs.map(function (run) {
       var name = run.agent_name || run.workflow_name || "Unknown";
       var type = run.agent_id ? "Agent" : run.workflow_id ? "Workflow" : "";
@@ -239,13 +256,34 @@ const chevronRight = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" strok
         + '</tr>';
     }).join("");
 
-    // Row click navigation
+    // Row click navigation (desktop)
     tbody.querySelectorAll("tr[data-href]").forEach(function (row) {
       row.addEventListener("click", function (e) {
         if (e.target.tagName === "A") return;
         window.location.href = row.dataset.href;
       });
     });
+
+    // Mobile cards
+    runsCards.innerHTML = runs.map(function (run) {
+      var name = run.agent_name || run.workflow_name || "Unknown";
+      var type = run.agent_id ? "Agent" : run.workflow_id ? "Workflow" : "";
+      var steps = stepsCount(run.steps_json);
+      var href = "/monitoring/runs/" + encodeURIComponent(run.id);
+
+      return '<a href="' + href + '" class="block bg-white rounded-xl border border-dark/[0.06] p-4 shadow-sm active:bg-dark/[0.02] transition-colors min-h-[44px]">'
+        + '<div class="flex items-center justify-between mb-2">'
+        + '<span class="text-sm font-medium text-dark truncate mr-2">' + escapeHtml(name) + '</span>'
+        + statusBadge(run.status)
+        + '</div>'
+        + '<div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">'
+        + (type ? '<div class="col-span-2 text-muted mb-1">' + type + ' &middot; ' + fmtTime(run.created_at) + '</div>' : '<div class="col-span-2 text-muted mb-1">' + fmtTime(run.created_at) + '</div>')
+        + '<div><span class="text-muted">Duration:</span> <span class="text-dark tabular-nums">' + fmtDuration(run.start_time, run.end_time) + '</span></div>'
+        + '<div><span class="text-muted">Cost:</span> <span class="text-dark tabular-nums">' + fmtCost(run.total_cost) + '</span></div>'
+        + '<div><span class="text-muted">Tokens:</span> <span class="text-dark tabular-nums">' + fmtNumber(run.total_tokens) + '</span></div>'
+        + '<div><span class="text-muted">Steps:</span> <span class="text-dark tabular-nums">' + steps + '</span></div>'
+        + '</div></a>';
+    }).join("");
   }
 
   function escapeHtml(str) {
@@ -298,6 +336,59 @@ const chevronRight = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" strok
       autoRefreshInterval = null;
     }
   });
+
+  // ---------------------------------------------------------------------------
+  // Pull-to-refresh (mobile)
+  // ---------------------------------------------------------------------------
+  (function initPullToRefresh() {
+    var ptrIndicator = document.getElementById("ptr-indicator");
+    var ptrText = document.getElementById("ptr-text");
+    var ptrSpinner = document.getElementById("ptr-spinner");
+    var content = document.getElementById("runs-content");
+    if (!ptrIndicator || !content) return;
+
+    var startY = 0;
+    var pulling = false;
+    var threshold = 80;
+
+    content.addEventListener("touchstart", function (e) {
+      if (window.scrollY === 0 && e.touches.length === 1) {
+        startY = e.touches[0].clientY;
+        pulling = true;
+      }
+    }, { passive: true });
+
+    content.addEventListener("touchmove", function (e) {
+      if (!pulling) return;
+      var dy = e.touches[0].clientY - startY;
+      if (dy > 0 && window.scrollY === 0) {
+        var progress = Math.min(dy / threshold, 1);
+        ptrIndicator.style.transform = "translateY(" + (progress * 100 - 100) + "%)";
+        ptrText.textContent = dy >= threshold ? "Release to refresh" : "Pull to refresh";
+        ptrSpinner.style.transform = "rotate(" + (progress * 180) + "deg)";
+      } else {
+        ptrIndicator.style.transform = "translateY(-100%)";
+      }
+    }, { passive: true });
+
+    content.addEventListener("touchend", function (e) {
+      if (!pulling) return;
+      pulling = false;
+      var dy = e.changedTouches[0].clientY - startY;
+      if (dy >= threshold && window.scrollY === 0) {
+        ptrText.textContent = "Refreshing...";
+        ptrSpinner.classList.add("animate-spin");
+        ptrIndicator.style.transform = "translateY(0)";
+        loadRuns();
+        setTimeout(function () {
+          ptrIndicator.style.transform = "translateY(-100%)";
+          ptrSpinner.classList.remove("animate-spin");
+        }, 1000);
+      } else {
+        ptrIndicator.style.transform = "translateY(-100%)";
+      }
+    }, { passive: true });
+  })();
 
   // Init
   loadRuns();
