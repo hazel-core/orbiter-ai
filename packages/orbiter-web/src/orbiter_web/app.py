@@ -91,12 +91,15 @@ def _validate_startup() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Validate config and run migrations on startup."""
+    from orbiter_web.services.cleanup import start_cleanup, stop_cleanup
     from orbiter_web.services.scheduler import start_scheduler, stop_scheduler
 
     _validate_startup()
     await run_migrations()
     await start_scheduler()
+    await start_cleanup()
     yield
+    await stop_cleanup()
     await stop_scheduler()
 
 

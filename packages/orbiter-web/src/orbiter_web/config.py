@@ -20,6 +20,7 @@ class Settings:
     max_upload_mb: float = float(os.getenv("ORBITER_MAX_UPLOAD_MB", "50"))
     upload_dir: str = os.getenv("ORBITER_UPLOAD_DIR", "data/uploads/")
     artifact_dir: str = os.getenv("ORBITER_ARTIFACT_DIR", "data/artifacts/")
+    cleanup_interval_hours: int = int(os.getenv("ORBITER_CLEANUP_INTERVAL_HOURS", "6"))
     cors_origins: list[str] = None  # type: ignore[assignment]
 
     def __post_init__(self) -> None:
