@@ -30,6 +30,9 @@ Started: Mon Feb 17 2026
 - `_EVENT_TYPE_MAP` in `events.py` maps type discriminator → event class for deserialization; `_deserialize_event()` reconstructs `StreamEvent` from JSON dict
 - EventPublisher publishes to both Pub/Sub (`orbiter:events:{task_id}`) and Stream (`orbiter:stream:{task_id}`) — Pub/Sub for live, Stream for replay
 - EventSubscriber `subscribe()` terminates on terminal StatusEvent (completed/error/cancelled)
+- Worker imports `Agent`, `Swarm`, `run`, `TextEvent` inside methods (local imports) to avoid circular deps and pyright issues — patch at source (`orbiter.agent.Agent`, `orbiter.swarm.Swarm`, `orbiter.runner.run`) not at `orbiter.distributed.worker.X` in tests
+- Worker heartbeat uses a separate Redis connection — published to `orbiter:workers:{worker_id}` hash with TTL
+- `contextlib.suppress(asyncio.CancelledError)` preferred over try/except/pass per ruff SIM105
 
 ---
 
@@ -250,4 +253,30 @@ Started: Mon Feb 17 2026
   - `replay()` is a simple XRANGE read — no consumer groups needed since it's read-only replay
   - Pub/Sub `get_message()` returns None when no message available — need `await asyncio.sleep(0.01)` to avoid busy-loop
   - Total tests: 865 (79 distributed + 786 orbiter-core)
+---
+
+## 2026-02-17 - US-012
+- Created `Worker` class in `orbiter/distributed/worker.py` — the core task execution loop
+- Constructor: `Worker(redis_url, *, worker_id=None, concurrency=1, queue_name='orbiter:tasks', heartbeat_ttl=30)`
+- `start()` connects broker/store/publisher, registers SIGINT/SIGTERM handlers, runs concurrent claim loops + heartbeat
+- `stop()` signals graceful shutdown via `asyncio.Event`
+- `_claim_loop()` claims tasks with 2s timeout and delegates to `_execute_task()`
+- `_execute_task()` lifecycle: set RUNNING → reconstruct agent → run.stream() → publish events → set COMPLETED/FAILED → ack/nack
+- `_reconstruct_agent()` detects Agent vs Swarm via `"agents"` key in config dict
+- `_run_agent()` streams with `detailed=task.detailed`, publishes each event, collects TextEvent text for result
+- Heartbeat: separate Redis connection publishes worker health to `orbiter:workers:{worker_id}` hash with TTL every `heartbeat_ttl/3` seconds
+- Retry logic: on failure checks retries vs max_retries — nacks if retries remain, acks if exhausted
+- Auto-generated worker_id: `{hostname}-{pid}-{random_hex}`
+- Updated `__init__.py` to export `Worker`
+- Added 17 tests across 8 test classes: `TestGenerateWorkerId` (2), `TestWorkerInit` (3), `TestWorkerReconstructAgent` (2), `TestWorkerExecuteTask` (4), `TestWorkerRunAgent` (2), `TestWorkerClaimLoop` (2), `TestWorkerStop` (1), `TestWorkerStart` (1)
+- Files changed: `packages/orbiter-distributed/src/orbiter/distributed/worker.py`, `packages/orbiter-distributed/src/orbiter/distributed/__init__.py`, `packages/orbiter-distributed/tests/test_worker.py`
+- **Learnings for future iterations:**
+  - Worker uses local imports for `Agent`, `Swarm`, `run`, `TextEvent` inside methods — avoids circular imports and pyright issues across namespace packages
+  - When testing local-import code, patch at the real source module (`orbiter.agent.Agent`, `orbiter.runner.run`) not at `orbiter.distributed.worker.X` — the module-level attribute doesn't exist for local imports
+  - `contextlib.suppress(asyncio.CancelledError)` is required by ruff SIM105 instead of try/except/pass
+  - `random.randbytes(4).hex()` gives 8-char random hex — good for worker ID suffix
+  - Heartbeat uses a separate Redis connection from broker/store to avoid contention
+  - `asyncio.Event` for shutdown signaling — checked in `_claim_loop()` while-condition
+  - Signal handlers registered via `loop.add_signal_handler()` — must be patched in tests since pytest doesn't support real signal handlers
+  - Total tests: 882 (96 distributed + 786 orbiter-core)
 ---

@@ -225,7 +225,7 @@
         "Pyright passes"
       ],
       "priority": 13,
-      "passes": false,
+      "passes": true,
       "notes": "Create packages/orbiter-distributed/src/orbiter/distributed/worker.py. Depends on TaskBroker (US-008), TaskStore (US-010), EventPublisher (US-011), Agent.from_dict (US-015), and run.stream detailed (US-004). Use asyncio.Event for shutdown signaling. Heartbeat via periodic SET with EX (TTL). For tests, mock the agent execution and verify the full lifecycle: claim -> reconstruct -> execute -> publish events -> update status."
     },
     {
