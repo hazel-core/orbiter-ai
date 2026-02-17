@@ -30,50 +30,50 @@ router = APIRouter(prefix="/api/v1/benchmarks", tags=["benchmarks"])
 
 
 class BenchmarkCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=255)
-    description: str = ""
-    evaluation_id: str = Field(..., min_length=1)
+    name: str = Field(..., min_length=1, max_length=255, description="Display name")
+    description: str = Field("", description="Human-readable description")
+    evaluation_id: str = Field(..., min_length=1, description="Associated evaluation identifier")
 
 
 class BenchmarkUpdate(BaseModel):
-    name: str | None = Field(None, min_length=1, max_length=255)
-    description: str | None = None
+    name: str | None = Field(None, min_length=1, max_length=255, description="Display name")
+    description: str | None = Field(None, description="Human-readable description")
 
 
 class BenchmarkRunCreate(BaseModel):
-    agent_ids: list[str] = Field(..., min_length=2)
+    agent_ids: list[str] = Field(..., min_length=2, description="Agent ids")
 
 
 class BenchmarkResponse(BaseModel):
-    id: str
-    name: str
-    description: str
-    evaluation_id: str
-    user_id: str
-    created_at: str
+    id: str = Field(description="Unique identifier")
+    name: str = Field(description="Display name")
+    description: str = Field(description="Human-readable description")
+    evaluation_id: str = Field(description="Associated evaluation identifier")
+    user_id: str = Field(description="Owning user identifier")
+    created_at: str = Field(description="ISO 8601 creation timestamp")
 
 
 class BenchmarkRunResponse(BaseModel):
-    id: str
-    benchmark_id: str
-    agent_ids_json: str
-    status: str
-    started_at: str | None
-    completed_at: str | None
-    created_at: str
+    id: str = Field(description="Unique identifier")
+    benchmark_id: str = Field(description="Associated benchmark identifier")
+    agent_ids_json: str = Field(description="Agent ids json")
+    status: str = Field(description="Current status")
+    started_at: str | None = Field(description="Started at")
+    completed_at: str | None = Field(description="Completed at")
+    created_at: str = Field(description="ISO 8601 creation timestamp")
 
 
 class BenchmarkResultResponse(BaseModel):
-    id: str
-    run_id: str
-    agent_id: str
-    agent_name: str
-    results_json: str
-    overall_score: float
-    pass_rate: float
-    total_latency_ms: float
-    avg_latency_ms: float
-    estimated_cost: float
+    id: str = Field(description="Unique identifier")
+    run_id: str = Field(description="Associated run identifier")
+    agent_id: str = Field(description="Associated agent identifier")
+    agent_name: str = Field(description="Agent name")
+    results_json: str = Field(description="Results json")
+    overall_score: float = Field(description="Overall score")
+    pass_rate: float = Field(description="Pass rate")
+    total_latency_ms: float = Field(description="Total latency ms")
+    avg_latency_ms: float = Field(description="Average latency in milliseconds")
+    estimated_cost: float = Field(description="Estimated cost")
 
 
 # ---------------------------------------------------------------------------

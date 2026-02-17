@@ -121,7 +121,37 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(
     title="Orbiter Web API",
+    description=(
+        "Comprehensive AI agent platform with visual workflow canvas, multi-agent "
+        "orchestration, real-time monitoring, RAG pipeline, plugin marketplace, and "
+        "five application types.\n\n"
+        "## Authentication\n\n"
+        "Most endpoints require authentication via **session cookie** (browser) or "
+        "**API key header** (`X-API-Key`) for CI/CD integrations.\n\n"
+        "- **Session cookie**: Obtained via `POST /api/v1/auth/login`\n"
+        "- **API key**: Generated in Settings > API Keys, passed as `X-API-Key` header\n"
+        "- **CSRF token**: Required for mutating requests from browsers — "
+        "obtain via `GET /api/v1/auth/csrf`\n\n"
+        "## Error Format\n\n"
+        "All errors return a consistent JSON envelope:\n\n"
+        "```json\n"
+        '{"error": {"code": "ERROR_CODE", "message": "Human-readable message", '
+        '"details": null}}\n'
+        "```\n\n"
+        "| Code | Status | Description |\n"
+        "|------|--------|-------------|\n"
+        "| `BAD_REQUEST` | 400 | Invalid request parameters |\n"
+        "| `UNAUTHORIZED` | 401 | Missing or invalid authentication |\n"
+        "| `FORBIDDEN` | 403 | Insufficient permissions |\n"
+        "| `RESOURCE_NOT_FOUND` | 404 | Entity does not exist |\n"
+        "| `CONFLICT` | 409 | Duplicate or conflicting state |\n"
+        "| `VALIDATION_ERROR` | 422 | Request body validation failed |\n"
+        "| `RATE_LIMITED` | 429 | Too many requests |\n"
+        "| `INTERNAL_ERROR` | 500 | Unexpected server error |\n"
+    ),
     version="0.1.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
     debug=settings.debug,
     lifespan=lifespan,
 )

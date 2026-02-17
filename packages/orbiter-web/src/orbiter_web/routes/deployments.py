@@ -28,23 +28,23 @@ router = APIRouter(prefix="/api/v1/deployments", tags=["deployments"])
 
 
 class DeploymentCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=255)
-    entity_type: str = Field(..., pattern="^(agent|workflow)$")
-    entity_id: str = Field(..., min_length=1)
-    rate_limit: int = Field(60, ge=1, le=10000)
+    name: str = Field(..., min_length=1, max_length=255, description="Display name")
+    entity_type: str = Field(..., pattern="^(agent|workflow)$", description="Entity type")
+    entity_id: str = Field(..., min_length=1, description="Entity id")
+    rate_limit: int = Field(60, ge=1, le=10000, description="Rate limit")
 
 
 class DeploymentResponse(BaseModel):
-    id: str
-    name: str
-    entity_type: str
-    entity_id: str
-    rate_limit: int
-    status: str
-    usage_count: int
-    user_id: str
-    created_at: str
-    updated_at: str
+    id: str = Field(description="Unique identifier")
+    name: str = Field(description="Display name")
+    entity_type: str = Field(description="Entity type")
+    entity_id: str = Field(description="Entity id")
+    rate_limit: int = Field(description="Rate limit")
+    status: str = Field(description="Current status")
+    usage_count: int = Field(description="Number of times used")
+    user_id: str = Field(description="Owning user identifier")
+    created_at: str = Field(description="ISO 8601 creation timestamp")
+    updated_at: str = Field(description="ISO 8601 last-update timestamp")
 
 
 class DeploymentCreateResponse(DeploymentResponse):
@@ -210,9 +210,9 @@ async def get_deployment(
 
 
 class DeploymentUpdate(BaseModel):
-    status: str | None = Field(None, pattern="^(active|inactive)$")
-    rate_limit: int | None = Field(None, ge=1, le=10000)
-    name: str | None = Field(None, min_length=1, max_length=255)
+    status: str | None = Field(None, pattern="^(active|inactive)$", description="Current status")
+    rate_limit: int | None = Field(None, ge=1, le=10000, description="Rate limit")
+    name: str | None = Field(None, min_length=1, max_length=255, description="Display name")
 
 
 @router.patch("/{deployment_id}")
@@ -293,10 +293,10 @@ async def delete_deployment(
 
 
 class WidgetConfig(BaseModel):
-    primary_color: str = Field("#F76F53", max_length=50)
-    position: str = Field("bottom-right", pattern="^(bottom-right|bottom-left)$")
-    welcome_message: str = Field("Hi! How can I help you?", max_length=500)
-    avatar_url: str = Field("", max_length=2000)
+    primary_color: str = Field("#F76F53", max_length=50, description="Primary color")
+    position: str = Field("bottom-right", pattern="^(bottom-right|bottom-left)$", description="Position")
+    welcome_message: str = Field("Hi! How can I help you?", max_length=500, description="Welcome message")
+    avatar_url: str = Field("", max_length=2000, description="Avatar url")
 
 
 class WidgetConfigUpdate(WidgetConfig):
@@ -308,7 +308,7 @@ class WidgetConfigResponse(WidgetConfig):
 
 
 class EmbedCodeResponse(BaseModel):
-    embed_code: str
+    embed_code: str = Field(description="Embed code")
 
 
 @router.get("/{deployment_id}/widget")
@@ -492,8 +492,8 @@ async def _authenticate_deployment(deployment_id: str, request: Request) -> dict
 
 
 class DeployedRunRequest(BaseModel):
-    input: str = Field(..., min_length=1)
-    stream: bool = False
+    input: str = Field(..., min_length=1, description="Input text or data")
+    stream: bool = Field(False, description="Stream")
 
 
 @deployed_router.post("/{deployment_id}/run")

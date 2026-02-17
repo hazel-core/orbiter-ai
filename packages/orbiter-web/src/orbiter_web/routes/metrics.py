@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from orbiter_web.database import get_db
 from orbiter_web.routes.auth import get_current_user
@@ -20,25 +20,25 @@ router = APIRouter(prefix="/api/v1/metrics", tags=["metrics"])
 
 
 class DashboardMetrics(BaseModel):
-    total_runs: int
-    success_rate: float
-    avg_latency_ms: float
-    total_tokens: int
-    total_cost: float
+    total_runs: int = Field(description="Total runs")
+    success_rate: float = Field(description="Success rate")
+    avg_latency_ms: float = Field(description="Average latency in milliseconds")
+    total_tokens: int = Field(description="Total token count")
+    total_cost: float = Field(description="Total cost in USD")
 
 
 class AgentMetrics(BaseModel):
-    agent_name: str
-    agent_id: str | None = None
-    run_count: int
-    success_rate: float
-    avg_tokens: float
-    avg_cost: float
+    agent_name: str = Field(description="Agent name")
+    agent_id: str | None = Field(None, description="Associated agent identifier")
+    run_count: int = Field(description="Run count")
+    success_rate: float = Field(description="Success rate")
+    avg_tokens: float = Field(description="Avg tokens")
+    avg_cost: float = Field(description="Avg cost")
 
 
 class TimeseriesPoint(BaseModel):
-    bucket: str
-    value: float
+    bucket: str = Field(description="Bucket")
+    value: float = Field(description="Value")
 
 
 # ---------------------------------------------------------------------------

@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from orbiter_web.database import get_db
 from orbiter_web.routes.auth import get_current_user
@@ -14,7 +14,7 @@ router = APIRouter(prefix="/api/v1/settings/workspace", tags=["workspace-setting
 
 
 class WorkspaceSettingUpdate(BaseModel):
-    value: str
+    value: str = Field(description="Value")
 
 
 @router.get("")

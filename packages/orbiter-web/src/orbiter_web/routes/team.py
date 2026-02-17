@@ -24,24 +24,24 @@ _VALID_ROLES = {"viewer", "developer", "admin"}
 
 
 class InviteRequest(BaseModel):
-    email: str = Field(..., min_length=1)
-    password: str = Field(..., min_length=8)
-    role: str = Field(default="developer")
+    email: str = Field(..., min_length=1, description="User email address")
+    password: str = Field(..., min_length=8, description="User password")
+    role: str = Field(default="developer", description="Message role (system, user, assistant)")
 
 
 class TeamMemberResponse(BaseModel):
-    id: str
-    email: str
-    role: str
-    created_at: str
+    id: str = Field(description="Unique identifier")
+    email: str = Field(description="User email address")
+    role: str = Field(description="Message role (system, user, assistant)")
+    created_at: str = Field(description="ISO 8601 creation timestamp")
 
 
 class RoleUpdateRequest(BaseModel):
-    role: str = Field(..., min_length=1)
+    role: str = Field(..., min_length=1, description="Message role (system, user, assistant)")
 
 
 class PermanentDeleteRequest(BaseModel):
-    confirm: bool = Field(...)
+    confirm: bool = Field(..., description="Confirm")
 
 
 # ---------------------------------------------------------------------------

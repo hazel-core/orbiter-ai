@@ -25,46 +25,46 @@ router = APIRouter(prefix="/api/v1/annotations", tags=["annotations"])
 # ---------------------------------------------------------------------------
 
 class AnnotationCreate(BaseModel):
-    query: str = Field(min_length=1)
-    original_response: str | None = None
-    improved_response: str = Field(min_length=1)
-    similarity_threshold: float = Field(default=0.8, ge=0.0, le=1.0)
+    query: str = Field(min_length=1, description="Query")
+    original_response: str | None = Field(None, description="Original response")
+    improved_response: str = Field(min_length=1, description="Improved response")
+    similarity_threshold: float = Field(default=0.8, ge=0.0, le=1.0, description="Similarity threshold")
 
 
 class AnnotationUpdate(BaseModel):
-    query: str | None = None
-    original_response: str | None = None
-    improved_response: str | None = None
-    similarity_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
+    query: str | None = Field(None, description="Query")
+    original_response: str | None = Field(None, description="Original response")
+    improved_response: str | None = Field(None, description="Improved response")
+    similarity_threshold: float | None = Field(default=None, ge=0.0, le=1.0, description="Similarity threshold")
 
 
 class AnnotationResponse(BaseModel):
-    id: str
-    user_id: str
-    query: str
-    original_response: str | None
-    improved_response: str
-    similarity_threshold: float
-    usage_count: int
-    cost_saved: float
-    created_at: str
-    updated_at: str
+    id: str = Field(description="Unique identifier")
+    user_id: str = Field(description="Owning user identifier")
+    query: str = Field(description="Query")
+    original_response: str | None = Field(description="Original response")
+    improved_response: str = Field(description="Improved response")
+    similarity_threshold: float = Field(description="Similarity threshold")
+    usage_count: int = Field(description="Number of times used")
+    cost_saved: float = Field(description="Cost saved")
+    created_at: str = Field(description="ISO 8601 creation timestamp")
+    updated_at: str = Field(description="ISO 8601 last-update timestamp")
 
 
 class AnnotationMatchRequest(BaseModel):
-    query: str = Field(min_length=1)
+    query: str = Field(min_length=1, description="Query")
 
 
 class AnnotationMatchResponse(BaseModel):
-    matched: bool
-    annotation: AnnotationResponse | None = None
-    similarity_score: float | None = None
+    matched: bool = Field(description="Matched")
+    annotation: AnnotationResponse | None = Field(None, description="Annotation")
+    similarity_score: float | None = Field(None, description="Similarity score")
 
 
 class ImportResult(BaseModel):
-    imported: int
-    skipped: int
-    errors: list[str]
+    imported: int = Field(description="Imported")
+    skipped: int = Field(description="Skipped")
+    errors: list[str] = Field(description="Errors")
 
 
 # ---------------------------------------------------------------------------

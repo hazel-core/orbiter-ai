@@ -28,37 +28,37 @@ _log = logging.getLogger(__name__)
 
 
 class MCPServerCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=255)
-    url: str = Field(..., min_length=1)
-    project_id: str = Field(..., min_length=1)
-    auth_config: dict[str, Any] = Field(default_factory=dict)
+    name: str = Field(..., min_length=1, max_length=255, description="Display name")
+    url: str = Field(..., min_length=1, description="Url")
+    project_id: str = Field(..., min_length=1, description="Associated project identifier")
+    auth_config: dict[str, Any] = Field(default_factory=dict, description="Auth config")
 
 
 class MCPServerUpdate(BaseModel):
-    name: str | None = None
-    url: str | None = None
-    auth_config: dict[str, Any] | None = None
+    name: str | None = Field(None, description="Display name")
+    url: str | None = Field(None, description="Url")
+    auth_config: dict[str, Any] | None = Field(None, description="Auth config")
 
 
 class MCPServerResponse(BaseModel):
-    id: str
-    name: str
-    url: str
-    status: str
-    last_check_at: str | None = None
-    error_message: str | None = None
-    project_id: str
-    user_id: str
-    created_at: str
-    updated_at: str
+    id: str = Field(description="Unique identifier")
+    name: str = Field(description="Display name")
+    url: str = Field(description="Url")
+    status: str = Field(description="Current status")
+    last_check_at: str | None = Field(None, description="Last check at")
+    error_message: str | None = Field(None, description="Error message")
+    project_id: str = Field(description="Associated project identifier")
+    user_id: str = Field(description="Owning user identifier")
+    created_at: str = Field(description="ISO 8601 creation timestamp")
+    updated_at: str = Field(description="ISO 8601 last-update timestamp")
 
 
 class DiscoveredToolResponse(BaseModel):
-    id: str
-    name: str
-    description: str
-    schema_json: str
-    source_server_id: str
+    id: str = Field(description="Unique identifier")
+    name: str = Field(description="Display name")
+    description: str = Field(description="Human-readable description")
+    schema_json: str = Field(description="JSON schema definition")
+    source_server_id: str = Field(description="Source server id")
 
 
 # ---------------------------------------------------------------------------

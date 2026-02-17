@@ -27,29 +27,29 @@ VALID_APP_TYPES = ("chatbot", "chatflow", "workflow", "agent", "text_generator")
 
 
 class ApplicationCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=255)
-    type: str = Field(..., min_length=1)
-    project_id: str = Field(..., min_length=1)
-    config_json: str = "{}"
+    name: str = Field(..., min_length=1, max_length=255, description="Display name")
+    type: str = Field(..., min_length=1, description="Type")
+    project_id: str = Field(..., min_length=1, description="Associated project identifier")
+    config_json: str = Field("{}", description="JSON configuration object")
 
 
 class ApplicationUpdate(BaseModel):
-    name: str | None = Field(None, min_length=1, max_length=255)
-    config_json: str | None = None
-    status: str | None = None
+    name: str | None = Field(None, min_length=1, max_length=255, description="Display name")
+    config_json: str | None = Field(None, description="JSON configuration object")
+    status: str | None = Field(None, description="Current status")
 
 
 class ApplicationResponse(BaseModel):
-    id: str
-    name: str
-    type: str
-    project_id: str
-    config_json: str
-    status: str
-    last_run_at: str | None
-    user_id: str
-    created_at: str
-    updated_at: str
+    id: str = Field(description="Unique identifier")
+    name: str = Field(description="Display name")
+    type: str = Field(description="Type")
+    project_id: str = Field(description="Associated project identifier")
+    config_json: str = Field(description="JSON configuration object")
+    status: str = Field(description="Current status")
+    last_run_at: str | None = Field(description="Last execution timestamp")
+    user_id: str = Field(description="Owning user identifier")
+    created_at: str = Field(description="ISO 8601 creation timestamp")
+    updated_at: str = Field(description="ISO 8601 last-update timestamp")
 
 
 # ---------------------------------------------------------------------------

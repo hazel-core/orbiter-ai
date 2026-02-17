@@ -35,59 +35,59 @@ router = APIRouter(prefix="/api/v1/evaluations", tags=["evaluations"])
 
 
 class TestCase(BaseModel):
-    input: str = Field(..., min_length=1)
-    expected: str = ""
-    evaluator: str = "exact_match"
+    input: str = Field(..., min_length=1, description="Input text or data")
+    expected: str = Field("", description="Expected")
+    evaluator: str = Field("exact_match", description="Evaluator")
 
 
 class EvaluationCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=255)
-    agent_id: str = Field(..., min_length=1)
-    test_cases: list[TestCase] = Field(default_factory=list)
+    name: str = Field(..., min_length=1, max_length=255, description="Display name")
+    agent_id: str = Field(..., min_length=1, description="Associated agent identifier")
+    test_cases: list[TestCase] = Field(default_factory=list, description="Test cases")
 
 
 class EvaluationUpdate(BaseModel):
-    name: str | None = Field(None, min_length=1, max_length=255)
-    agent_id: str | None = Field(None, min_length=1)
-    test_cases: list[TestCase] | None = None
+    name: str | None = Field(None, min_length=1, max_length=255, description="Display name")
+    agent_id: str | None = Field(None, min_length=1, description="Associated agent identifier")
+    test_cases: list[TestCase] | None = Field(None, description="Test cases")
 
 
 class EvaluationResponse(BaseModel):
-    id: str
-    name: str
-    agent_id: str
-    test_cases_json: str
-    user_id: str
-    created_at: str
+    id: str = Field(description="Unique identifier")
+    name: str = Field(description="Display name")
+    agent_id: str = Field(description="Associated agent identifier")
+    test_cases_json: str = Field(description="Test cases json")
+    user_id: str = Field(description="Owning user identifier")
+    created_at: str = Field(description="ISO 8601 creation timestamp")
 
 
 class EvalResultResponse(BaseModel):
-    id: str
-    evaluation_id: str
-    run_at: str
-    results_json: str
-    overall_score: float
-    pass_rate: float
+    id: str = Field(description="Unique identifier")
+    evaluation_id: str = Field(description="Associated evaluation identifier")
+    run_at: str = Field(description="Run at")
+    results_json: str = Field(description="Results json")
+    overall_score: float = Field(description="Overall score")
+    pass_rate: float = Field(description="Pass rate")
 
 
 class SafetyRunCreate(BaseModel):
-    categories: list[str] | None = None
-    mode: str = Field("preset", pattern="^(preset|redteam)$")
-    policy: dict[str, Any] | None = None
+    categories: list[str] | None = Field(None, description="Categories")
+    mode: str = Field("preset", pattern="^(preset|redteam)$", description="Mode")
+    policy: dict[str, Any] | None = Field(None, description="Policy")
 
 
 class SafetyRunResponse(BaseModel):
-    id: str
-    evaluation_id: str
-    run_at: str
-    mode: str
-    policy_json: str
-    results_json: str
-    category_scores_json: str
-    overall_score: float
-    pass_rate: float
-    flagged_count: int
-    total_count: int
+    id: str = Field(description="Unique identifier")
+    evaluation_id: str = Field(description="Associated evaluation identifier")
+    run_at: str = Field(description="Run at")
+    mode: str = Field(description="Mode")
+    policy_json: str = Field(description="Policy json")
+    results_json: str = Field(description="Results json")
+    category_scores_json: str = Field(description="Category scores json")
+    overall_score: float = Field(description="Overall score")
+    pass_rate: float = Field(description="Pass rate")
+    flagged_count: int = Field(description="Flagged count")
+    total_count: int = Field(description="Total count")
 
 
 # ---------------------------------------------------------------------------

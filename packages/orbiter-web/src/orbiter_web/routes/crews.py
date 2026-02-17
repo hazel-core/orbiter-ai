@@ -27,79 +27,79 @@ _background_tasks: set[asyncio.Task[Any]] = set()
 
 
 class CrewTaskCreate(BaseModel):
-    agent_id: str = Field(..., min_length=1)
-    task_description: str = ""
-    expected_output: str = ""
-    task_order: int = 0
-    dependencies_json: str = "[]"
+    agent_id: str = Field(..., min_length=1, description="Associated agent identifier")
+    task_description: str = Field("", description="Task description")
+    expected_output: str = Field("", description="Expected output format or content")
+    task_order: int = Field(0, description="Execution order within the crew")
+    dependencies_json: str = Field("[]", description="JSON array of dependency identifiers")
 
 
 class CrewTaskUpdate(BaseModel):
-    agent_id: str | None = Field(None, min_length=1)
-    task_description: str | None = None
-    expected_output: str | None = None
-    task_order: int | None = None
-    dependencies_json: str | None = None
+    agent_id: str | None = Field(None, min_length=1, description="Associated agent identifier")
+    task_description: str | None = Field(None, description="Task description")
+    expected_output: str | None = Field(None, description="Expected output format or content")
+    task_order: int | None = Field(None, description="Execution order within the crew")
+    dependencies_json: str | None = Field(None, description="JSON array of dependency identifiers")
 
 
 class CrewTaskResponse(BaseModel):
-    id: str
-    crew_id: str
-    agent_id: str
-    task_description: str
-    expected_output: str
-    task_order: int
-    dependencies_json: str
-    created_at: str
-    updated_at: str
+    id: str = Field(description="Unique identifier")
+    crew_id: str = Field(description="Associated crew identifier")
+    agent_id: str = Field(description="Associated agent identifier")
+    task_description: str = Field(description="Task description")
+    expected_output: str = Field(description="Expected output format or content")
+    task_order: int = Field(description="Execution order within the crew")
+    dependencies_json: str = Field(description="JSON array of dependency identifiers")
+    created_at: str = Field(description="ISO 8601 creation timestamp")
+    updated_at: str = Field(description="ISO 8601 last-update timestamp")
 
 
 class CrewCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=255)
-    project_id: str = Field(..., min_length=1)
-    description: str = ""
-    process_type: str = Field("sequential", pattern=r"^(sequential|parallel)$")
-    config_json: str = "{}"
+    name: str = Field(..., min_length=1, max_length=255, description="Display name")
+    project_id: str = Field(..., min_length=1, description="Associated project identifier")
+    description: str = Field("", description="Human-readable description")
+    process_type: str = Field("sequential", pattern=r"^(sequential|parallel)$", description="Crew execution mode (sequential, parallel)")
+    config_json: str = Field("{}", description="JSON configuration object")
 
 
 class CrewUpdate(BaseModel):
-    name: str | None = Field(None, min_length=1, max_length=255)
-    description: str | None = None
-    process_type: str | None = Field(None, pattern=r"^(sequential|parallel)$")
-    config_json: str | None = None
+    name: str | None = Field(None, min_length=1, max_length=255, description="Display name")
+    description: str | None = Field(None, description="Human-readable description")
+    process_type: str | None = Field(None, pattern=r"^(sequential|parallel)$", description="Crew execution mode (sequential, parallel)")
+    config_json: str | None = Field(None, description="JSON configuration object")
 
 
 class CrewResponse(BaseModel):
-    id: str
-    name: str
-    description: str
-    process_type: str
-    config_json: str
-    project_id: str
-    user_id: str
-    created_at: str
-    updated_at: str
-    tasks: list[CrewTaskResponse] = []
+    id: str = Field(description="Unique identifier")
+    name: str = Field(description="Display name")
+    description: str = Field(description="Human-readable description")
+    process_type: str = Field(description="Crew execution mode (sequential, parallel)")
+    config_json: str = Field(description="JSON configuration object")
+    project_id: str = Field(description="Associated project identifier")
+    user_id: str = Field(description="Owning user identifier")
+    created_at: str = Field(description="ISO 8601 creation timestamp")
+    updated_at: str = Field(description="ISO 8601 last-update timestamp")
+    tasks: list[CrewTaskResponse] = Field([], description="Tasks")
 
 
 class CrewRunRequest(BaseModel):
-    input: str = ""
+    input: str = Field("", description="Input text or data")
 
 
 class CrewRunTaskResult(BaseModel):
-    task_id: str
-    agent_id: str
-    task_description: str
-    status: str
-    output: str = ""
-    error: str = ""
+    task_id: str = Field(description="Task id")
+    agent_id: str = Field(description="Associated agent identifier")
+    task_description: str = Field(description="Task description")
+    status: str = Field(description="Current status")
+    output: str = Field("", description="Output text or data")
+    error: str = Field("", description="Error message if failed")
 
 
 class CrewRunResponse(BaseModel):
-    crew_id: str
-    status: str
-    process_type: str
-    results: list[CrewRunTaskResult]
+    crew_id: str = Field(description="Associated crew identifier")
+    status: str = Field(description="Current status")
+    process_type: str = Field(description="Crew execution mode (sequential, parallel)")
+    results: list[CrewRunTaskResult] = Field(description="Results")
 
 
 # ---------------------------------------------------------------------------

@@ -32,45 +32,45 @@ _MAX_REQUEST_LOG_ENTRIES = 50
 
 
 class WebhookCreate(BaseModel):
-    workflow_id: str = Field(..., min_length=1)
-    hook_id: str = Field(..., min_length=1)
+    workflow_id: str = Field(..., min_length=1, description="Associated workflow identifier")
+    hook_id: str = Field(..., min_length=1, description="Hook id")
 
 
 class WebhookUpdate(BaseModel):
-    enabled: bool | None = None
+    enabled: bool | None = Field(None, description="Whether this item is active")
 
 
 class WebhookResponse(BaseModel):
-    id: str
-    workflow_id: str
-    hook_id: str
-    url_token: str
-    webhook_url: str
-    enabled: bool
-    request_log: list[dict[str, Any]]
-    created_at: str
-    updated_at: str
+    id: str = Field(description="Unique identifier")
+    workflow_id: str = Field(description="Associated workflow identifier")
+    hook_id: str = Field(description="Hook id")
+    url_token: str = Field(description="Url token")
+    webhook_url: str = Field(description="Webhook url")
+    enabled: bool = Field(description="Whether this item is active")
+    request_log: list[dict[str, Any]] = Field(description="Request log")
+    created_at: str = Field(description="ISO 8601 creation timestamp")
+    updated_at: str = Field(description="ISO 8601 last-update timestamp")
 
 
 class NotificationTemplateCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=255)
-    type: str = Field(..., pattern=r"^(slack|discord|email)$")
-    config_json: dict[str, Any] = Field(default_factory=dict)
+    name: str = Field(..., min_length=1, max_length=255, description="Display name")
+    type: str = Field(..., pattern=r"^(slack|discord|email)$", description="Type")
+    config_json: dict[str, Any] = Field(default_factory=dict, description="JSON configuration object")
 
 
 class NotificationTemplateUpdate(BaseModel):
-    name: str | None = Field(None, min_length=1, max_length=255)
-    type: str | None = Field(None, pattern=r"^(slack|discord|email)$")
-    config_json: dict[str, Any] | None = None
+    name: str | None = Field(None, min_length=1, max_length=255, description="Display name")
+    type: str | None = Field(None, pattern=r"^(slack|discord|email)$", description="Type")
+    config_json: dict[str, Any] | None = Field(None, description="JSON configuration object")
 
 
 class NotificationTemplateResponse(BaseModel):
-    id: str
-    name: str
-    type: str
-    config_json: dict[str, Any]
-    created_at: str
-    updated_at: str
+    id: str = Field(description="Unique identifier")
+    name: str = Field(description="Display name")
+    type: str = Field(description="Type")
+    config_json: dict[str, Any] = Field(description="JSON configuration object")
+    created_at: str = Field(description="ISO 8601 creation timestamp")
+    updated_at: str = Field(description="ISO 8601 last-update timestamp")
 
 
 # ---------------------------------------------------------------------------

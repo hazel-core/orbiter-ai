@@ -28,41 +28,41 @@ VALID_PROVIDER_TYPES = ("openai", "anthropic", "gemini", "vertex", "ollama", "cu
 
 
 class ProviderCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=255)
-    provider_type: str = Field(..., min_length=1)
-    api_key: str | None = None
-    base_url: str | None = None
-    max_retries: int = 3
-    timeout: int = 30
+    name: str = Field(..., min_length=1, max_length=255, description="Display name")
+    provider_type: str = Field(..., min_length=1, description="Provider type (openai, anthropic, etc.)")
+    api_key: str | None = Field(None, description="API key (stored encrypted)")
+    base_url: str | None = Field(None, description="Provider base URL override")
+    max_retries: int = Field(3, description="Maximum retry attempts")
+    timeout: int = Field(30, description="Request timeout in seconds")
 
 
 class ProviderUpdate(BaseModel):
-    name: str | None = Field(None, min_length=1, max_length=255)
-    provider_type: str | None = None
-    api_key: str | None = None
-    base_url: str | None = None
-    max_retries: int | None = None
-    timeout: int | None = None
+    name: str | None = Field(None, min_length=1, max_length=255, description="Display name")
+    provider_type: str | None = Field(None, description="Provider type (openai, anthropic, etc.)")
+    api_key: str | None = Field(None, description="API key (stored encrypted)")
+    base_url: str | None = Field(None, description="Provider base URL override")
+    max_retries: int | None = Field(None, description="Maximum retry attempts")
+    timeout: int | None = Field(None, description="Request timeout in seconds")
 
 
 class ProviderResponse(BaseModel):
-    id: str
-    name: str
-    provider_type: str
-    api_key_set: bool
-    base_url: str | None
-    max_retries: int
-    timeout: int
-    load_balance_strategy: str
-    user_id: str
-    created_at: str
-    updated_at: str
+    id: str = Field(description="Unique identifier")
+    name: str = Field(description="Display name")
+    provider_type: str = Field(description="Provider type (openai, anthropic, etc.)")
+    api_key_set: bool = Field(description="Whether an API key is configured")
+    base_url: str | None = Field(description="Provider base URL override")
+    max_retries: int = Field(description="Maximum retry attempts")
+    timeout: int = Field(description="Request timeout in seconds")
+    load_balance_strategy: str = Field(description="Key selection strategy (round_robin, random, least_used)")
+    user_id: str = Field(description="Owning user identifier")
+    created_at: str = Field(description="ISO 8601 creation timestamp")
+    updated_at: str = Field(description="ISO 8601 last-update timestamp")
 
 
 class TestResult(BaseModel):
-    success: bool
-    error: str | None = None
-    latency_ms: float
+    success: bool = Field(description="Whether the operation succeeded")
+    error: str | None = Field(None, description="Error message if failed")
+    latency_ms: float = Field(description="Response latency in milliseconds")
 
 
 # ---------------------------------------------------------------------------

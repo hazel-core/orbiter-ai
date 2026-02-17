@@ -29,15 +29,15 @@ SESSION_COOKIE = "orbiter_session"
 
 
 class LoginRequest(BaseModel):
-    email: str = Field(..., min_length=1)
-    password: str = Field(..., min_length=1)
+    email: str = Field(..., min_length=1, description="User email address")
+    password: str = Field(..., min_length=1, description="User password")
 
 
 class UserResponse(BaseModel):
-    id: str
-    email: str
-    role: str
-    created_at: str
+    id: str = Field(description="Unique identifier")
+    email: str = Field(description="User email address")
+    role: str = Field(description="Message role (system, user, assistant)")
+    created_at: str = Field(description="ISO 8601 creation timestamp")
 
 
 # ---------------------------------------------------------------------------
@@ -208,7 +208,7 @@ async def me(
 
 
 class ProfileUpdateRequest(BaseModel):
-    email: str = Field(..., min_length=1)
+    email: str = Field(..., min_length=1, description="User email address")
 
 
 @router.get("/profile", response_model=UserResponse)
@@ -271,12 +271,12 @@ async def update_profile(
 
 
 class PasswordChangeRequest(BaseModel):
-    current_password: str = Field(..., min_length=1)
-    new_password: str = Field(..., min_length=8)
+    current_password: str = Field(..., min_length=1, description="Current password")
+    new_password: str = Field(..., min_length=8, description="New password")
 
 
 class MessageResponse(BaseModel):
-    message: str
+    message: str = Field(description="Message")
 
 
 @router.put("/password", response_model=MessageResponse)
@@ -320,7 +320,7 @@ async def change_password(
 
 
 class CsrfResponse(BaseModel):
-    token: str
+    token: str = Field(description="Token")
 
 
 @router.get("/csrf", response_model=CsrfResponse)
@@ -350,12 +350,12 @@ async def get_csrf_token(
 
 
 class ForgotPasswordRequest(BaseModel):
-    email: str = Field(..., min_length=1)
+    email: str = Field(..., min_length=1, description="User email address")
 
 
 class ResetPasswordRequest(BaseModel):
-    token: str = Field(..., min_length=1)
-    new_password: str = Field(..., min_length=8)
+    token: str = Field(..., min_length=1, description="Token")
+    new_password: str = Field(..., min_length=8, description="New password")
 
 
 @router.post("/forgot-password", response_model=MessageResponse)

@@ -21,26 +21,26 @@ router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
 # ---------------------------------------------------------------------------
 
 class ProjectCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=255)
-    description: str = ""
+    name: str = Field(..., min_length=1, max_length=255, description="Display name")
+    description: str = Field("", description="Human-readable description")
 
 
 class ProjectUpdate(BaseModel):
-    name: str | None = Field(None, min_length=1, max_length=255)
-    description: str | None = None
-    default_model: str | None = None
-    default_provider: str | None = None
+    name: str | None = Field(None, min_length=1, max_length=255, description="Display name")
+    description: str | None = Field(None, description="Human-readable description")
+    default_model: str | None = Field(None, description="Default model for the project")
+    default_provider: str | None = Field(None, description="Default provider for the project")
 
 
 class ProjectResponse(BaseModel):
-    id: str
-    name: str
-    description: str
-    default_model: str | None
-    default_provider: str | None
-    user_id: str
-    created_at: str
-    updated_at: str
+    id: str = Field(description="Unique identifier")
+    name: str = Field(description="Display name")
+    description: str = Field(description="Human-readable description")
+    default_model: str | None = Field(description="Default model for the project")
+    default_provider: str | None = Field(description="Default provider for the project")
+    user_id: str = Field(description="Owning user identifier")
+    created_at: str = Field(description="ISO 8601 creation timestamp")
+    updated_at: str = Field(description="ISO 8601 last-update timestamp")
 
 
 # ---------------------------------------------------------------------------

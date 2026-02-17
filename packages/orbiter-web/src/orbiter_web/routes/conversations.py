@@ -16,31 +16,31 @@ router = APIRouter(prefix="/api/v1/conversations", tags=["conversations"])
 
 
 class ConversationResponse(BaseModel):
-    id: str
-    agent_id: str
-    user_id: str
-    created_at: str
-    updated_at: str
+    id: str = Field(description="Unique identifier")
+    agent_id: str = Field(description="Associated agent identifier")
+    user_id: str = Field(description="Owning user identifier")
+    created_at: str = Field(description="ISO 8601 creation timestamp")
+    updated_at: str = Field(description="ISO 8601 last-update timestamp")
 
 
 class MessageResponse(BaseModel):
-    id: str
-    conversation_id: str
-    role: str
-    content: str
-    tool_calls_json: str | None = None
-    usage_json: str | None = None
-    created_at: str
+    id: str = Field(description="Unique identifier")
+    conversation_id: str = Field(description="Associated conversation identifier")
+    role: str = Field(description="Message role (system, user, assistant)")
+    content: str = Field(description="Text content")
+    tool_calls_json: str | None = Field(None, description="JSON array of tool call objects")
+    usage_json: str | None = Field(None, description="JSON token usage statistics")
+    created_at: str = Field(description="ISO 8601 creation timestamp")
 
 
 class MessageEditRequest(BaseModel):
-    content: str = Field(min_length=1)
+    content: str = Field(min_length=1, description="Text content")
 
 
 class MessageEditResponse(BaseModel):
-    id: str
-    original_content: str
-    edited_at: str
+    id: str = Field(description="Unique identifier")
+    original_content: str = Field(description="Original content")
+    edited_at: str = Field(description="Edited at")
 
 
 @router.get("")

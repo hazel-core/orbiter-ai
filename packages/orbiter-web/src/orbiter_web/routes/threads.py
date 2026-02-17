@@ -15,29 +15,29 @@ router = APIRouter(prefix="/api/v1/threads", tags=["threads"])
 
 
 class ThreadCreate(BaseModel):
-    agent_id: str = Field(min_length=1)
+    agent_id: str = Field(min_length=1, description="Associated agent identifier")
 
 
 class ThreadResponse(BaseModel):
-    id: str
-    agent_id: str
-    user_id: str
-    first_message_preview: str
-    message_count: int
-    total_tokens: int
-    total_cost: float
-    created_at: str
-    updated_at: str
+    id: str = Field(description="Unique identifier")
+    agent_id: str = Field(description="Associated agent identifier")
+    user_id: str = Field(description="Owning user identifier")
+    first_message_preview: str = Field(description="Preview of the first message")
+    message_count: int = Field(description="Number of messages in thread")
+    total_tokens: int = Field(description="Total token count")
+    total_cost: float = Field(description="Total cost in USD")
+    created_at: str = Field(description="ISO 8601 creation timestamp")
+    updated_at: str = Field(description="ISO 8601 last-update timestamp")
 
 
 class ThreadMessageResponse(BaseModel):
-    id: str
-    thread_id: str
-    role: str
-    content: str
-    tool_calls_json: str | None = None
-    usage_json: str | None = None
-    created_at: str
+    id: str = Field(description="Unique identifier")
+    thread_id: str = Field(description="Associated thread identifier")
+    role: str = Field(description="Message role (system, user, assistant)")
+    content: str = Field(description="Text content")
+    tool_calls_json: str | None = Field(None, description="JSON array of tool call objects")
+    usage_json: str | None = Field(None, description="JSON token usage statistics")
+    created_at: str = Field(description="ISO 8601 creation timestamp")
 
 
 @router.get("/search")

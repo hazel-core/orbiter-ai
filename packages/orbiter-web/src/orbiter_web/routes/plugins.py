@@ -195,44 +195,44 @@ MANIFEST_REQUIRED_FIELDS = {"name", "version", "type", "entry_point"}
 
 
 class PluginManifest(BaseModel):
-    name: str = Field(..., min_length=1, max_length=255)
-    version: str = Field(default="0.1.0")
-    type: str = Field(default="extension")
-    permissions: list[str] = Field(default_factory=list)
-    entry_point: str = Field(default="main.py")
-    description: str = ""
-    author: str = ""
+    name: str = Field(..., min_length=1, max_length=255, description="Display name")
+    version: str = Field(default="0.1.0", description="Version identifier")
+    type: str = Field(default="extension", description="Type")
+    permissions: list[str] = Field(default_factory=list, description="Permissions")
+    entry_point: str = Field(default="main.py", description="Entry point")
+    description: str = Field("", description="Human-readable description")
+    author: str = Field("", description="Author")
 
 
 class PluginInstallRequest(BaseModel):
-    manifest: PluginManifest
-    directory: str = ""
+    manifest: PluginManifest = Field(description="Manifest")
+    directory: str = Field("", description="Directory")
 
 
 class PluginLoadDirRequest(BaseModel):
-    directory: str = Field(..., min_length=1)
+    directory: str = Field(..., min_length=1, description="Directory")
 
 
 class PluginResponse(BaseModel):
-    id: str
-    name: str
-    version: str
-    type: str
-    manifest_json: str
-    status: str
-    entry_point: str
-    directory: str
-    permissions_json: str
-    description: str
-    author: str
-    user_id: str
-    installed_at: str
+    id: str = Field(description="Unique identifier")
+    name: str = Field(description="Display name")
+    version: str = Field(description="Version identifier")
+    type: str = Field(description="Type")
+    manifest_json: str = Field(description="Manifest json")
+    status: str = Field(description="Current status")
+    entry_point: str = Field(description="Entry point")
+    directory: str = Field(description="Directory")
+    permissions_json: str = Field(description="Permissions json")
+    description: str = Field(description="Human-readable description")
+    author: str = Field(description="Author")
+    user_id: str = Field(description="Owning user identifier")
+    installed_at: str = Field(description="Installed at")
 
 
 class PluginIsolationResult(BaseModel):
-    success: bool
-    output: str = ""
-    error: str | None = None
+    success: bool = Field(description="Whether the operation succeeded")
+    output: str = Field("", description="Output text or data")
+    error: str | None = Field(None, description="Error message if failed")
 
 
 # ---------------------------------------------------------------------------

@@ -7,9 +7,26 @@ order: 1
 
 # API Reference
 
-All API endpoints are prefixed with `/api/v1/`. Requests require authentication via session cookie or API key header.
+All API endpoints are prefixed with `/api/v1/`. The interactive API documentation is also available:
+
+- **[Swagger UI](/docs)** — Try endpoints interactively
+- **[ReDoc](/redoc)** — Alternative read-friendly docs
 
 ## Authentication
+
+Requests require authentication via **session cookie** (browser) or **API key header** (`X-API-Key`) for CI/CD integrations.
+
+### Session-based (browser)
+
+1. `POST /api/v1/auth/login` with `{email, password}` — returns a `Set-Cookie: orbiter_session=...` header
+2. Include the session cookie on all subsequent requests
+3. For mutating requests (`POST`/`PUT`/`DELETE`), include the `X-CSRF-Token` header — obtain via `GET /api/v1/auth/csrf`
+
+### API Key (CI/CD)
+
+1. Generate an API key from **Settings > API Keys** (or `POST /api/v1/api-keys`)
+2. Pass it as the `X-API-Key` header on CI endpoints (`/api/v1/ci/*`)
+3. API key endpoints are CSRF-exempt
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -136,12 +153,49 @@ Pass `?cursor=abc123` to fetch the next page.
 
 ## Error Format
 
-Errors return a JSON body with a `detail` field:
+All API errors return a consistent JSON envelope:
 
 ```json
 {
-  "detail": "Resource not found"
+  "error": {
+    "code": "RESOURCE_NOT_FOUND",
+    "message": "Project not found",
+    "details": null
+  }
 }
 ```
 
-Common status codes: `400` (validation), `401` (unauthorized), `403` (forbidden), `404` (not found), `429` (rate limited).
+### Error Codes
+
+| Code | HTTP Status | Description | Example |
+|------|-------------|-------------|---------|
+| `BAD_REQUEST` | 400 | Invalid request parameters | Missing required query param |
+| `UNAUTHORIZED` | 401 | Missing or invalid authentication | Expired session cookie |
+| `FORBIDDEN` | 403 | Insufficient permissions | Viewer trying to delete |
+| `RESOURCE_NOT_FOUND` | 404 | Entity does not exist | Invalid project ID |
+| `CONFLICT` | 409 | Duplicate or conflicting state | Duplicate email on register |
+| `VALIDATION_ERROR` | 422 | Request body validation failed | See `details.fields` array |
+| `RATE_LIMITED` | 429 | Too many requests | Retry after backoff |
+| `INTERNAL_ERROR` | 500 | Unexpected server error | Bug — please report |
+
+### Validation Error Details
+
+When `code` is `VALIDATION_ERROR`, the `details` field contains a `fields` array:
+
+```json
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Validation error",
+    "details": {
+      "fields": [
+        {
+          "field": "name",
+          "message": "String should have at least 1 character",
+          "type": "string_too_short"
+        }
+      ]
+    }
+  }
+}
+```

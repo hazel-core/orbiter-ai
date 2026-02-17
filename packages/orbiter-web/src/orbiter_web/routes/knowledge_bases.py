@@ -26,72 +26,72 @@ router = APIRouter(prefix="/api/v1/knowledge-bases", tags=["knowledge-bases"])
 
 
 class KnowledgeBaseCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=255)
-    description: str = ""
-    embedding_model: str = "text-embedding-3-small"
-    chunk_size: int = Field(512, ge=64, le=8192)
-    chunk_overlap: int = Field(50, ge=0, le=4096)
-    search_type: str = Field("keyword", pattern=r"^(semantic|keyword|hybrid)$")
-    top_k: int = Field(5, ge=1, le=20)
-    similarity_threshold: float = Field(0.0, ge=0.0, le=1.0)
-    reranker_enabled: bool = False
-    project_id: str | None = None
+    name: str = Field(..., min_length=1, max_length=255, description="Display name")
+    description: str = Field("", description="Human-readable description")
+    embedding_model: str = Field("text-embedding-3-small", description="Embedding model")
+    chunk_size: int = Field(512, ge=64, le=8192, description="Chunk size")
+    chunk_overlap: int = Field(50, ge=0, le=4096, description="Chunk overlap")
+    search_type: str = Field("keyword", pattern=r"^(semantic|keyword|hybrid)$", description="Search type")
+    top_k: int = Field(5, ge=1, le=20, description="Top k")
+    similarity_threshold: float = Field(0.0, ge=0.0, le=1.0, description="Similarity threshold")
+    reranker_enabled: bool = Field(False, description="Reranker enabled")
+    project_id: str | None = Field(None, description="Associated project identifier")
 
 
 class KnowledgeBaseUpdate(BaseModel):
-    name: str | None = Field(None, min_length=1, max_length=255)
-    description: str | None = None
-    embedding_model: str | None = None
-    chunk_size: int | None = Field(None, ge=64, le=8192)
-    chunk_overlap: int | None = Field(None, ge=0, le=4096)
-    search_type: str | None = Field(None, pattern=r"^(semantic|keyword|hybrid)$")
-    top_k: int | None = Field(None, ge=1, le=20)
-    similarity_threshold: float | None = Field(None, ge=0.0, le=1.0)
-    reranker_enabled: bool | None = None
+    name: str | None = Field(None, min_length=1, max_length=255, description="Display name")
+    description: str | None = Field(None, description="Human-readable description")
+    embedding_model: str | None = Field(None, description="Embedding model")
+    chunk_size: int | None = Field(None, ge=64, le=8192, description="Chunk size")
+    chunk_overlap: int | None = Field(None, ge=0, le=4096, description="Chunk overlap")
+    search_type: str | None = Field(None, pattern=r"^(semantic|keyword|hybrid)$", description="Search type")
+    top_k: int | None = Field(None, ge=1, le=20, description="Top k")
+    similarity_threshold: float | None = Field(None, ge=0.0, le=1.0, description="Similarity threshold")
+    reranker_enabled: bool | None = Field(None, description="Reranker enabled")
 
 
 class KnowledgeBaseResponse(BaseModel):
-    id: str
-    name: str
-    description: str
-    embedding_model: str
-    chunk_size: int
-    chunk_overlap: int
-    search_type: str
-    top_k: int
-    similarity_threshold: float
-    reranker_enabled: bool
-    doc_count: int
-    chunk_count: int
-    project_id: str | None
-    user_id: str
-    created_at: str
-    updated_at: str
+    id: str = Field(description="Unique identifier")
+    name: str = Field(description="Display name")
+    description: str = Field(description="Human-readable description")
+    embedding_model: str = Field(description="Embedding model")
+    chunk_size: int = Field(description="Chunk size")
+    chunk_overlap: int = Field(description="Chunk overlap")
+    search_type: str = Field(description="Search type")
+    top_k: int = Field(description="Top k")
+    similarity_threshold: float = Field(description="Similarity threshold")
+    reranker_enabled: bool = Field(description="Reranker enabled")
+    doc_count: int = Field(description="Doc count")
+    chunk_count: int = Field(description="Chunk count")
+    project_id: str | None = Field(description="Associated project identifier")
+    user_id: str = Field(description="Owning user identifier")
+    created_at: str = Field(description="ISO 8601 creation timestamp")
+    updated_at: str = Field(description="ISO 8601 last-update timestamp")
 
 
 class DocumentResponse(BaseModel):
-    id: str
-    kb_id: str
-    filename: str
-    file_type: str
-    file_size: int
-    chunk_count: int
-    metadata_json: str
-    status: str
-    created_at: str
+    id: str = Field(description="Unique identifier")
+    kb_id: str = Field(description="Kb id")
+    filename: str = Field(description="Filename")
+    file_type: str = Field(description="File type")
+    file_size: int = Field(description="File size")
+    chunk_count: int = Field(description="Chunk count")
+    metadata_json: str = Field(description="Metadata json")
+    status: str = Field(description="Current status")
+    created_at: str = Field(description="ISO 8601 creation timestamp")
 
 
 class SearchRequest(BaseModel):
-    query: str = Field(..., min_length=1)
+    query: str = Field(..., min_length=1, description="Query")
 
 
 class SearchResult(BaseModel):
-    chunk_id: str
-    document_id: str
-    filename: str
-    chunk_index: int
-    content: str
-    score: float
+    chunk_id: str = Field(description="Chunk id")
+    document_id: str = Field(description="Document id")
+    filename: str = Field(description="Filename")
+    chunk_index: int = Field(description="Chunk index")
+    content: str = Field(description="Text content")
+    score: float = Field(description="Score")
 
 
 # Supported file extensions

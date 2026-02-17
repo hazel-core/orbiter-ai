@@ -22,34 +22,34 @@ router = APIRouter(prefix="/api/v1", tags=["models"])
 
 
 class ModelCreate(BaseModel):
-    provider_id: str = Field(..., min_length=1)
-    model_name: str = Field(..., min_length=1, max_length=255)
-    context_window: int | None = None
-    capabilities: list[str] = []
-    pricing_input: float | None = None
-    pricing_output: float | None = None
-    is_custom: bool = True
+    provider_id: str = Field(..., min_length=1, description="Associated provider identifier")
+    model_name: str = Field(..., min_length=1, max_length=255, description="Model name")
+    context_window: int | None = Field(None, description="Context window")
+    capabilities: list[str] = Field([], description="Capabilities")
+    pricing_input: float | None = Field(None, description="Pricing input")
+    pricing_output: float | None = Field(None, description="Pricing output")
+    is_custom: bool = Field(True, description="Is custom")
 
 
 class ModelResponse(BaseModel):
-    id: str
-    provider_id: str
-    model_name: str
-    context_window: int | None
-    capabilities: list[str]
-    pricing_input: float | None
-    pricing_output: float | None
-    is_custom: bool
-    provider_name: str | None = None
-    provider_type: str | None = None
-    user_id: str
-    created_at: str
-    updated_at: str
+    id: str = Field(description="Unique identifier")
+    provider_id: str = Field(description="Associated provider identifier")
+    model_name: str = Field(description="Model name")
+    context_window: int | None = Field(description="Context window")
+    capabilities: list[str] = Field(description="Capabilities")
+    pricing_input: float | None = Field(description="Pricing input")
+    pricing_output: float | None = Field(description="Pricing output")
+    is_custom: bool = Field(description="Is custom")
+    provider_name: str | None = Field(None, description="Provider name")
+    provider_type: str | None = Field(None, description="Provider type (openai, anthropic, etc.)")
+    user_id: str = Field(description="Owning user identifier")
+    created_at: str = Field(description="ISO 8601 creation timestamp")
+    updated_at: str = Field(description="ISO 8601 last-update timestamp")
 
 
 class DiscoverResult(BaseModel):
-    discovered: int
-    models: list[ModelResponse]
+    discovered: int = Field(description="Discovered")
+    models: list[ModelResponse] = Field(description="Models")
 
 
 # ---------------------------------------------------------------------------

@@ -42,37 +42,37 @@ _DEFAULT_ENDPOINTS: dict[str, str] = {
 
 
 class IntegrationCreate(BaseModel):
-    platform: str = Field(..., min_length=1)
-    display_name: str = Field(..., min_length=1, max_length=255)
-    endpoint_url: str = Field(default="")
-    api_key: str = Field(default="")
-    project_name: str = Field(default="")
-    extra_config: dict[str, Any] = Field(default_factory=dict)
+    platform: str = Field(..., min_length=1, description="Platform")
+    display_name: str = Field(..., min_length=1, max_length=255, description="Display name")
+    endpoint_url: str = Field(default="", description="Endpoint url")
+    api_key: str = Field(default="", description="API key (stored encrypted)")
+    project_name: str = Field(default="", description="Project name")
+    extra_config: dict[str, Any] = Field(default_factory=dict, description="Extra config")
 
 
 class IntegrationUpdate(BaseModel):
-    display_name: str | None = None
-    endpoint_url: str | None = None
-    api_key: str | None = None
-    project_name: str | None = None
-    enabled: bool | None = None
-    extra_config: dict[str, Any] | None = None
+    display_name: str | None = Field(None, description="Display name")
+    endpoint_url: str | None = Field(None, description="Endpoint url")
+    api_key: str | None = Field(None, description="API key (stored encrypted)")
+    project_name: str | None = Field(None, description="Project name")
+    enabled: bool | None = Field(None, description="Whether this item is active")
+    extra_config: dict[str, Any] | None = Field(None, description="Extra config")
 
 
 class IntegrationResponse(BaseModel):
-    id: str
-    platform: str
-    display_name: str
-    enabled: bool
-    endpoint_url: str
-    api_key_set: bool
-    project_name: str
-    extra_config: dict[str, Any]
-    last_test_at: str | None = None
-    last_test_status: str | None = None
-    last_test_error: str | None = None
-    created_at: str
-    updated_at: str
+    id: str = Field(description="Unique identifier")
+    platform: str = Field(description="Platform")
+    display_name: str = Field(description="Display name")
+    enabled: bool = Field(description="Whether this item is active")
+    endpoint_url: str = Field(description="Endpoint url")
+    api_key_set: bool = Field(description="Whether an API key is configured")
+    project_name: str = Field(description="Project name")
+    extra_config: dict[str, Any] = Field(description="Extra config")
+    last_test_at: str | None = Field(None, description="Last test at")
+    last_test_status: str | None = Field(None, description="Last test status")
+    last_test_error: str | None = Field(None, description="Last test error")
+    created_at: str = Field(description="ISO 8601 creation timestamp")
+    updated_at: str = Field(description="ISO 8601 last-update timestamp")
 
 
 # ---------------------------------------------------------------------------

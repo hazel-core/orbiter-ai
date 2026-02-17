@@ -26,61 +26,61 @@ router = APIRouter(prefix="/api/v1/workflows", tags=["workflows"])
 
 
 class WorkflowCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=255)
-    project_id: str = Field(..., min_length=1)
-    description: str = ""
-    nodes_json: str = "[]"
-    edges_json: str = "[]"
-    viewport_json: str = '{"x":0,"y":0,"zoom":1}'
+    name: str = Field(..., min_length=1, max_length=255, description="Display name")
+    project_id: str = Field(..., min_length=1, description="Associated project identifier")
+    description: str = Field("", description="Human-readable description")
+    nodes_json: str = Field("[]", description="JSON array of canvas nodes")
+    edges_json: str = Field("[]", description="JSON array of canvas edges")
+    viewport_json: str = Field('{"x":0,"y":0,"zoom":1}', description="JSON canvas viewport state")
 
 
 class WorkflowUpdate(BaseModel):
-    name: str | None = Field(None, min_length=1, max_length=255)
-    description: str | None = None
-    nodes_json: str | None = None
-    edges_json: str | None = None
-    viewport_json: str | None = None
-    status: str | None = None
+    name: str | None = Field(None, min_length=1, max_length=255, description="Display name")
+    description: str | None = Field(None, description="Human-readable description")
+    nodes_json: str | None = Field(None, description="JSON array of canvas nodes")
+    edges_json: str | None = Field(None, description="JSON array of canvas edges")
+    viewport_json: str | None = Field(None, description="JSON canvas viewport state")
+    status: str | None = Field(None, description="Current status")
 
 
 class WorkflowImport(BaseModel):
-    name: str = Field(..., min_length=1, max_length=255)
-    project_id: str = Field(..., min_length=1)
-    description: str = ""
-    nodes_json: str = "[]"
-    edges_json: str = "[]"
-    viewport_json: str = '{"x":0,"y":0,"zoom":1}'
+    name: str = Field(..., min_length=1, max_length=255, description="Display name")
+    project_id: str = Field(..., min_length=1, description="Associated project identifier")
+    description: str = Field("", description="Human-readable description")
+    nodes_json: str = Field("[]", description="JSON array of canvas nodes")
+    edges_json: str = Field("[]", description="JSON array of canvas edges")
+    viewport_json: str = Field('{"x":0,"y":0,"zoom":1}', description="JSON canvas viewport state")
 
 
 class WorkflowResponse(BaseModel):
-    id: str
-    name: str
-    description: str
-    project_id: str
-    nodes_json: str
-    edges_json: str
-    viewport_json: str
-    version: int
-    status: str
-    last_run_at: str | None
-    user_id: str
-    created_at: str
-    updated_at: str
+    id: str = Field(description="Unique identifier")
+    name: str = Field(description="Display name")
+    description: str = Field(description="Human-readable description")
+    project_id: str = Field(description="Associated project identifier")
+    nodes_json: str = Field(description="JSON array of canvas nodes")
+    edges_json: str = Field(description="JSON array of canvas edges")
+    viewport_json: str = Field(description="JSON canvas viewport state")
+    version: int = Field(description="Version identifier")
+    status: str = Field(description="Current status")
+    last_run_at: str | None = Field(description="Last execution timestamp")
+    user_id: str = Field(description="Owning user identifier")
+    created_at: str = Field(description="ISO 8601 creation timestamp")
+    updated_at: str = Field(description="ISO 8601 last-update timestamp")
 
 
 class WorkflowAIGenerateRequest(BaseModel):
-    description: str = Field(..., min_length=1)
+    description: str = Field(..., min_length=1, description="Human-readable description")
     model: str | None = None  # "provider_id:model_name" format, or uses default
 
 
 class WorkflowAIRefineRequest(BaseModel):
-    instruction: str = Field(..., min_length=1)
-    model: str | None = None
+    instruction: str = Field(..., min_length=1, description="Instruction")
+    model: str | None = Field(None, description="Model identifier")
 
 
 class WorkflowAIResponse(BaseModel):
-    nodes: list[dict[str, Any]]
-    edges: list[dict[str, Any]]
+    nodes: list[dict[str, Any]] = Field(description="Nodes")
+    edges: list[dict[str, Any]] = Field(description="Edges")
 
 
 # ---------------------------------------------------------------------------

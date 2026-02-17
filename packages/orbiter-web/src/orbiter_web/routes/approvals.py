@@ -21,19 +21,19 @@ router = APIRouter(prefix="/api/v1/approvals", tags=["approvals"])
 
 
 class ApprovalResponse(BaseModel):
-    id: str
-    run_id: str
-    node_id: str
-    status: str
-    timeout_minutes: int
-    comment: str | None = None
-    requested_at: str
-    responded_at: str | None = None
+    id: str = Field(description="Unique identifier")
+    run_id: str = Field(description="Associated run identifier")
+    node_id: str = Field(description="Associated node identifier")
+    status: str = Field(description="Current status")
+    timeout_minutes: int = Field(description="Timeout minutes")
+    comment: str | None = Field(None, description="Comment")
+    requested_at: str = Field(description="Requested at")
+    responded_at: str | None = Field(None, description="Responded at")
 
 
 class ApprovalRespondBody(BaseModel):
-    approved: bool
-    comment: str | None = Field(default=None, max_length=2000)
+    approved: bool = Field(description="Approved")
+    comment: str | None = Field(default=None, max_length=2000, description="Comment")
 
 
 # ---------------------------------------------------------------------------

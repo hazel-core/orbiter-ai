@@ -30,24 +30,24 @@ router = APIRouter(prefix="/api/v1/agents", tags=["agents"])
 
 
 class AIGenerateRequest(BaseModel):
-    description: str = Field(..., min_length=1)
+    description: str = Field(..., min_length=1, description="Human-readable description")
     model: str | None = None  # "provider_id:model_name" format, or uses default
 
 
 class GeneratedAgentConfig(BaseModel):
-    name: str = ""
-    description: str = ""
-    instructions: str = ""
-    persona_role: str = ""
-    persona_goal: str = ""
-    persona_backstory: str = ""
-    suggested_tools: list[str] = []
-    suggested_model: str = ""
-    task: str = ""
+    name: str = Field("", description="Display name")
+    description: str = Field("", description="Human-readable description")
+    instructions: str = Field("", description="System instructions for the agent")
+    persona_role: str = Field("", description="Agent persona role")
+    persona_goal: str = Field("", description="Agent persona goal")
+    persona_backstory: str = Field("", description="Agent persona backstory")
+    suggested_tools: list[str] = Field([], description="Recommended tools for this agent")
+    suggested_model: str = Field("", description="Recommended model for this agent")
+    task: str = Field("", description="Task description")
 
 
 class AIGenerateResponse(BaseModel):
-    agents: list[GeneratedAgentConfig]
+    agents: list[GeneratedAgentConfig] = Field(description="Agents")
 
 
 # ---------------------------------------------------------------------------
@@ -56,84 +56,84 @@ class AIGenerateResponse(BaseModel):
 
 
 class AgentCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=255)
-    project_id: str = Field(..., min_length=1)
-    description: str = ""
-    instructions: str = ""
-    model_provider: str = ""
-    model_name: str = ""
-    temperature: float | None = None
-    max_tokens: int | None = None
-    max_steps: int | None = None
-    output_type_json: str = "{}"
-    tools_json: str = "[]"
-    handoffs_json: str = "[]"
-    hooks_json: str = "{}"
-    knowledge_base_ids: str = "[]"
-    persona_role: str = ""
-    persona_goal: str = ""
-    persona_backstory: str = ""
-    autonomous_mode: bool = False
-    context_automation_level: str = "copilot"
-    context_max_tokens_per_step: int | None = None
-    context_max_total_tokens: int | None = None
-    context_memory_type: str = "conversation"
-    context_workspace_enabled: bool = False
+    name: str = Field(..., min_length=1, max_length=255, description="Display name")
+    project_id: str = Field(..., min_length=1, description="Associated project identifier")
+    description: str = Field("", description="Human-readable description")
+    instructions: str = Field("", description="System instructions for the agent")
+    model_provider: str = Field("", description="Model provider")
+    model_name: str = Field("", description="Model name")
+    temperature: float | None = Field(None, description="Sampling temperature (0.0-2.0)")
+    max_tokens: int | None = Field(None, description="Maximum tokens to generate")
+    max_steps: int | None = Field(None, description="Maximum agent steps")
+    output_type_json: str = Field("{}", description="JSON schema for structured output")
+    tools_json: str = Field("[]", description="JSON array of tool configurations")
+    handoffs_json: str = Field("[]", description="JSON array of handoff configurations")
+    hooks_json: str = Field("{}", description="JSON object of hook configurations")
+    knowledge_base_ids: str = Field("[]", description="Knowledge base ids")
+    persona_role: str = Field("", description="Agent persona role")
+    persona_goal: str = Field("", description="Agent persona goal")
+    persona_backstory: str = Field("", description="Agent persona backstory")
+    autonomous_mode: bool = Field(False, description="Autonomous mode")
+    context_automation_level: str = Field("copilot", description="Context automation level")
+    context_max_tokens_per_step: int | None = Field(None, description="Context max tokens per step")
+    context_max_total_tokens: int | None = Field(None, description="Context max total tokens")
+    context_memory_type: str = Field("conversation", description="Context memory type")
+    context_workspace_enabled: bool = Field(False, description="Context workspace enabled")
 
 
 class AgentUpdate(BaseModel):
-    name: str | None = Field(None, min_length=1, max_length=255)
-    description: str | None = None
-    instructions: str | None = None
-    model_provider: str | None = None
-    model_name: str | None = None
-    temperature: float | None = None
-    max_tokens: int | None = None
-    max_steps: int | None = None
-    output_type_json: str | None = None
-    tools_json: str | None = None
-    handoffs_json: str | None = None
-    hooks_json: str | None = None
-    knowledge_base_ids: str | None = None
-    persona_role: str | None = None
-    persona_goal: str | None = None
-    persona_backstory: str | None = None
-    autonomous_mode: bool | None = None
-    context_automation_level: str | None = None
-    context_max_tokens_per_step: int | None = None
-    context_max_total_tokens: int | None = None
-    context_memory_type: str | None = None
-    context_workspace_enabled: bool | None = None
+    name: str | None = Field(None, min_length=1, max_length=255, description="Display name")
+    description: str | None = Field(None, description="Human-readable description")
+    instructions: str | None = Field(None, description="System instructions for the agent")
+    model_provider: str | None = Field(None, description="Model provider")
+    model_name: str | None = Field(None, description="Model name")
+    temperature: float | None = Field(None, description="Sampling temperature (0.0-2.0)")
+    max_tokens: int | None = Field(None, description="Maximum tokens to generate")
+    max_steps: int | None = Field(None, description="Maximum agent steps")
+    output_type_json: str | None = Field(None, description="JSON schema for structured output")
+    tools_json: str | None = Field(None, description="JSON array of tool configurations")
+    handoffs_json: str | None = Field(None, description="JSON array of handoff configurations")
+    hooks_json: str | None = Field(None, description="JSON object of hook configurations")
+    knowledge_base_ids: str | None = Field(None, description="Knowledge base ids")
+    persona_role: str | None = Field(None, description="Agent persona role")
+    persona_goal: str | None = Field(None, description="Agent persona goal")
+    persona_backstory: str | None = Field(None, description="Agent persona backstory")
+    autonomous_mode: bool | None = Field(None, description="Autonomous mode")
+    context_automation_level: str | None = Field(None, description="Context automation level")
+    context_max_tokens_per_step: int | None = Field(None, description="Context max tokens per step")
+    context_max_total_tokens: int | None = Field(None, description="Context max total tokens")
+    context_memory_type: str | None = Field(None, description="Context memory type")
+    context_workspace_enabled: bool | None = Field(None, description="Context workspace enabled")
 
 
 class AgentResponse(BaseModel):
-    id: str
-    name: str
-    description: str
-    instructions: str
-    model_provider: str
-    model_name: str
-    temperature: float | None
-    max_tokens: int | None
-    max_steps: int | None
-    output_type_json: str
-    tools_json: str
-    handoffs_json: str
-    hooks_json: str
-    knowledge_base_ids: str
-    persona_role: str
-    persona_goal: str
-    persona_backstory: str
-    autonomous_mode: bool
-    context_automation_level: str
-    context_max_tokens_per_step: int | None
-    context_max_total_tokens: int | None
-    context_memory_type: str
-    context_workspace_enabled: bool
-    project_id: str
-    user_id: str
-    created_at: str
-    updated_at: str
+    id: str = Field(description="Unique identifier")
+    name: str = Field(description="Display name")
+    description: str = Field(description="Human-readable description")
+    instructions: str = Field(description="System instructions for the agent")
+    model_provider: str = Field(description="Model provider")
+    model_name: str = Field(description="Model name")
+    temperature: float | None = Field(description="Sampling temperature (0.0-2.0)")
+    max_tokens: int | None = Field(description="Maximum tokens to generate")
+    max_steps: int | None = Field(description="Maximum agent steps")
+    output_type_json: str = Field(description="JSON schema for structured output")
+    tools_json: str = Field(description="JSON array of tool configurations")
+    handoffs_json: str = Field(description="JSON array of handoff configurations")
+    hooks_json: str = Field(description="JSON object of hook configurations")
+    knowledge_base_ids: str = Field(description="Knowledge base ids")
+    persona_role: str = Field(description="Agent persona role")
+    persona_goal: str = Field(description="Agent persona goal")
+    persona_backstory: str = Field(description="Agent persona backstory")
+    autonomous_mode: bool = Field(description="Autonomous mode")
+    context_automation_level: str = Field(description="Context automation level")
+    context_max_tokens_per_step: int | None = Field(description="Context max tokens per step")
+    context_max_total_tokens: int | None = Field(description="Context max total tokens")
+    context_memory_type: str = Field(description="Context memory type")
+    context_workspace_enabled: bool = Field(description="Context workspace enabled")
+    project_id: str = Field(description="Associated project identifier")
+    user_id: str = Field(description="Owning user identifier")
+    created_at: str = Field(description="ISO 8601 creation timestamp")
+    updated_at: str = Field(description="ISO 8601 last-update timestamp")
 
 
 # ---------------------------------------------------------------------------
@@ -142,21 +142,21 @@ class AgentResponse(BaseModel):
 
 
 class SubAgentAdd(BaseModel):
-    sub_agent_id: str = Field(..., min_length=1)
-    relationship_type: str = "delegation"
-    routing_rule_json: str = "{}"
+    sub_agent_id: str = Field(..., min_length=1, description="Sub agent id")
+    relationship_type: str = Field("delegation", description="Relationship type")
+    routing_rule_json: str = Field("{}", description="Routing rule json")
 
 
 class SubAgentRelationshipResponse(BaseModel):
-    id: str
-    supervisor_id: str
-    sub_agent_id: str
-    sub_agent_name: str
-    sub_agent_description: str
-    relationship_type: str
-    routing_rule_json: str
-    created_at: str
-    updated_at: str
+    id: str = Field(description="Unique identifier")
+    supervisor_id: str = Field(description="Supervisor id")
+    sub_agent_id: str = Field(description="Sub agent id")
+    sub_agent_name: str = Field(description="Sub agent name")
+    sub_agent_description: str = Field(description="Sub agent description")
+    relationship_type: str = Field(description="Relationship type")
+    routing_rule_json: str = Field(description="Routing rule json")
+    created_at: str = Field(description="ISO 8601 creation timestamp")
+    updated_at: str = Field(description="ISO 8601 last-update timestamp")
 
 
 # ---------------------------------------------------------------------------

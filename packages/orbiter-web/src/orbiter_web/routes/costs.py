@@ -21,55 +21,55 @@ router = APIRouter(prefix="/api/v1/costs", tags=["costs"])
 
 
 class ModelPricingResponse(BaseModel):
-    id: str
-    model_name: str
-    input_price_per_1k: float
-    output_price_per_1k: float
+    id: str = Field(description="Unique identifier")
+    model_name: str = Field(description="Model name")
+    input_price_per_1k: float = Field(description="Input price per 1k")
+    output_price_per_1k: float = Field(description="Output price per 1k")
 
 
 class ModelPricingUpdate(BaseModel):
-    input_price_per_1k: float = Field(ge=0)
-    output_price_per_1k: float = Field(ge=0)
+    input_price_per_1k: float = Field(ge=0, description="Input price per 1k")
+    output_price_per_1k: float = Field(ge=0, description="Output price per 1k")
 
 
 class CostSummary(BaseModel):
-    total_cost: float
-    total_runs: int
-    total_tokens: int
-    cost_by_model: list[dict[str, Any]]
-    cost_by_agent: list[dict[str, Any]]
+    total_cost: float = Field(description="Total cost in USD")
+    total_runs: int = Field(description="Total runs")
+    total_tokens: int = Field(description="Total token count")
+    cost_by_model: list[dict[str, Any]] = Field(description="Cost by model")
+    cost_by_agent: list[dict[str, Any]] = Field(description="Cost by agent")
 
 
 class BudgetResponse(BaseModel):
-    id: str
-    scope: str
-    scope_id: str
-    budget_amount: float
-    period: str
-    alert_threshold: float
+    id: str = Field(description="Unique identifier")
+    scope: str = Field(description="Scope")
+    scope_id: str = Field(description="Scope id")
+    budget_amount: float = Field(description="Budget amount")
+    period: str = Field(description="Period")
+    alert_threshold: float = Field(description="Alert threshold")
 
 
 class BudgetCreate(BaseModel):
-    scope: str = Field(pattern=r"^(workspace|agent)$")
-    scope_id: str = ""
-    budget_amount: float = Field(gt=0)
-    period: str = Field(default="monthly", pattern=r"^(daily|monthly)$")
-    alert_threshold: float = Field(default=80.0, ge=0, le=100)
+    scope: str = Field(pattern=r"^(workspace|agent)$", description="Scope")
+    scope_id: str = Field("", description="Scope id")
+    budget_amount: float = Field(gt=0, description="Budget amount")
+    period: str = Field(default="monthly", pattern=r"^(daily|monthly)$", description="Period")
+    alert_threshold: float = Field(default=80.0, ge=0, le=100, description="Alert threshold")
 
 
 class BudgetUpdate(BaseModel):
-    budget_amount: float | None = Field(default=None, gt=0)
-    period: str | None = Field(default=None, pattern=r"^(daily|monthly)$")
-    alert_threshold: float | None = Field(default=None, ge=0, le=100)
+    budget_amount: float | None = Field(default=None, gt=0, description="Budget amount")
+    period: str | None = Field(default=None, pattern=r"^(daily|monthly)$", description="Period")
+    alert_threshold: float | None = Field(default=None, ge=0, le=100, description="Alert threshold")
 
 
 class BudgetCheck(BaseModel):
-    budget_id: str
-    scope: str
-    budget_amount: float
-    spent: float
-    percent_used: float
-    status: str  # "ok", "warning", "exceeded"
+    budget_id: str = Field(description="Budget id")
+    scope: str = Field(description="Scope")
+    budget_amount: float = Field(description="Budget amount")
+    spent: float = Field(description="Spent")
+    percent_used: float = Field(description="Percent used")
+    status: str  # "ok", "warning", "exceeded" = Field(description="Current status")
 
 
 # ---------------------------------------------------------------------------

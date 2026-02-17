@@ -22,29 +22,29 @@ router = APIRouter(prefix="/api/v1/schedules", tags=["schedules"])
 
 
 class ScheduleCreate(BaseModel):
-    workflow_id: str = Field(..., min_length=1)
-    cron_expression: str = Field(..., min_length=1, max_length=255)
-    timezone: str = Field(default="UTC", max_length=64)
-    enabled: bool = True
+    workflow_id: str = Field(..., min_length=1, description="Associated workflow identifier")
+    cron_expression: str = Field(..., min_length=1, max_length=255, description="Cron schedule expression")
+    timezone: str = Field(default="UTC", max_length=64, description="Timezone")
+    enabled: bool = Field(True, description="Whether this item is active")
 
 
 class ScheduleUpdate(BaseModel):
-    cron_expression: str | None = Field(None, min_length=1, max_length=255)
-    timezone: str | None = Field(None, max_length=64)
-    enabled: bool | None = None
+    cron_expression: str | None = Field(None, min_length=1, max_length=255, description="Cron schedule expression")
+    timezone: str | None = Field(None, max_length=64, description="Timezone")
+    enabled: bool | None = Field(None, description="Whether this item is active")
 
 
 class ScheduleResponse(BaseModel):
-    id: str
-    workflow_id: str
-    user_id: str
-    cron_expression: str
-    timezone: str
-    enabled: bool
-    last_run_at: str | None
-    next_run_at: str | None
-    created_at: str
-    updated_at: str
+    id: str = Field(description="Unique identifier")
+    workflow_id: str = Field(description="Associated workflow identifier")
+    user_id: str = Field(description="Owning user identifier")
+    cron_expression: str = Field(description="Cron schedule expression")
+    timezone: str = Field(description="Timezone")
+    enabled: bool = Field(description="Whether this item is active")
+    last_run_at: str | None = Field(description="Last execution timestamp")
+    next_run_at: str | None = Field(description="Next scheduled run timestamp")
+    created_at: str = Field(description="ISO 8601 creation timestamp")
+    updated_at: str = Field(description="ISO 8601 last-update timestamp")
 
 
 # ---------------------------------------------------------------------------

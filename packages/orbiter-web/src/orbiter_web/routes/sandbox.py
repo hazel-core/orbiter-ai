@@ -37,34 +37,34 @@ class ExecuteRequest(BaseModel):
 
 
 class GeneratedFile(BaseModel):
-    name: str
-    size_bytes: int
-    content_base64: str | None = None
+    name: str = Field(description="Display name")
+    size_bytes: int = Field(description="File size in bytes")
+    content_base64: str | None = Field(None, description="Base64-encoded file content")
 
 
 class ExecuteResponse(BaseModel):
-    success: bool
-    stdout: str = ""
-    stderr: str = ""
-    error: str | None = None
-    generated_files: list[GeneratedFile] = []
-    execution_time_ms: float = 0.0
+    success: bool = Field(description="Whether the operation succeeded")
+    stdout: str = Field("", description="Standard output")
+    stderr: str = Field("", description="Standard error output")
+    error: str | None = Field(None, description="Error message if failed")
+    generated_files: list[GeneratedFile] = Field([], description="Files produced by execution")
+    execution_time_ms: float = Field(0.0, description="Execution duration in milliseconds")
 
 
 class SandboxConfigResponse(BaseModel):
-    id: str
-    user_id: str
-    allowed_libraries: list[str]
-    timeout_seconds: int
-    memory_limit_mb: int
-    created_at: str
-    updated_at: str
+    id: str = Field(description="Unique identifier")
+    user_id: str = Field(description="Owning user identifier")
+    allowed_libraries: list[str] = Field(description="List of allowed Python libraries")
+    timeout_seconds: int = Field(description="Execution timeout in seconds")
+    memory_limit_mb: int = Field(description="Memory limit in megabytes")
+    created_at: str = Field(description="ISO 8601 creation timestamp")
+    updated_at: str = Field(description="ISO 8601 last-update timestamp")
 
 
 class SandboxConfigUpdate(BaseModel):
-    allowed_libraries: list[str] | None = None
-    timeout_seconds: int | None = Field(None, ge=1, le=120)
-    memory_limit_mb: int | None = Field(None, ge=64, le=1024)
+    allowed_libraries: list[str] | None = Field(None, description="List of allowed Python libraries")
+    timeout_seconds: int | None = Field(None, ge=1, le=120, description="Execution timeout in seconds")
+    memory_limit_mb: int | None = Field(None, ge=64, le=1024, description="Memory limit in megabytes")
 
 
 # ---------------------------------------------------------------------------

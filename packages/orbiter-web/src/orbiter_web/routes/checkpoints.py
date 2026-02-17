@@ -23,39 +23,39 @@ router = APIRouter(prefix="/api/v1/runs", tags=["checkpoints"])
 
 
 class CheckpointCreate(BaseModel):
-    name: str = Field(min_length=1, max_length=200)
-    step_number: int = Field(default=0, ge=0)
+    name: str = Field(min_length=1, max_length=200, description="Display name")
+    step_number: int = Field(default=0, ge=0, description="Step number")
     state_blob: dict[str, Any] | list[Any] | str = Field(
         ..., description="Execution state to persist (JSON-serialisable)"
     )
 
 
 class CheckpointOut(BaseModel):
-    id: str
-    run_id: str
-    name: str
-    step_number: int
-    state_blob: Any
-    created_at: str
+    id: str = Field(description="Unique identifier")
+    run_id: str = Field(description="Associated run identifier")
+    name: str = Field(description="Display name")
+    step_number: int = Field(description="Step number")
+    state_blob: Any = Field(description="State blob")
+    created_at: str = Field(description="ISO 8601 creation timestamp")
 
 
 class CheckpointListOut(BaseModel):
-    checkpoints: list[CheckpointOut]
-    total: int
+    checkpoints: list[CheckpointOut] = Field(description="Checkpoints")
+    total: int = Field(description="Total item count")
 
 
 class RestoreOut(BaseModel):
-    checkpoint: CheckpointOut
-    message: str = "Run status reset to 'pending' for resume"
+    checkpoint: CheckpointOut = Field(description="Checkpoint")
+    message: str = Field("Run status reset to 'pending' for resume", description="Message")
 
 
 class CheckpointDiffOut(BaseModel):
-    checkpoint_a: CheckpointOut
-    checkpoint_b: CheckpointOut
-    added_keys: list[str]
-    removed_keys: list[str]
-    changed_keys: list[str]
-    unchanged_keys: list[str]
+    checkpoint_a: CheckpointOut = Field(description="Checkpoint a")
+    checkpoint_b: CheckpointOut = Field(description="Checkpoint b")
+    added_keys: list[str] = Field(description="Added keys")
+    removed_keys: list[str] = Field(description="Removed keys")
+    changed_keys: list[str] = Field(description="Changed keys")
+    unchanged_keys: list[str] = Field(description="Unchanged keys")
 
 
 # ---------------------------------------------------------------------------
@@ -86,6 +86,7 @@ async def create_checkpoint(
     body: CheckpointCreate,
     user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
 ) -> CheckpointOut:
+    """Create checkpoint."""
     async with get_db() as db:
         await _verify_run_ownership(db, run_id, user["id"])
 
@@ -124,6 +125,7 @@ async def list_checkpoints(
     offset: int = Query(default=0, ge=0),
     user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
 ) -> CheckpointListOut:
+    """List checkpoints."""
     async with get_db() as db:
         await _verify_run_ownership(db, run_id, user["id"])
 
@@ -175,6 +177,7 @@ async def restore_checkpoint(
     cp_id: str,
     user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
 ) -> RestoreOut:
+    """Restore checkpoint."""
     async with get_db() as db:
         await _verify_run_ownership(db, run_id, user["id"])
 
@@ -222,6 +225,7 @@ async def delete_checkpoint(
     cp_id: str,
     user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
 ) -> None:
+    """Delete checkpoint."""
     async with get_db() as db:
         await _verify_run_ownership(db, run_id, user["id"])
 
@@ -248,6 +252,7 @@ async def diff_checkpoints(
     b: str = Query(..., description="Second checkpoint ID"),
     user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
 ) -> CheckpointDiffOut:
+    """Diff checkpoints."""
     async with get_db() as db:
         await _verify_run_ownership(db, run_id, user["id"])
 

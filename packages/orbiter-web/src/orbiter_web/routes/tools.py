@@ -63,73 +63,73 @@ BUILTIN_TOOLS: list[dict[str, Any]] = [
 
 
 class ToolResponse(BaseModel):
-    id: str
-    name: str
-    description: str
-    category: str
-    schema_json: str
-    code: str
-    tool_type: str
-    usage_count: int
-    project_id: str
-    user_id: str
-    created_at: str
+    id: str = Field(description="Unique identifier")
+    name: str = Field(description="Display name")
+    description: str = Field(description="Human-readable description")
+    category: str = Field(description="Category label")
+    schema_json: str = Field(description="JSON schema definition")
+    code: str = Field(description="Source code")
+    tool_type: str = Field(description="Tool type (function, api, etc.)")
+    usage_count: int = Field(description="Number of times used")
+    project_id: str = Field(description="Associated project identifier")
+    user_id: str = Field(description="Owning user identifier")
+    created_at: str = Field(description="ISO 8601 creation timestamp")
 
 
 class ToolCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=255)
-    project_id: str = Field(..., min_length=1)
-    description: str = ""
-    category: str = "custom"
-    schema_json: str = "{}"
-    code: str = ""
-    tool_type: str = "function"
+    name: str = Field(..., min_length=1, max_length=255, description="Display name")
+    project_id: str = Field(..., min_length=1, description="Associated project identifier")
+    description: str = Field("", description="Human-readable description")
+    category: str = Field("custom", description="Category label")
+    schema_json: str = Field("{}", description="JSON schema definition")
+    code: str = Field("", description="Source code")
+    tool_type: str = Field("function", description="Tool type (function, api, etc.)")
 
 
 class ToolUpdate(BaseModel):
-    name: str | None = Field(None, min_length=1, max_length=255)
-    description: str | None = None
-    category: str | None = None
-    schema_json: str | None = None
-    code: str | None = None
-    tool_type: str | None = None
+    name: str | None = Field(None, min_length=1, max_length=255, description="Display name")
+    description: str | None = Field(None, description="Human-readable description")
+    category: str | None = Field(None, description="Category label")
+    schema_json: str | None = Field(None, description="JSON schema definition")
+    code: str | None = Field(None, description="Source code")
+    tool_type: str | None = Field(None, description="Tool type (function, api, etc.)")
 
 
 class CustomToolCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=255)
-    project_id: str = Field(..., min_length=1)
-    code: str = Field(..., min_length=1)
-    description: str = ""
+    name: str = Field(..., min_length=1, max_length=255, description="Display name")
+    project_id: str = Field(..., min_length=1, description="Associated project identifier")
+    code: str = Field(..., min_length=1, description="Source code")
+    description: str = Field("", description="Human-readable description")
 
 
 class CustomToolUpdate(BaseModel):
-    code: str = Field(..., min_length=1)
-    name: str | None = Field(None, min_length=1, max_length=255)
-    description: str | None = None
+    code: str = Field(..., min_length=1, description="Source code")
+    name: str | None = Field(None, min_length=1, max_length=255, description="Display name")
+    description: str | None = Field(None, description="Human-readable description")
 
 
 class CustomToolTestRequest(BaseModel):
-    inputs: dict[str, Any] = Field(default_factory=dict)
+    inputs: dict[str, Any] = Field(default_factory=dict, description="Inputs")
 
 
 class ParameterInfo(BaseModel):
-    name: str
-    type: str
-    default: str | None = None
-    description: str = ""
+    name: str = Field(description="Display name")
+    type: str = Field(description="Type")
+    default: str | None = Field(None, description="Default")
+    description: str = Field("", description="Human-readable description")
 
 
 class CustomToolSchemaResponse(BaseModel):
-    tool: ToolResponse
-    parameters: list[ParameterInfo]
-    schema: dict[str, Any]
+    tool: ToolResponse = Field(description="Tool")
+    parameters: list[ParameterInfo] = Field(description="Parameters")
+    schema: dict[str, Any] = Field(description="Schema")
 
 
 class CustomToolTestResponse(BaseModel):
-    success: bool
-    output: Any = None
-    error: str | None = None
-    traceback: str | None = None
+    success: bool = Field(description="Whether the operation succeeded")
+    output: Any = Field(None, description="Output text or data")
+    error: str | None = Field(None, description="Error message if failed")
+    traceback: str | None = Field(None, description="Traceback")
 
 
 # ---------------------------------------------------------------------------
@@ -513,24 +513,24 @@ async def generate_schema(
 
 
 class VisualSchemaCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=255)
-    project_id: str = Field(..., min_length=1)
-    description: str = ""
-    schema: dict[str, Any] = Field(default_factory=dict)
-    tool_type: str = "schema"
-    http_config: dict[str, Any] | None = None
+    name: str = Field(..., min_length=1, max_length=255, description="Display name")
+    project_id: str = Field(..., min_length=1, description="Associated project identifier")
+    description: str = Field("", description="Human-readable description")
+    schema: dict[str, Any] = Field(default_factory=dict, description="Schema")
+    tool_type: str = Field("schema", description="Tool type (function, api, etc.)")
+    http_config: dict[str, Any] | None = Field(None, description="Http config")
 
 
 class WorkflowNodeToolResponse(BaseModel):
-    id: str
-    name: str
-    description: str
-    node_id: str
-    node_type: str
-    workflow_id: str
-    workflow_name: str
-    schema_json: str
-    source: str = "workflow_node"
+    id: str = Field(description="Unique identifier")
+    name: str = Field(description="Display name")
+    description: str = Field(description="Human-readable description")
+    node_id: str = Field(description="Associated node identifier")
+    node_type: str = Field(description="Node type")
+    workflow_id: str = Field(description="Associated workflow identifier")
+    workflow_name: str = Field(description="Workflow name")
+    schema_json: str = Field(description="JSON schema definition")
+    source: str = Field("workflow_node", description="Source")
 
 
 # Handle data type → JSON Schema type mapping (mirrors handleTypes.ts)

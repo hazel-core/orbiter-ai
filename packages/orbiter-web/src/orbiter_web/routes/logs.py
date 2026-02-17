@@ -24,21 +24,21 @@ router = APIRouter(prefix="/api/v1/logs", tags=["logs"])
 
 
 class LogEntry(BaseModel):
-    id: str
-    timestamp: str
-    level: str
-    source: str
-    agent_id: str | None = None
-    message: str
-    metadata_json: Any | None = None
+    id: str = Field(description="Unique identifier")
+    timestamp: str = Field(description="Timestamp")
+    level: str = Field(description="Level")
+    source: str = Field(description="Source")
+    agent_id: str | None = Field(None, description="Associated agent identifier")
+    message: str = Field(description="Message")
+    metadata_json: Any | None = Field(None, description="Metadata json")
 
 
 class CreateLogEntry(BaseModel):
-    level: str = Field(..., pattern=r"^(debug|info|warn|error)$")
-    source: str = Field(..., pattern=r"^(agent|tool|model|system)$")
-    agent_id: str | None = None
-    message: str = Field(..., min_length=1)
-    metadata_json: Any | None = None
+    level: str = Field(..., pattern=r"^(debug|info|warn|error)$", description="Level")
+    source: str = Field(..., pattern=r"^(agent|tool|model|system)$", description="Source")
+    agent_id: str | None = Field(None, description="Associated agent identifier")
+    message: str = Field(..., min_length=1, description="Message")
+    metadata_json: Any | None = Field(None, description="Metadata json")
 
 
 # ---------------------------------------------------------------------------

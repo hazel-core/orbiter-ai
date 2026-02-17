@@ -23,73 +23,73 @@ router = APIRouter(prefix="/api/v1/prompt-templates", tags=["prompt_templates"])
 
 
 class TemplateCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=255)
-    content: str = ""
-    variables_json: str = "{}"
+    name: str = Field(..., min_length=1, max_length=255, description="Display name")
+    content: str = Field("", description="Text content")
+    variables_json: str = Field("{}", description="JSON object of variables")
 
 
 class TemplateUpdate(BaseModel):
-    name: str | None = Field(None, min_length=1, max_length=255)
-    content: str | None = None
-    variables_json: str | None = None
+    name: str | None = Field(None, min_length=1, max_length=255, description="Display name")
+    content: str | None = Field(None, description="Text content")
+    variables_json: str | None = Field(None, description="JSON object of variables")
 
 
 class TemplateResponse(BaseModel):
-    id: str
-    name: str
-    content: str
-    variables_json: str
-    user_id: str
-    created_at: str
-    updated_at: str
+    id: str = Field(description="Unique identifier")
+    name: str = Field(description="Display name")
+    content: str = Field(description="Text content")
+    variables_json: str = Field(description="JSON object of variables")
+    user_id: str = Field(description="Owning user identifier")
+    created_at: str = Field(description="ISO 8601 creation timestamp")
+    updated_at: str = Field(description="ISO 8601 last-update timestamp")
 
 
 class VersionResponse(BaseModel):
-    id: str
-    template_id: str
-    content: str
-    variables_json: str
-    version_number: int
-    user_id: str
-    created_at: str
+    id: str = Field(description="Unique identifier")
+    template_id: str = Field(description="Associated template identifier")
+    content: str = Field(description="Text content")
+    variables_json: str = Field(description="JSON object of variables")
+    version_number: int = Field(description="Version number")
+    user_id: str = Field(description="Owning user identifier")
+    created_at: str = Field(description="ISO 8601 creation timestamp")
 
 
 class TestPromptRequest(BaseModel):
-    prompt: str = Field(..., min_length=1)
+    prompt: str = Field(..., min_length=1, description="Prompt")
     variables: dict[str, str] = {}
-    provider_id: str = Field(..., min_length=1)
-    model_name: str = Field(..., min_length=1)
+    provider_id: str = Field(..., min_length=1, description="Associated provider identifier")
+    model_name: str = Field(..., min_length=1, description="Model name")
 
 
 class TestPromptResponse(BaseModel):
-    output: str
-    model: str
-    tokens_used: int | None = None
-    response_time_ms: int | None = None
+    output: str = Field(description="Output text or data")
+    model: str = Field(description="Model identifier")
+    tokens_used: int | None = Field(None, description="Tokens used")
+    response_time_ms: int | None = Field(None, description="Response time ms")
 
 
 class CompareModelItem(BaseModel):
-    provider_id: str = Field(..., min_length=1)
-    model_name: str = Field(..., min_length=1)
+    provider_id: str = Field(..., min_length=1, description="Associated provider identifier")
+    model_name: str = Field(..., min_length=1, description="Model name")
 
 
 class CompareRequest(BaseModel):
-    prompt: str = Field(..., min_length=1)
+    prompt: str = Field(..., min_length=1, description="Prompt")
     variables: dict[str, str] = {}
-    models: list[CompareModelItem] = Field(..., min_length=2, max_length=3)
+    models: list[CompareModelItem] = Field(..., min_length=2, max_length=3, description="Models")
 
 
 class CompareResultItem(BaseModel):
-    provider_id: str
-    model_name: str
-    output: str
-    tokens_used: int | None = None
-    response_time_ms: int | None = None
-    error: str | None = None
+    provider_id: str = Field(description="Associated provider identifier")
+    model_name: str = Field(description="Model name")
+    output: str = Field(description="Output text or data")
+    tokens_used: int | None = Field(None, description="Tokens used")
+    response_time_ms: int | None = Field(None, description="Response time ms")
+    error: str | None = Field(None, description="Error message if failed")
 
 
 class CompareResponse(BaseModel):
-    results: list[CompareResultItem]
+    results: list[CompareResultItem] = Field(description="Results")
 
 
 # ---------------------------------------------------------------------------
@@ -549,47 +549,47 @@ async def compare_models(
 
 
 class OptimizeRequest(BaseModel):
-    prompt: str = Field(..., min_length=1)
-    strategy: str = Field("clarity", pattern=r"^(clarity|specificity|safety|conciseness)$")
-    provider_id: str = Field(..., min_length=1)
-    model_name: str = Field(..., min_length=1)
-    agent_id: str | None = None
-    template_id: str | None = None
+    prompt: str = Field(..., min_length=1, description="Prompt")
+    strategy: str = Field("clarity", pattern=r"^(clarity|specificity|safety|conciseness)$", description="Strategy")
+    provider_id: str = Field(..., min_length=1, description="Associated provider identifier")
+    model_name: str = Field(..., min_length=1, description="Model name")
+    agent_id: str | None = Field(None, description="Associated agent identifier")
+    template_id: str | None = Field(None, description="Associated template identifier")
 
 
 class PromptChange(BaseModel):
-    type: str  # "added", "removed", "modified"
-    line: int
-    original: str
-    optimized: str
+    type: str  # "added", "removed", "modified" = Field(description="Type")
+    line: int = Field(description="Line")
+    original: str = Field(description="Original")
+    optimized: str = Field(description="Optimized")
 
 
 class OptimizeResponse(BaseModel):
-    optimized_prompt: str
-    changes: list[PromptChange]
-    strategy: str
-    model_used: str
-    optimization_id: str
+    optimized_prompt: str = Field(description="Optimized prompt")
+    changes: list[PromptChange] = Field(description="Changes")
+    strategy: str = Field(description="Strategy")
+    model_used: str = Field(description="Model used")
+    optimization_id: str = Field(description="Optimization id")
 
 
 class OptimizationHistoryItem(BaseModel):
-    id: str
-    agent_id: str | None
-    template_id: str | None
-    original_prompt: str
-    optimized_prompt: str
-    strategy: str
-    changes_json: str
-    accepted: bool
-    eval_score_before: float | None
-    eval_score_after: float | None
-    model_used: str
-    created_at: str
+    id: str = Field(description="Unique identifier")
+    agent_id: str | None = Field(description="Associated agent identifier")
+    template_id: str | None = Field(description="Associated template identifier")
+    original_prompt: str = Field(description="Original prompt")
+    optimized_prompt: str = Field(description="Optimized prompt")
+    strategy: str = Field(description="Strategy")
+    changes_json: str = Field(description="Changes json")
+    accepted: bool = Field(description="Accepted")
+    eval_score_before: float | None = Field(description="Eval score before")
+    eval_score_after: float | None = Field(description="Eval score after")
+    model_used: str = Field(description="Model used")
+    created_at: str = Field(description="ISO 8601 creation timestamp")
 
 
 class AcceptOptimizationRequest(BaseModel):
-    optimization_id: str = Field(..., min_length=1)
-    accepted: bool = True
+    optimization_id: str = Field(..., min_length=1, description="Optimization id")
+    accepted: bool = Field(True, description="Accepted")
 
 
 # ---------------------------------------------------------------------------

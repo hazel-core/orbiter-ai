@@ -36,80 +36,80 @@ router = APIRouter(prefix="/api/v1/agents", tags=["plans"])
 
 
 class PlanStepInput(BaseModel):
-    step_number: int = 0
-    description: str = Field(..., min_length=1)
-    dependencies: list[int] = []
+    step_number: int = Field(0, description="Step number")
+    description: str = Field(..., min_length=1, description="Human-readable description")
+    dependencies: list[int] = Field([], description="Dependencies")
 
 
 class PlanCreateRequest(BaseModel):
-    goal: str = Field(..., min_length=1)
+    goal: str = Field(..., min_length=1, description="Goal")
 
 
 class PlanWithStepsRequest(BaseModel):
-    goal: str = Field(..., min_length=1)
-    steps: list[PlanStepInput] = Field(..., min_length=1)
+    goal: str = Field(..., min_length=1, description="Goal")
+    steps: list[PlanStepInput] = Field(..., min_length=1, description="Steps")
 
 
 class PlanStepResponse(BaseModel):
-    id: str
-    plan_id: str
-    step_number: int
-    description: str
-    dependencies_json: str
-    status: str
-    executor_output: str
-    verifier_result: str
-    verifier_passed: bool | None
-    started_at: str | None
-    completed_at: str | None
-    created_at: str
-    updated_at: str
+    id: str = Field(description="Unique identifier")
+    plan_id: str = Field(description="Plan id")
+    step_number: int = Field(description="Step number")
+    description: str = Field(description="Human-readable description")
+    dependencies_json: str = Field(description="JSON array of dependency identifiers")
+    status: str = Field(description="Current status")
+    executor_output: str = Field(description="Executor output")
+    verifier_result: str = Field(description="Verifier result")
+    verifier_passed: bool | None = Field(description="Verifier passed")
+    started_at: str | None = Field(description="Started at")
+    completed_at: str | None = Field(description="Completed at")
+    created_at: str = Field(description="ISO 8601 creation timestamp")
+    updated_at: str = Field(description="ISO 8601 last-update timestamp")
 
 
 class PlanResponse(BaseModel):
-    id: str
-    agent_id: str
-    goal: str
-    version: int
-    status: str
-    user_id: str
-    created_at: str
-    updated_at: str
-    steps: list[PlanStepResponse] = []
+    id: str = Field(description="Unique identifier")
+    agent_id: str = Field(description="Associated agent identifier")
+    goal: str = Field(description="Goal")
+    version: int = Field(description="Version identifier")
+    status: str = Field(description="Current status")
+    user_id: str = Field(description="Owning user identifier")
+    created_at: str = Field(description="ISO 8601 creation timestamp")
+    updated_at: str = Field(description="ISO 8601 last-update timestamp")
+    steps: list[PlanStepResponse] = Field([], description="Steps")
 
 
 class StepExecuteRequest(BaseModel):
-    executor_output: str = Field(..., min_length=1)
+    executor_output: str = Field(..., min_length=1, description="Executor output")
 
 
 class StepVerifyRequest(BaseModel):
-    verifier_result: str = Field(..., min_length=1)
-    verifier_passed: bool
+    verifier_result: str = Field(..., min_length=1, description="Verifier result")
+    verifier_passed: bool = Field(description="Verifier passed")
 
 
 class StepAddRequest(BaseModel):
-    description: str = Field(..., min_length=1)
-    dependencies: list[int] = []
+    description: str = Field(..., min_length=1, description="Human-readable description")
+    dependencies: list[int] = Field([], description="Dependencies")
     after_step_number: int | None = None  # Insert after this step; None = append
 
 
 class StepUpdateRequest(BaseModel):
-    description: str | None = None
-    dependencies: list[int] | None = None
+    description: str | None = Field(None, description="Human-readable description")
+    dependencies: list[int] | None = Field(None, description="Dependencies")
 
 
 class StepReorderRequest(BaseModel):
-    step_ids: list[str] = Field(..., min_length=1)
+    step_ids: list[str] = Field(..., min_length=1, description="Step ids")
 
 
 class ExecuteStepResponse(BaseModel):
-    step: PlanStepResponse
-    executor_prompt: str
+    step: PlanStepResponse = Field(description="Step")
+    executor_prompt: str = Field(description="Executor prompt")
 
 
 class VerifyStepResponse(BaseModel):
-    step: PlanStepResponse
-    plan_status: str
+    step: PlanStepResponse = Field(description="Step")
+    plan_status: str = Field(description="Plan status")
 
 
 # ---------------------------------------------------------------------------

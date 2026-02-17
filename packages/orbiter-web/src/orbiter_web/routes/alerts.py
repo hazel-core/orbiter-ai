@@ -23,43 +23,43 @@ router = APIRouter(prefix="/api/v1/alerts", tags=["alerts"])
 
 
 class AlertRuleCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=200)
-    condition_type: str = Field(..., pattern=r"^(error_rate|latency|cost)$")
-    condition_threshold: float = Field(..., gt=0)
-    action_type: str = Field(..., pattern=r"^(toast|email|webhook)$")
-    action_config_json: dict[str, Any] | None = None
-    enabled: bool = True
+    name: str = Field(..., min_length=1, max_length=200, description="Display name")
+    condition_type: str = Field(..., pattern=r"^(error_rate|latency|cost)$", description="Condition type")
+    condition_threshold: float = Field(..., gt=0, description="Condition threshold")
+    action_type: str = Field(..., pattern=r"^(toast|email|webhook)$", description="Action type")
+    action_config_json: dict[str, Any] | None = Field(None, description="Action config json")
+    enabled: bool = Field(True, description="Whether this item is active")
 
 
 class AlertRuleUpdate(BaseModel):
-    name: str | None = Field(default=None, min_length=1, max_length=200)
-    condition_type: str | None = Field(default=None, pattern=r"^(error_rate|latency|cost)$")
-    condition_threshold: float | None = Field(default=None, gt=0)
-    action_type: str | None = Field(default=None, pattern=r"^(toast|email|webhook)$")
-    action_config_json: dict[str, Any] | None = None
-    enabled: bool | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=200, description="Display name")
+    condition_type: str | None = Field(default=None, pattern=r"^(error_rate|latency|cost)$", description="Condition type")
+    condition_threshold: float | None = Field(default=None, gt=0, description="Condition threshold")
+    action_type: str | None = Field(default=None, pattern=r"^(toast|email|webhook)$", description="Action type")
+    action_config_json: dict[str, Any] | None = Field(None, description="Action config json")
+    enabled: bool | None = Field(None, description="Whether this item is active")
 
 
 class AlertRuleResponse(BaseModel):
-    id: str
-    name: str
-    condition_type: str
-    condition_threshold: float
-    action_type: str
-    action_config_json: dict[str, Any] | None = None
-    enabled: bool
-    created_at: str
-    updated_at: str
+    id: str = Field(description="Unique identifier")
+    name: str = Field(description="Display name")
+    condition_type: str = Field(description="Condition type")
+    condition_threshold: float = Field(description="Condition threshold")
+    action_type: str = Field(description="Action type")
+    action_config_json: dict[str, Any] | None = Field(None, description="Action config json")
+    enabled: bool = Field(description="Whether this item is active")
+    created_at: str = Field(description="ISO 8601 creation timestamp")
+    updated_at: str = Field(description="ISO 8601 last-update timestamp")
 
 
 class AlertResponse(BaseModel):
-    id: str
-    rule_id: str
-    severity: str
-    agent_id: str | None = None
-    message: str
-    acknowledged: bool
-    created_at: str
+    id: str = Field(description="Unique identifier")
+    rule_id: str = Field(description="Rule id")
+    severity: str = Field(description="Severity")
+    agent_id: str | None = Field(None, description="Associated agent identifier")
+    message: str = Field(description="Message")
+    acknowledged: bool = Field(description="Acknowledged")
+    created_at: str = Field(description="ISO 8601 creation timestamp")
 
 
 # ---------------------------------------------------------------------------

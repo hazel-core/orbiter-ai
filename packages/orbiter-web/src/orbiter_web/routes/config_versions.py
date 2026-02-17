@@ -21,19 +21,19 @@ router = APIRouter(tags=["config-versions"])
 
 
 class ConfigVersionResponse(BaseModel):
-    id: str
-    entity_type: str
-    entity_id: str
-    version_num: int
-    config_json: str
-    author: str
-    summary: str
-    tag: str
-    created_at: str
+    id: str = Field(description="Unique identifier")
+    entity_type: str = Field(description="Entity type")
+    entity_id: str = Field(description="Entity id")
+    version_num: int = Field(description="Version num")
+    config_json: str = Field(description="JSON configuration object")
+    author: str = Field(description="Author")
+    summary: str = Field(description="Summary")
+    tag: str = Field(description="Version tag label")
+    created_at: str = Field(description="ISO 8601 creation timestamp")
 
 
 class TagUpdate(BaseModel):
-    tag: str = Field(..., min_length=1, max_length=100)
+    tag: str = Field(..., min_length=1, max_length=100, description="Version tag label")
 
 
 # ---------------------------------------------------------------------------

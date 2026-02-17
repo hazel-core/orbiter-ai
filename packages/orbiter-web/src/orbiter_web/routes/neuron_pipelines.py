@@ -24,32 +24,32 @@ router = APIRouter(prefix="/api/v1/agents", tags=["neuron-pipelines"])
 class NeuronConfig(BaseModel):
     """Single neuron in the pipeline."""
 
-    type: str = Field(..., min_length=1)
-    label: str = ""
-    template: str = ""
-    max_tokens: int | None = None
-    priority: int = 0
-    enabled: bool = True
+    type: str = Field(..., min_length=1, description="Type")
+    label: str = Field("", description="Label")
+    template: str = Field("", description="Template")
+    max_tokens: int | None = Field(None, description="Maximum tokens to generate")
+    priority: int = Field(0, description="Priority level")
+    enabled: bool = Field(True, description="Whether this item is active")
 
 
 class PipelineCreate(BaseModel):
-    name: str = Field("Default Pipeline", min_length=1, max_length=255)
-    neurons: list[NeuronConfig] = []
+    name: str = Field("Default Pipeline", min_length=1, max_length=255, description="Display name")
+    neurons: list[NeuronConfig] = Field([], description="Neurons")
 
 
 class PipelineUpdate(BaseModel):
-    name: str | None = Field(None, min_length=1, max_length=255)
-    neurons: list[NeuronConfig] | None = None
+    name: str | None = Field(None, min_length=1, max_length=255, description="Display name")
+    neurons: list[NeuronConfig] | None = Field(None, description="Neurons")
 
 
 class PipelineResponse(BaseModel):
-    id: str
-    agent_id: str
-    name: str
-    neurons: list[dict[str, Any]]
-    user_id: str
-    created_at: str
-    updated_at: str
+    id: str = Field(description="Unique identifier")
+    agent_id: str = Field(description="Associated agent identifier")
+    name: str = Field(description="Display name")
+    neurons: list[dict[str, Any]] = Field(description="Neurons")
+    user_id: str = Field(description="Owning user identifier")
+    created_at: str = Field(description="ISO 8601 creation timestamp")
+    updated_at: str = Field(description="ISO 8601 last-update timestamp")
 
 
 # ---------------------------------------------------------------------------
@@ -83,6 +83,7 @@ async def list_pipelines(
     user: dict = Depends(get_current_user),  # noqa: B008
     db: Any = Depends(get_db),  # noqa: B008
 ) -> list[PipelineResponse]:
+    """List pipelines."""
     cursor = await db.execute(
         "SELECT * FROM neuron_pipelines WHERE agent_id = ? AND user_id = ? ORDER BY created_at ASC",
         (agent_id, user["id"]),
@@ -99,6 +100,7 @@ async def create_pipeline(
     db: Any = Depends(get_db),  # noqa: B008
 ) -> PipelineResponse:
     # Verify agent ownership
+    """Create pipeline."""
     cursor = await db.execute(
         "SELECT id FROM agents WHERE id = ? AND user_id = ?",
         (agent_id, user["id"]),
@@ -129,6 +131,7 @@ async def get_pipeline(
     user: dict = Depends(get_current_user),  # noqa: B008
     db: Any = Depends(get_db),  # noqa: B008
 ) -> PipelineResponse:
+    """Get pipeline."""
     cursor = await db.execute(
         "SELECT * FROM neuron_pipelines WHERE id = ? AND agent_id = ? AND user_id = ?",
         (pipeline_id, agent_id, user["id"]),
@@ -147,6 +150,7 @@ async def update_pipeline(
     user: dict = Depends(get_current_user),  # noqa: B008
     db: Any = Depends(get_db),  # noqa: B008
 ) -> PipelineResponse:
+    """Update pipeline."""
     cursor = await db.execute(
         "SELECT * FROM neuron_pipelines WHERE id = ? AND agent_id = ? AND user_id = ?",
         (pipeline_id, agent_id, user["id"]),
@@ -179,6 +183,7 @@ async def delete_pipeline(
     user: dict = Depends(get_current_user),  # noqa: B008
     db: Any = Depends(get_db),  # noqa: B008
 ) -> None:
+    """Delete pipeline."""
     cursor = await db.execute(
         "SELECT id FROM neuron_pipelines WHERE id = ? AND agent_id = ? AND user_id = ?",
         (pipeline_id, agent_id, user["id"]),

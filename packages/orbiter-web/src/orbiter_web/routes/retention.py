@@ -22,9 +22,9 @@ _RETENTION_KEYS = {
 
 
 class RetentionConfig(BaseModel):
-    retention_artifacts_days: int = Field(default=90, ge=1)
-    retention_runs_days: int = Field(default=30, ge=1)
-    retention_logs_days: int = Field(default=14, ge=1)
+    retention_artifacts_days: int = Field(default=90, ge=1, description="Retention artifacts days")
+    retention_runs_days: int = Field(default=30, ge=1, description="Retention runs days")
+    retention_logs_days: int = Field(default=14, ge=1, description="Retention logs days")
 
 
 @router.get("/retention")

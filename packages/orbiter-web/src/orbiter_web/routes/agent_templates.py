@@ -34,53 +34,53 @@ _CREDENTIAL_KEYS = frozenset({
 
 
 class TemplateCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=255)
-    description: str = ""
-    config_json: str = "{}"
-    tools_required: str = "[]"
-    models_required: str = "[]"
+    name: str = Field(..., min_length=1, max_length=255, description="Display name")
+    description: str = Field("", description="Human-readable description")
+    config_json: str = Field("{}", description="JSON configuration object")
+    tools_required: str = Field("[]", description="Tools required")
+    models_required: str = Field("[]", description="Models required")
 
 
 class TemplateCreateFromAgent(BaseModel):
-    name: str = Field(..., min_length=1, max_length=255)
-    description: str = ""
-    agent_id: str = Field(..., min_length=1)
+    name: str = Field(..., min_length=1, max_length=255, description="Display name")
+    description: str = Field("", description="Human-readable description")
+    agent_id: str = Field(..., min_length=1, description="Associated agent identifier")
 
 
 class TemplateUpdate(BaseModel):
-    name: str | None = Field(None, min_length=1, max_length=255)
-    description: str | None = None
-    config_json: str | None = None
-    tools_required: str | None = None
-    models_required: str | None = None
+    name: str | None = Field(None, min_length=1, max_length=255, description="Display name")
+    description: str | None = Field(None, description="Human-readable description")
+    config_json: str | None = Field(None, description="JSON configuration object")
+    tools_required: str | None = Field(None, description="Tools required")
+    models_required: str | None = Field(None, description="Models required")
 
 
 class TemplateResponse(BaseModel):
-    id: str
-    name: str
-    description: str
-    config_json: str
-    tools_required: str
-    models_required: str
-    version: int
-    creator_id: str
-    created_at: str
-    updated_at: str
+    id: str = Field(description="Unique identifier")
+    name: str = Field(description="Display name")
+    description: str = Field(description="Human-readable description")
+    config_json: str = Field(description="JSON configuration object")
+    tools_required: str = Field(description="Tools required")
+    models_required: str = Field(description="Models required")
+    version: int = Field(description="Version identifier")
+    creator_id: str = Field(description="Creator id")
+    created_at: str = Field(description="ISO 8601 creation timestamp")
+    updated_at: str = Field(description="ISO 8601 last-update timestamp")
 
 
 class VersionResponse(BaseModel):
-    id: str
-    template_id: str
-    version_number: int
-    config_json: str
-    tools_required: str
-    models_required: str
-    created_at: str
+    id: str = Field(description="Unique identifier")
+    template_id: str = Field(description="Associated template identifier")
+    version_number: int = Field(description="Version number")
+    config_json: str = Field(description="JSON configuration object")
+    tools_required: str = Field(description="Tools required")
+    models_required: str = Field(description="Models required")
+    created_at: str = Field(description="ISO 8601 creation timestamp")
 
 
 class InstantiateRequest(BaseModel):
-    project_id: str = Field(..., min_length=1)
-    name: str | None = Field(None, max_length=255)
+    project_id: str = Field(..., min_length=1, description="Associated project identifier")
+    name: str | None = Field(None, max_length=255, description="Display name")
 
 
 # ---------------------------------------------------------------------------

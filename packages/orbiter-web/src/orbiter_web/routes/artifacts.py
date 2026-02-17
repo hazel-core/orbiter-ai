@@ -25,26 +25,26 @@ router = APIRouter(prefix="/api/v1/artifacts", tags=["artifacts"])
 
 
 class ArtifactResponse(BaseModel):
-    id: str
-    run_id: str | None = None
-    agent_id: str | None = None
-    filename: str
-    file_type: str
-    file_size: int
-    storage_path: str
-    created_at: str
+    id: str = Field(description="Unique identifier")
+    run_id: str | None = Field(None, description="Associated run identifier")
+    agent_id: str | None = Field(None, description="Associated agent identifier")
+    filename: str = Field(description="Filename")
+    file_type: str = Field(description="File type")
+    file_size: int = Field(description="File size")
+    storage_path: str = Field(description="Storage path")
+    created_at: str = Field(description="ISO 8601 creation timestamp")
 
 
 class ArtifactUpdateContent(BaseModel):
-    content: str = Field(min_length=0)
+    content: str = Field(min_length=0, description="Text content")
 
 
 class ArtifactVersionResponse(BaseModel):
-    id: str
-    artifact_id: str
-    version_number: int
-    file_size: int
-    created_at: str
+    id: str = Field(description="Unique identifier")
+    artifact_id: str = Field(description="Artifact id")
+    version_number: int = Field(description="Version number")
+    file_size: int = Field(description="File size")
+    created_at: str = Field(description="ISO 8601 creation timestamp")
 
 
 class ArtifactVersionDetailResponse(ArtifactVersionResponse):
@@ -52,7 +52,7 @@ class ArtifactVersionDetailResponse(ArtifactVersionResponse):
 
 
 class ArtifactRegenerateRequest(BaseModel):
-    instructions: str = Field(min_length=1)
+    instructions: str = Field(min_length=1, description="System instructions for the agent")
 
 
 # ---------------------------------------------------------------------------

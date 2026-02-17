@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from orbiter_web.database import get_db
 from orbiter_web.pagination import PaginatedResponse, paginate
@@ -20,18 +20,18 @@ router = APIRouter(prefix="/api/v1/notifications", tags=["notifications"])
 
 
 class NotificationResponse(BaseModel):
-    id: str
-    type: str
-    title: str
-    message: str
-    entity_type: str | None = None
-    entity_id: str | None = None
-    read: bool
-    created_at: str
+    id: str = Field(description="Unique identifier")
+    type: str = Field(description="Type")
+    title: str = Field(description="Title")
+    message: str = Field(description="Message")
+    entity_type: str | None = Field(None, description="Entity type")
+    entity_id: str | None = Field(None, description="Entity id")
+    read: bool = Field(description="Read")
+    created_at: str = Field(description="ISO 8601 creation timestamp")
 
 
 class UnreadCountResponse(BaseModel):
-    count: int
+    count: int = Field(description="Count")
 
 
 # ---------------------------------------------------------------------------

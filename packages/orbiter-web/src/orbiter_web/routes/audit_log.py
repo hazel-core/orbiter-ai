@@ -6,7 +6,7 @@ import json
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from orbiter_web.database import get_db
 from orbiter_web.pagination import PaginatedResponse, paginate
@@ -16,14 +16,14 @@ router = APIRouter(prefix="/api/v1/audit-log", tags=["audit-log"])
 
 
 class AuditLogEntry(BaseModel):
-    id: str
-    user_id: str
-    action: str
-    entity_type: str | None
-    entity_id: str | None
-    details: dict[str, Any] | None
-    ip_address: str | None
-    created_at: str
+    id: str = Field(description="Unique identifier")
+    user_id: str = Field(description="Owning user identifier")
+    action: str = Field(description="Action")
+    entity_type: str | None = Field(description="Entity type")
+    entity_id: str | None = Field(description="Entity id")
+    details: dict[str, Any] | None = Field(description="Details")
+    ip_address: str | None = Field(description="Ip address")
+    created_at: str = Field(description="ISO 8601 creation timestamp")
 
 
 def _map_row(row: Any) -> dict[str, Any]:

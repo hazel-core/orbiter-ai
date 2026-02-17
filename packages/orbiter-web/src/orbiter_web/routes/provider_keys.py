@@ -30,44 +30,44 @@ VALID_KEY_STATUSES = ("active", "rate_limited", "invalid")
 
 
 class KeyCreate(BaseModel):
-    api_key: str = Field(..., min_length=1)
-    label: str = ""
+    api_key: str = Field(..., min_length=1, description="API key (stored encrypted)")
+    label: str = Field("", description="Label")
 
 
 class KeyResponse(BaseModel):
-    id: str
-    provider_id: str
-    label: str
-    strategy_position: int
-    status: str
-    total_requests: int
-    total_tokens: int
-    error_count: int
-    last_used: str | None
-    cooldown_until: str | None
-    created_at: str
-    updated_at: str
+    id: str = Field(description="Unique identifier")
+    provider_id: str = Field(description="Associated provider identifier")
+    label: str = Field(description="Label")
+    strategy_position: int = Field(description="Strategy position")
+    status: str = Field(description="Current status")
+    total_requests: int = Field(description="Total requests")
+    total_tokens: int = Field(description="Total token count")
+    error_count: int = Field(description="Error count")
+    last_used: str | None = Field(description="Last used")
+    cooldown_until: str | None = Field(description="Cooldown until")
+    created_at: str = Field(description="ISO 8601 creation timestamp")
+    updated_at: str = Field(description="ISO 8601 last-update timestamp")
 
 
 class KeySelectResponse(BaseModel):
     """Response from the key selection / load-balancing endpoint."""
 
-    key_id: str
-    api_key: str
-    strategy: str
+    key_id: str = Field(description="Key id")
+    api_key: str = Field(description="API key (stored encrypted)")
+    strategy: str = Field(description="Strategy")
 
 
 class StrategyUpdate(BaseModel):
-    strategy: str = Field(..., min_length=1)
+    strategy: str = Field(..., min_length=1, description="Strategy")
 
 
 class KeyUsageReport(BaseModel):
     """Report usage stats after an API call."""
 
-    tokens_used: int = 0
-    error: bool = False
-    rate_limited: bool = False
-    cooldown_seconds: int = 300
+    tokens_used: int = Field(0, description="Tokens used")
+    error: bool = Field(False, description="Error message if failed")
+    rate_limited: bool = Field(False, description="Rate limited")
+    cooldown_seconds: int = Field(300, description="Cooldown seconds")
 
 
 # ---------------------------------------------------------------------------

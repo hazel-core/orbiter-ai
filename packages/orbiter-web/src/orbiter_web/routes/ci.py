@@ -93,41 +93,41 @@ ci_router = APIRouter(prefix="/api/v1/ci", tags=["ci"])
 
 
 class DeployRequest(BaseModel):
-    entity_type: str = Field(..., pattern="^(agent|workflow)$")
-    entity_id: str = Field(..., min_length=1)
-    version_tag: str = Field(..., min_length=1, max_length=100)
+    entity_type: str = Field(..., pattern="^(agent|workflow)$", description="Entity type")
+    entity_id: str = Field(..., min_length=1, description="Entity id")
+    version_tag: str = Field(..., min_length=1, max_length=100, description="Version tag")
 
 
 class DeployResponse(BaseModel):
-    deployment_id: str
-    entity_type: str
-    entity_id: str
-    version_tag: str
-    status: str
-    deployed_at: str
+    deployment_id: str = Field(description="Associated deployment identifier")
+    entity_type: str = Field(description="Entity type")
+    entity_id: str = Field(description="Entity id")
+    version_tag: str = Field(description="Version tag")
+    status: str = Field(description="Current status")
+    deployed_at: str = Field(description="Deployed at")
 
 
 class EvaluateRequest(BaseModel):
-    evaluation_id: str = Field(..., min_length=1)
+    evaluation_id: str = Field(..., min_length=1, description="Associated evaluation identifier")
 
 
 class EvaluateResponse(BaseModel):
-    result_id: str
-    evaluation_id: str
-    overall_score: float
-    pass_rate: float
-    run_at: str
+    result_id: str = Field(description="Result id")
+    evaluation_id: str = Field(description="Associated evaluation identifier")
+    overall_score: float = Field(description="Overall score")
+    pass_rate: float = Field(description="Pass rate")
+    run_at: str = Field(description="Run at")
 
 
 class DeploymentStatusResponse(BaseModel):
-    id: str
-    name: str
-    entity_type: str
-    entity_id: str
-    status: str
-    usage_count: int
-    last_run_status: str | None = None
-    last_run_at: str | None = None
+    id: str = Field(description="Unique identifier")
+    name: str = Field(description="Display name")
+    entity_type: str = Field(description="Entity type")
+    entity_id: str = Field(description="Entity id")
+    status: str = Field(description="Current status")
+    usage_count: int = Field(description="Number of times used")
+    last_run_status: str | None = Field(None, description="Last run status")
+    last_run_at: str | None = Field(None, description="Last execution timestamp")
 
 
 # -- Endpoints --------------------------------------------------------------
@@ -389,27 +389,27 @@ api_keys_router = APIRouter(prefix="/api/v1/settings/api-keys", tags=["api-keys"
 
 
 class ApiKeyCreateRequest(BaseModel):
-    label: str = Field("", max_length=255)
+    label: str = Field("", max_length=255, description="Label")
     permissions: list[str] = Field(
         default_factory=lambda: ["ci:deploy", "ci:evaluate", "ci:status"]
-    )
+    , description="Permissions")
 
 
 class ApiKeyCreateResponse(BaseModel):
-    id: str
-    label: str
-    permissions: list[str]
-    api_key: str
-    created_at: str
+    id: str = Field(description="Unique identifier")
+    label: str = Field(description="Label")
+    permissions: list[str] = Field(description="Permissions")
+    api_key: str = Field(description="API key (stored encrypted)")
+    created_at: str = Field(description="ISO 8601 creation timestamp")
 
 
 class ApiKeyResponse(BaseModel):
-    id: str
-    label: str
-    permissions: list[str]
-    key_prefix: str
-    last_used_at: str | None
-    created_at: str
+    id: str = Field(description="Unique identifier")
+    label: str = Field(description="Label")
+    permissions: list[str] = Field(description="Permissions")
+    key_prefix: str = Field(description="Key prefix")
+    last_used_at: str | None = Field(description="Last used at")
+    created_at: str = Field(description="ISO 8601 creation timestamp")
 
 
 @api_keys_router.post("", response_model=ApiKeyCreateResponse, status_code=201)

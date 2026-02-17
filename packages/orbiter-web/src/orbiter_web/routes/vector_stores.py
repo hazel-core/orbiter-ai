@@ -45,40 +45,40 @@ _BACKEND_DEFAULTS: dict[str, dict[str, object]] = {
 
 
 class VectorStoreCreate(BaseModel):
-    backend: str = Field("sqlite_vss", pattern=r"^(sqlite_vss|milvus|qdrant|chromadb|pinecone)$")
-    host: str = ""
-    port: int | None = None
-    api_key: str = ""
-    collection_name: str = ""
+    backend: str = Field("sqlite_vss", pattern=r"^(sqlite_vss|milvus|qdrant|chromadb|pinecone)$", description="Backend")
+    host: str = Field("", description="Host")
+    port: int | None = Field(None, description="Port")
+    api_key: str = Field("", description="API key (stored encrypted)")
+    collection_name: str = Field("", description="Collection name")
 
 
 class VectorStoreUpdate(BaseModel):
-    backend: str | None = Field(None, pattern=r"^(sqlite_vss|milvus|qdrant|chromadb|pinecone)$")
-    host: str | None = None
-    port: int | None = Field(None, ge=1, le=65535)
-    api_key: str | None = None
-    collection_name: str | None = None
+    backend: str | None = Field(None, pattern=r"^(sqlite_vss|milvus|qdrant|chromadb|pinecone)$", description="Backend")
+    host: str | None = Field(None, description="Host")
+    port: int | None = Field(None, ge=1, le=65535, description="Port")
+    api_key: str | None = Field(None, description="API key (stored encrypted)")
+    collection_name: str | None = Field(None, description="Collection name")
 
 
 class VectorStoreResponse(BaseModel):
-    id: str
-    backend: str
-    backend_label: str
-    host: str
-    port: int | None
-    api_key_set: bool
-    collection_name: str
-    is_active: bool
-    user_id: str
-    created_at: str
-    updated_at: str
+    id: str = Field(description="Unique identifier")
+    backend: str = Field(description="Backend")
+    backend_label: str = Field(description="Backend label")
+    host: str = Field(description="Host")
+    port: int | None = Field(description="Port")
+    api_key_set: bool = Field(description="Whether an API key is configured")
+    collection_name: str = Field(description="Collection name")
+    is_active: bool = Field(description="Whether this item is active")
+    user_id: str = Field(description="Owning user identifier")
+    created_at: str = Field(description="ISO 8601 creation timestamp")
+    updated_at: str = Field(description="ISO 8601 last-update timestamp")
 
 
 class TestResult(BaseModel):
-    success: bool
-    error: str | None = None
-    backend: str
-    backend_label: str
+    success: bool = Field(description="Whether the operation succeeded")
+    error: str | None = Field(None, description="Error message if failed")
+    backend: str = Field(description="Backend")
+    backend_label: str = Field(description="Backend label")
 
 
 # ---------------------------------------------------------------------------
