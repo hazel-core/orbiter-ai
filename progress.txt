@@ -3236,3 +3236,32 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - API keys encrypted via `encrypt_api_key()` from `orbiter_web.crypto` — never exposed in responses (use `api_key_set: bool`)
   - Import ordering in app.py is strictly alphabetical — ruff I001 will flag unsorted imports
 ---
+
+## 2026-02-17 13:05 - US-150
+- What was implemented: Mobile-optimized monitoring dashboard with responsive layouts for all three monitoring pages
+- Files changed:
+  - packages/orbiter-web/src/pages/monitoring.astro (mobile header with quick links, pull-to-refresh indicator, mobile agent cards, touch-optimized controls)
+  - packages/orbiter-web/src/pages/monitoring/runs.astro (mobile card view for run list, pull-to-refresh, 44px touch targets, responsive filters)
+  - packages/orbiter-web/src/pages/monitoring/runs/[id].astro (mobile-friendly trace view with stacked step layout, responsive stats grid, touch-optimized tabs and buttons)
+- **Learnings for future iterations:**
+  - Pull-to-refresh pattern: touchstart/touchmove/touchend with threshold detection; use `{ passive: true }` for smooth scrolling
+  - Mobile card view alternative to tables: use `hidden sm:block` on table, `sm:hidden` on card container; render both in JS from same data
+  - Touch targets: add `min-h-[44px] min-w-[44px]` to interactive elements for Apple HIG compliance
+  - Desktop stats in step rows use `hidden sm:flex`, mobile stats use `sm:hidden` for responsive step rendering
+  - Pre-existing Astro build error in supervisor.astro (Tailwind CSS v4 scoped style issue) — not related to monitoring pages
+  - Use `text-[11px] sm:text-xs` for mobile-adapted monospace/code content
+---
+
+## 2026-02-17 - US-151
+- What was implemented: Mobile-optimized chat playground with responsive layout, mobile overlay panels, keyboard avoidance, and touch-friendly controls
+- Files changed:
+  - packages/orbiter-web/src/pages/playground.astro (mobile-responsive top bar, overlay trace panel, overlay thread sidebar, touch-friendly input area, keyboard avoidance, smooth scrolling)
+- **Learnings for future iterations:**
+  - Mobile overlay pattern: use `fixed inset-0 z-50 sm:relative sm:inset-auto sm:z-auto` to make side panels full-screen on mobile but inline on desktop
+  - Mobile keyboard avoidance: use `window.visualViewport` resize/scroll events to dynamically adjust container height and translateY when soft keyboard opens
+  - Touch targets: use `p-3 sm:p-2.5` with `touch-manipulation` class for mobile-friendly buttons (minimum 44px tap targets)
+  - Safe area padding: use `pb-[env(safe-area-inset-bottom,0.5rem)]` for iPhone notch/home indicator areas
+  - Hide non-essential toolbar buttons on mobile: `hidden sm:inline-flex` for threads, compare, TTS; keep trace and clear visible
+  - Compact agent selector on mobile: hide "Agent:" label, use shorter max-width, smaller gaps
+  - Smooth scrolling: add `scroll-smooth` class to message container + optional `smooth` param to scrollToBottom()
+---

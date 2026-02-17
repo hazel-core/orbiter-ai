@@ -23,27 +23,27 @@ const speakerOffIcon = '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none"
   breadcrumbs={breadcrumbs}
   class="!overflow-hidden flex flex-col"
 >
-  <div class="flex flex-col h-full">
-    <!-- Top bar: agent selector -->
-    <div class="flex items-center gap-3 px-4 py-3 border-b border-dark/[0.08] bg-paper flex-shrink-0">
-      <label for="agent-select" class="text-sm font-medium text-dark whitespace-nowrap">Agent:</label>
+  <div id="playground-root" class="flex flex-col h-full">
+    <!-- Top bar: agent selector — compact on mobile -->
+    <div class="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 sm:py-3 border-b border-dark/[0.08] bg-paper flex-shrink-0">
+      <label for="agent-select" class="hidden sm:block text-sm font-medium text-dark whitespace-nowrap">Agent:</label>
       <select
         id="agent-select"
-        class="flex-1 max-w-xs px-3 py-1.5 text-sm border border-dark/[0.08] rounded-lg bg-paper text-dark focus:outline-none focus:ring-2 focus:ring-coral/20 focus:border-coral transition-colors"
+        class="flex-1 min-w-0 max-w-[12rem] sm:max-w-xs px-2 sm:px-3 py-1.5 text-sm border border-dark/[0.08] rounded-lg bg-paper text-dark focus:outline-none focus:ring-2 focus:ring-coral/20 focus:border-coral transition-colors"
       >
-        <option value="">Select an agent...</option>
+        <option value="">Select agent...</option>
       </select>
       <div id="agent-info" class="text-xs text-muted hidden">
-        <span id="agent-model" class="inline-flex items-center gap-1 px-2 py-0.5 bg-subtle rounded-full"></span>
+        <span id="agent-model" class="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 bg-subtle rounded-full"></span>
       </div>
       <!-- Agent status badge -->
       <div id="agent-status-badge" class="hidden">
-        <span id="agent-status-text" class="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full"></span>
+        <span id="agent-status-text" class="inline-flex items-center gap-1.5 px-2 sm:px-2.5 py-0.5 sm:py-1 text-[10px] sm:text-xs font-medium rounded-full"></span>
       </div>
-      <div class="ml-auto flex items-center gap-1">
+      <div class="ml-auto flex items-center gap-0.5 sm:gap-1">
         <button
           id="thread-toggle-btn"
-          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-muted hover:text-dark transition-colors rounded-lg hover:bg-subtle"
+          class="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-muted hover:text-dark transition-colors rounded-lg hover:bg-subtle"
           title="Toggle thread sidebar"
         >
           <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
@@ -51,7 +51,7 @@ const speakerOffIcon = '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none"
         </button>
         <button
           id="compare-toggle-btn"
-          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-muted hover:text-dark transition-colors rounded-lg hover:bg-subtle"
+          class="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-muted hover:text-dark transition-colors rounded-lg hover:bg-subtle"
           title="Toggle compare mode"
         >
           <span set:html={compareIcon} />
@@ -59,7 +59,7 @@ const speakerOffIcon = '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none"
         </button>
         <button
           id="trace-toggle-btn"
-          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-muted hover:text-dark transition-colors rounded-lg hover:bg-subtle"
+          class="inline-flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs text-muted hover:text-dark transition-colors rounded-lg hover:bg-subtle"
           title="Toggle trace panel (Cmd+I)"
         >
           <span set:html={traceIcon} />
@@ -67,7 +67,7 @@ const speakerOffIcon = '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none"
         </button>
         <button
           id="tts-toggle-btn"
-          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-muted hover:text-dark transition-colors rounded-lg hover:bg-subtle"
+          class="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-muted hover:text-dark transition-colors rounded-lg hover:bg-subtle"
           title="Toggle text-to-speech for responses"
         >
           <span id="tts-icon" set:html={speakerOffIcon} />
@@ -75,7 +75,7 @@ const speakerOffIcon = '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none"
         </button>
         <button
           id="clear-btn"
-          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-muted hover:text-dark transition-colors rounded-lg hover:bg-subtle"
+          class="inline-flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs text-muted hover:text-dark transition-colors rounded-lg hover:bg-subtle"
           title="Clear conversation"
         >
           <span set:html={clearIcon} />
@@ -134,10 +134,10 @@ const speakerOffIcon = '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none"
 
     <!-- Main content: thread sidebar + chat + trace panel -->
     <div id="normal-chat-container" class="flex flex-1 min-h-0">
-      <!-- Thread sidebar (left) -->
+      <!-- Thread sidebar (left) — overlay on mobile, inline on desktop -->
       <div
         id="thread-sidebar"
-        class="hidden flex-shrink-0 w-72 border-r border-dark/[0.08] bg-paper flex flex-col"
+        class="hidden fixed inset-0 z-40 sm:relative sm:inset-auto sm:z-auto flex-shrink-0 w-full sm:w-72 border-r border-dark/[0.08] bg-paper flex flex-col"
       >
         <!-- Sidebar header -->
         <div class="flex items-center justify-between px-3 py-2.5 border-b border-dark/[0.08]">
@@ -181,14 +181,14 @@ const speakerOffIcon = '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none"
 
         <!-- Messages area (relative for scroll-to-bottom button) -->
         <div class="relative flex-1">
-          <div id="messages" class="absolute inset-0 overflow-y-auto px-4 py-6 space-y-4">
+          <div id="messages" class="absolute inset-0 overflow-y-auto scroll-smooth px-3 sm:px-4 py-4 sm:py-6 space-y-3 sm:space-y-4">
             <!-- Empty state -->
-            <div id="empty-state" class="flex flex-col items-center justify-center h-full text-center">
-              <div class="w-16 h-16 rounded-full bg-subtle flex items-center justify-center mb-4">
+            <div id="empty-state" class="flex flex-col items-center justify-center h-full text-center px-4">
+              <div class="w-14 sm:w-16 h-14 sm:h-16 rounded-full bg-subtle flex items-center justify-center mb-3 sm:mb-4">
                 <span class="text-muted" set:html={botIcon} />
               </div>
-              <h3 class="text-lg font-medium text-dark mb-2">Chat Playground</h3>
-              <p class="text-sm text-muted max-w-sm">Select an agent above and start chatting. Messages stream in real-time via WebSocket.</p>
+              <h3 class="text-base sm:text-lg font-medium text-dark mb-2">Chat Playground</h3>
+              <p class="text-xs sm:text-sm text-muted max-w-sm">Select an agent and start chatting. Messages stream in real-time.</p>
             </div>
           </div>
 
@@ -206,43 +206,45 @@ const speakerOffIcon = '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none"
         </div>
 
         <!-- Takeover controls bar (shown when paused) -->
-        <div id="takeover-bar" class="hidden flex-shrink-0 border-t border-coral/20 bg-coral/5 px-4 py-2.5">
-          <div class="flex items-center gap-3 max-w-4xl mx-auto">
+        <div id="takeover-bar" class="hidden flex-shrink-0 border-t border-coral/20 bg-coral/5 px-3 sm:px-4 py-2 sm:py-2.5">
+          <div class="flex flex-wrap sm:flex-nowrap items-center gap-2 sm:gap-3 max-w-4xl mx-auto">
             <span class="text-xs font-medium text-coral whitespace-nowrap">Human Control</span>
             <textarea
               id="inject-input"
               rows="1"
-              placeholder="Inject a message to the agent..."
-              class="flex-1 px-3 py-2 text-sm border border-coral/20 rounded-xl bg-paper text-dark placeholder:text-muted/60 focus:outline-none focus:ring-2 focus:ring-coral/20 focus:border-coral transition-colors resize-none max-h-24"
+              placeholder="Inject a message..."
+              class="flex-1 min-w-0 px-3 py-2 text-sm border border-coral/20 rounded-xl bg-paper text-dark placeholder:text-muted/60 focus:outline-none focus:ring-2 focus:ring-coral/20 focus:border-coral transition-colors resize-none max-h-24"
             ></textarea>
-            <button
-              id="inject-btn"
-              class="flex-shrink-0 px-3 py-2 text-xs font-medium bg-coral text-white rounded-lg hover:bg-coral/90 transition-colors"
-              title="Send message and resume agent"
-            >Inject &amp; Resume</button>
-            <button
-              id="resume-btn"
-              class="flex-shrink-0 px-3 py-2 text-xs font-medium bg-zen-green text-white rounded-lg hover:bg-zen-green/90 transition-colors"
-              title="Resume agent execution"
-            >Resume</button>
-            <button
-              id="stop-btn"
-              class="flex-shrink-0 px-3 py-2 text-xs font-medium bg-dark text-paper rounded-lg hover:bg-dark/80 transition-colors"
-              title="Stop execution and save partial results"
-            >Stop</button>
+            <div class="flex items-center gap-2">
+              <button
+                id="inject-btn"
+                class="flex-shrink-0 px-3 py-2 text-xs font-medium bg-coral text-white rounded-lg hover:bg-coral/90 transition-colors touch-manipulation"
+                title="Send message and resume agent"
+              >Inject</button>
+              <button
+                id="resume-btn"
+                class="flex-shrink-0 px-3 py-2 text-xs font-medium bg-zen-green text-white rounded-lg hover:bg-zen-green/90 transition-colors touch-manipulation"
+                title="Resume agent execution"
+              >Resume</button>
+              <button
+                id="stop-btn"
+                class="flex-shrink-0 px-3 py-2 text-xs font-medium bg-dark text-paper rounded-lg hover:bg-dark/80 transition-colors touch-manipulation"
+                title="Stop execution and save partial results"
+              >Stop</button>
+            </div>
           </div>
         </div>
 
-        <!-- Input area -->
-        <div class="flex-shrink-0 border-t border-dark/[0.08] bg-paper px-4 py-3">
+        <!-- Input area — pinned to bottom on mobile with safe-area padding -->
+        <div class="flex-shrink-0 border-t border-dark/[0.08] bg-paper px-3 sm:px-4 py-2 sm:py-3 pb-[env(safe-area-inset-bottom,0.5rem)] sm:pb-3">
           <div id="connection-status" class="hidden text-xs text-coral mb-2 px-1"></div>
-          <div class="flex items-end gap-3 max-w-4xl mx-auto">
+          <div class="flex items-end gap-2 sm:gap-3 max-w-4xl mx-auto">
             <textarea
               id="message-input"
               rows="1"
-              placeholder="Type a message... (Enter to send, Shift+Enter for newline)"
+              placeholder="Type a message..."
               disabled
-              class="flex-1 px-4 py-2.5 text-sm border border-dark/[0.08] rounded-xl bg-paper text-dark placeholder:text-muted/60 focus:outline-none focus:ring-2 focus:ring-coral/20 focus:border-coral transition-colors resize-none max-h-40 disabled:opacity-50"
+              class="flex-1 px-3 sm:px-4 py-2 sm:py-2.5 text-sm border border-dark/[0.08] rounded-xl bg-paper text-dark placeholder:text-muted/60 focus:outline-none focus:ring-2 focus:ring-coral/20 focus:border-coral transition-colors resize-none max-h-40 disabled:opacity-50"
             ></textarea>
             <button
               id="takeover-btn"
@@ -252,7 +254,7 @@ const speakerOffIcon = '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none"
             <button
               id="mic-btn"
               disabled
-              class="flex-shrink-0 p-2.5 text-muted hover:text-dark rounded-xl border border-dark/[0.08] hover:bg-subtle transition-colors disabled:opacity-40 disabled:cursor-not-allowed relative"
+              class="flex-shrink-0 p-3 sm:p-2.5 text-muted hover:text-dark rounded-xl border border-dark/[0.08] hover:bg-subtle transition-colors disabled:opacity-40 disabled:cursor-not-allowed relative touch-manipulation"
               title="Voice input (click to start/stop recording)"
             >
               <span id="mic-icon" set:html={micIcon} />
@@ -261,7 +263,7 @@ const speakerOffIcon = '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none"
             <button
               id="send-btn"
               disabled
-              class="flex-shrink-0 p-2.5 bg-coral text-white rounded-xl hover:bg-coral/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              class="flex-shrink-0 p-3 sm:p-2.5 bg-coral text-white rounded-xl hover:bg-coral/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed touch-manipulation"
               title="Send message"
             >
               <span set:html={sendIcon} />
@@ -270,10 +272,10 @@ const speakerOffIcon = '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none"
         </div>
       </div>
 
-      <!-- Trace panel (collapsible right panel) -->
+      <!-- Trace panel — full-screen overlay on mobile, side panel on desktop -->
       <div
         id="trace-panel"
-        class="hidden flex-shrink-0 w-80 lg:w-96 border-l border-dark/[0.08] bg-paper flex flex-col transition-all duration-200"
+        class="hidden fixed inset-0 z-50 sm:relative sm:inset-auto sm:z-auto flex-shrink-0 w-full sm:w-80 lg:w-96 border-l border-dark/[0.08] bg-paper flex flex-col transition-all duration-200"
       >
         <!-- Trace panel header with tabs -->
         <div class="flex items-center justify-between px-4 py-2 border-b border-dark/[0.08]">
@@ -2388,10 +2390,14 @@ function isNearBottom(): boolean {
   return messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < threshold;
 }
 
-function scrollToBottom() {
+function scrollToBottom(smooth?: boolean) {
   if (!userScrolledUp) {
     requestAnimationFrame(function() {
-      messagesEl.scrollTop = messagesEl.scrollHeight;
+      if (smooth) {
+        messagesEl.scrollTo({ top: messagesEl.scrollHeight, behavior: "smooth" });
+      } else {
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      }
     });
   }
 }
@@ -3351,6 +3357,29 @@ threadSearch.addEventListener("input", function() {
       loadThreads(currentAgentId);
     }
   }, 300);
+});
+
+/* ---- Mobile keyboard avoidance ---- */
+if (window.visualViewport) {
+  const playgroundRoot = document.getElementById("playground-root");
+  function onViewportResize() {
+    if (!playgroundRoot || !window.visualViewport) return;
+    /* On mobile, when the virtual keyboard opens the visual viewport shrinks.
+       Adjust the container height so the input stays visible above the keyboard. */
+    const vvHeight = window.visualViewport.height;
+    const vvOffsetTop = window.visualViewport.offsetTop;
+    playgroundRoot.style.height = vvHeight + "px";
+    playgroundRoot.style.transform = "translateY(" + vvOffsetTop + "px)";
+  }
+  window.visualViewport.addEventListener("resize", onViewportResize);
+  window.visualViewport.addEventListener("scroll", onViewportResize);
+}
+
+/* Focus input → auto-scroll on mobile so input stays visible */
+messageInput.addEventListener("focus", function() {
+  if (window.innerWidth < 640) {
+    setTimeout(function() { scrollToBottom(); }, 300);
+  }
 });
 
 /* ---- Init ---- */
