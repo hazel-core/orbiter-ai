@@ -3363,7 +3363,7 @@
         "Typecheck passes"
       ],
       "priority": 84,
-      "passes": false,
+      "passes": true,
       "notes": "Gap fill: no user deletion endpoint. Needed for account lifecycle and GDPR compliance"
     },
     {

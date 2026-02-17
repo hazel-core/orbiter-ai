@@ -3070,3 +3070,16 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Floating buttons on workflow canvas need `right-36` positioning to avoid overlapping with Deploy button
   - Export downloads use Blob + URL.createObjectURL pattern for client-side JSON file generation
 ---
+
+## 2026-02-17 12:00 - US-192
+- What was implemented: Permanent user deletion endpoint (DELETE /api/v1/settings/team/:userId/permanent)
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/routes/team.py (added PermanentDeleteRequest model + permanent_delete_member endpoint)
+- **Learnings for future iterations:**
+  - Many tables have ON DELETE CASCADE on user_id FK — deleting the user row cascades to sessions, projects, agents, workflows, etc.
+  - For reassignment (not deletion) of resources, UPDATE user_id BEFORE deleting the user to avoid cascade
+  - Audit log entry must be created BEFORE user deletion since audit_log table references user_id
+  - Notifications and audit_log tables do NOT have ON DELETE CASCADE — require explicit DELETE
+  - Existing deactivate_member (DELETE /{user_id}) is a soft delete; permanent endpoint adds /permanent suffix
+  - Confirmation pattern: use Pydantic model with `confirm: bool` field, reject if not True
+---
