@@ -11,7 +11,10 @@ import socket
 import time
 from typing import Any
 
+import redis.asyncio as aioredis
+
 from orbiter.distributed.broker import TaskBroker  # pyright: ignore[reportMissingImports]
+from orbiter.distributed.cancel import CancellationToken  # pyright: ignore[reportMissingImports]
 from orbiter.distributed.events import EventPublisher  # pyright: ignore[reportMissingImports]
 from orbiter.distributed.models import (  # pyright: ignore[reportMissingImports]
     TaskPayload,
@@ -128,8 +131,6 @@ class Worker:
 
     async def _heartbeat_loop(self) -> None:
         """Publish a heartbeat to Redis periodically."""
-        import redis.asyncio as aioredis
-
         r: aioredis.Redis = aioredis.from_url(
             self._redis_url, decode_responses=True
         )
@@ -163,6 +164,12 @@ class Worker:
     async def _execute_task(self, task: TaskPayload) -> None:
         """Execute a single task: reconstruct agent, stream, update status."""
         self._current_task_id = task.task_id
+        token = CancellationToken()
+
+        # Start listening for cancel signals on orbiter:cancel:{task_id}
+        cancel_task = asyncio.create_task(
+            self._listen_for_cancel(task.task_id, token)
+        )
 
         try:
             # Mark as RUNNING
@@ -177,17 +184,26 @@ class Worker:
             agent = self._reconstruct_agent(task.agent_config)
 
             # Execute via run.stream()
-            result_text = await self._run_agent(agent, task)
+            result_text = await self._run_agent(agent, task, token)
 
-            # Mark as COMPLETED
-            await self._store.set_status(
-                task.task_id,
-                TaskStatus.COMPLETED,
-                completed_at=time.time(),
-                result={"output": result_text},
-            )
-            await self._broker.ack(task.task_id)
-            self._tasks_processed += 1
+            if token.cancelled:
+                # Cancellation took effect during execution
+                await self._store.set_status(
+                    task.task_id,
+                    TaskStatus.CANCELLED,
+                    completed_at=time.time(),
+                )
+                await self._broker.ack(task.task_id)
+            else:
+                # Mark as COMPLETED
+                await self._store.set_status(
+                    task.task_id,
+                    TaskStatus.COMPLETED,
+                    completed_at=time.time(),
+                    result={"output": result_text},
+                )
+                await self._broker.ack(task.task_id)
+                self._tasks_processed += 1
 
         except Exception as exc:
             self._tasks_failed += 1
@@ -213,6 +229,33 @@ class Worker:
 
         finally:
             self._current_task_id = None
+            cancel_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await cancel_task
+
+    async def _listen_for_cancel(
+        self, task_id: str, token: CancellationToken
+    ) -> None:
+        """Subscribe to ``orbiter:cancel:{task_id}`` and set the token on signal."""
+        r: aioredis.Redis = aioredis.from_url(
+            self._redis_url, decode_responses=True
+        )
+        channel_name = f"orbiter:cancel:{task_id}"
+        pubsub = r.pubsub()
+        try:
+            await pubsub.subscribe(channel_name)  # type: ignore[misc]
+            while True:
+                msg = await pubsub.get_message(
+                    ignore_subscribe_messages=True, timeout=1.0
+                )
+                if msg is not None and msg["type"] == "message":
+                    token.cancel()
+                    return
+                await asyncio.sleep(0.01)
+        finally:
+            await pubsub.unsubscribe(channel_name)
+            await pubsub.aclose()  # type: ignore[misc]
+            await r.aclose()
 
     def _reconstruct_agent(self, agent_config: dict[str, Any]) -> Any:
         """Reconstruct an Agent or Swarm from the serialized config dict."""
@@ -226,10 +269,16 @@ class Worker:
 
             return Agent.from_dict(agent_config)
 
-    async def _run_agent(self, agent: Any, task: TaskPayload) -> str:
-        """Stream agent execution, publishing events and collecting output."""
+    async def _run_agent(
+        self, agent: Any, task: TaskPayload, token: CancellationToken
+    ) -> str:
+        """Stream agent execution, publishing events and collecting output.
+
+        Checks *token* between steps for cooperative cancellation.  When
+        cancelled, emits a ``StatusEvent(status='cancelled')`` and stops.
+        """
         from orbiter.runner import run  # pyright: ignore[reportMissingImports]
-        from orbiter.types import TextEvent  # pyright: ignore[reportMissingImports]
+        from orbiter.types import StatusEvent, TextEvent  # pyright: ignore[reportMissingImports]
 
         text_parts: list[str] = []
 
@@ -239,6 +288,16 @@ class Worker:
             messages=None,
             detailed=task.detailed,
         ):
+            # Check for cancellation between steps
+            if token.cancelled:
+                cancelled_event = StatusEvent(
+                    status="cancelled",
+                    agent_name=getattr(agent, "name", ""),
+                    message=f"Task {task.task_id} cancelled",
+                )
+                await self._publisher.publish(task.task_id, cancelled_event)
+                break
+
             # Publish every event to Redis
             await self._publisher.publish(task.task_id, event)
 

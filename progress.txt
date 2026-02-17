@@ -278,5 +278,30 @@ Started: Mon Feb 17 2026
   - Heartbeat uses a separate Redis connection from broker/store to avoid contention
   - `asyncio.Event` for shutdown signaling — checked in `_claim_loop()` while-condition
   - Signal handlers registered via `loop.add_signal_handler()` — must be patched in tests since pytest doesn't support real signal handlers
-  - Total tests: 882 (96 distributed + 786 orbiter-core)
+  - Cancel listener uses separate Redis connection + Pub/Sub on `orbiter:cancel:{task_id}` — sets `CancellationToken.cancelled = True` on signal
+  - Worker `_execute_task` creates a cancel listener task per active task — cancelled in `finally` block via `task.cancel()` + `contextlib.suppress(asyncio.CancelledError)`
+  - `_run_agent` checks `token.cancelled` between event yields (cooperative cancellation) — emits `StatusEvent(status='cancelled')` and breaks
+  - `TaskBroker.cancel()` publishes to Pub/Sub and directly updates task hash status to CANCELLED (uses `orbiter:task:` prefix convention from TaskStore)
+  - Total tests: 894 (108 distributed + 786 orbiter-core)
+---
+
+## 2026-02-17 - US-013
+- Created `CancellationToken` class in `orbiter/distributed/cancel.py` with `cancelled` property and `cancel()` method
+- Added `cancel(task_id)` method to `TaskBroker` in `broker.py` — publishes cancel signal to `orbiter:cancel:{task_id}` Pub/Sub and sets task status to CANCELLED in Redis hash
+- Updated `Worker._execute_task()` to create a `_listen_for_cancel()` background task per active task — subscribes to Pub/Sub cancel channel and sets token on signal
+- Updated `Worker._run_agent()` to accept `CancellationToken` — checks `token.cancelled` between event yields, emits `StatusEvent(status='cancelled')` and breaks when cancelled
+- Worker sets task status to CANCELLED (not COMPLETED) when token is cancelled
+- Cancel listener uses separate Redis connection (like heartbeat) to avoid contention
+- Updated existing `test_worker.py` tests for new `_run_agent(agent, task, token)` signature and `_listen_for_cancel` patching
+- Exported `CancellationToken` from `orbiter.distributed.__init__`
+- Added 12 new tests across 5 test classes: `TestCancellationToken` (3), `TestTaskBrokerCancel` (3), `TestWorkerListenForCancel` (2), `TestWorkerRunAgentCancellation` (2), `TestWorkerExecuteTaskCancellation` (2)
+- Files changed: `packages/orbiter-distributed/src/orbiter/distributed/cancel.py` (new), `packages/orbiter-distributed/src/orbiter/distributed/broker.py`, `packages/orbiter-distributed/src/orbiter/distributed/worker.py`, `packages/orbiter-distributed/src/orbiter/distributed/__init__.py`, `packages/orbiter-distributed/tests/test_cancel.py` (new), `packages/orbiter-distributed/tests/test_worker.py`
+- **Learnings for future iterations:**
+  - Cancel listener uses separate Redis connection + `r.pubsub()` — `pubsub()` is a sync method on Redis (returns PubSub object), not async
+  - When testing with mock Redis, use `MagicMock` for `pubsub` method (sync) and `AsyncMock` for the PubSub object methods (subscribe, get_message, unsubscribe, aclose are async)
+  - `TaskBroker.cancel()` directly updates the Redis hash using TaskStore's key convention (`orbiter:task:{task_id}`) — avoids needing TaskStore dependency in broker
+  - Worker `_execute_task` always cancels the listener task in `finally` block — important for cleanup even on exceptions
+  - Cooperative cancellation: token checked between event yields in `_run_agent`, not between steps — gives finer-grained cancellation response
+  - When adding params to `_run_agent`, update ALL existing tests that mock it (both in test_worker.py and test_cancel.py)
+  - Total tests: 894 (108 distributed + 786 orbiter-core)
 ---

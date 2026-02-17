@@ -242,7 +242,7 @@
         "Pyright passes"
       ],
       "priority": 14,
-      "passes": false,
+      "passes": true,
       "notes": "Create packages/orbiter-distributed/src/orbiter/distributed/cancel.py. Add cancel() method to TaskBroker in broker.py. Update Worker to subscribe to cancel channel per active task. Cooperative cancellation: the worker checks token.cancelled before each step in the execution loop."
     },
     {

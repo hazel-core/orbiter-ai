@@ -6,7 +6,10 @@ import json
 
 import redis.asyncio as aioredis
 
-from orbiter.distributed.models import TaskPayload  # pyright: ignore[reportMissingImports]
+from orbiter.distributed.models import (  # pyright: ignore[reportMissingImports]
+    TaskPayload,
+    TaskStatus,
+)
 
 
 class TaskBroker:
@@ -114,3 +117,18 @@ class TaskBroker:
             if msgs:
                 _mid, fields = msgs[0]
                 await r.xadd(self._queue_name, {"payload": fields["payload"]})
+
+    async def cancel(self, task_id: str) -> None:
+        """Cancel a running task.
+
+        Publishes a cancel signal to ``orbiter:cancel:{task_id}`` Pub/Sub
+        channel and sets the task status to CANCELLED in the task hash.
+        """
+        r = self._client()
+        # Publish cancel signal via Pub/Sub.
+        await r.publish(  # type: ignore[misc]
+            f"orbiter:cancel:{task_id}", "cancel"
+        )
+        # Update status in the task hash (using TaskStore key convention).
+        key = f"orbiter:task:{task_id}"
+        await r.hset(key, mapping={"status": str(TaskStatus.CANCELLED)})  # type: ignore[misc]

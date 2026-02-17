@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from orbiter.distributed.cancel import CancellationToken  # pyright: ignore[reportMissingImports]
 from orbiter.distributed.models import (  # pyright: ignore[reportMissingImports]
     TaskPayload,
     TaskResult,
@@ -116,11 +117,17 @@ class TestWorkerExecuteTask:
             detailed=False,
         )
 
+        async def _fake_run_agent(
+            agent: object, t: TaskPayload, token: CancellationToken
+        ) -> str:
+            return "Hello!"
+
         # Mock the agent reconstruction and streaming
         mock_agent = MagicMock()
         with (
             patch.object(w, "_reconstruct_agent", return_value=mock_agent),
-            patch.object(w, "_run_agent", new_callable=AsyncMock, return_value="Hello!"),
+            patch.object(w, "_run_agent", side_effect=_fake_run_agent),
+            patch.object(w, "_listen_for_cancel", new_callable=AsyncMock),
         ):
             await w._execute_task(task)
 
@@ -154,6 +161,7 @@ class TestWorkerExecuteTask:
 
         with (
             patch.object(w, "_reconstruct_agent", side_effect=ValueError("bad config")),
+            patch.object(w, "_listen_for_cancel", new_callable=AsyncMock),
         ):
             await w._execute_task(task)
 
@@ -185,7 +193,10 @@ class TestWorkerExecuteTask:
             input="fail",
         )
 
-        with patch.object(w, "_reconstruct_agent", side_effect=RuntimeError("crash")):
+        with (
+            patch.object(w, "_reconstruct_agent", side_effect=RuntimeError("crash")),
+            patch.object(w, "_listen_for_cancel", new_callable=AsyncMock),
+        ):
             await w._execute_task(task)
 
         # Should ack (not nack) since retries exhausted
@@ -208,7 +219,9 @@ class TestWorkerExecuteTask:
 
         captured_task_id: str | None = None
 
-        async def capture_run(agent: object, t: TaskPayload) -> str:
+        async def capture_run(
+            agent: object, t: TaskPayload, token: CancellationToken
+        ) -> str:
             nonlocal captured_task_id
             captured_task_id = w._current_task_id
             return "done"
@@ -216,6 +229,7 @@ class TestWorkerExecuteTask:
         with (
             patch.object(w, "_reconstruct_agent", return_value=MagicMock()),
             patch.object(w, "_run_agent", side_effect=capture_run),
+            patch.object(w, "_listen_for_cancel", new_callable=AsyncMock),
         ):
             await w._execute_task(task)
 
@@ -261,8 +275,9 @@ class TestWorkerRunAgent:
 
         mock_run.stream = _fake_stream_gen
 
+        token = CancellationToken()
         with patch("orbiter.runner.run", mock_run):
-            result = await w._run_agent(mock_agent, task)
+            result = await w._run_agent(mock_agent, task, token)
 
         assert result == "Hello world"
         assert w._publisher.publish.call_count == 3
@@ -300,8 +315,9 @@ class TestWorkerRunAgent:
 
         mock_run.stream = _fake_stream_gen
 
+        token = CancellationToken()
         with patch("orbiter.runner.run", mock_run):
-            result = await w._run_agent(mock_agent, task)
+            result = await w._run_agent(mock_agent, task, token)
 
         # Only TextEvent text should be collected
         assert result == "result"
