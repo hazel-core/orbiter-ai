@@ -3312,7 +3312,7 @@
         "Verify in browser using dev-browser skill"
       ],
       "priority": 81,
-      "passes": false,
+      "passes": true,
       "notes": "Gap fill: UI counterpart to US-188 and US-175"
     },
     {

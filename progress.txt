@@ -2993,3 +2993,16 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Icons in PageLayout.astro are defined in a `const icons: Record<string, string>` map — add new icons there when adding new nav sections
   - Manual browser verification needed (no browser tools available)
 ---
+
+## 2026-02-17 - US-189
+- Implemented user profile settings UI in the Settings > Profile tab
+- Replaced read-only profile form with: editable email (inline edit with save/cancel), role badge (color-coded by role), member since date, sign out button
+- Added Change Password section: current password, new password, confirm password fields with client-side validation (min 8 chars, match check)
+- Wired to existing backend endpoints: PUT /api/v1/auth/profile for email, PUT /api/v1/auth/password for password change
+- Success/error toast feedback via existing showToast() helper
+- Files changed: packages/orbiter-web/src/pages/settings.astro
+- **Learnings for future iterations:**
+  - Profile section uses vanilla JS fetch calls with showToast() for feedback — follows same pattern as team, providers, pricing tabs
+  - Backend already has profile (GET/PUT) and password (PUT) endpoints in routes/auth.py — no backend changes needed for this story
+  - Role badge styles map: admin=coral, developer=zen-blue, viewer=default (matches Badge.astro pattern)
+---
