@@ -2088,3 +2088,20 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - check_budget() checks agent-specific budget first, falls back to workspace-level — hierarchical scoping
   - Engine imports check_budget from routes.costs — this creates a dependency from engine to routes module
 ---
+
+## 2026-02-17 - US-114
+- What was implemented: Cost tracking UI — cost per step in run detail, model pricing settings tab, budget management page with charts, global budget warning banner
+- Files changed:
+  - packages/orbiter-web/src/pages/monitoring/runs/[id].astro (updated — added cost column per step in timeline)
+  - packages/orbiter-web/src/pages/settings.astro (updated — new "Pricing" tab with editable model pricing table, auto-save on blur)
+  - packages/orbiter-web/src/pages/monitoring/costs.astro (new — dedicated cost tracking page with summary cards, cost-by-agent horizontal bar chart, cost over time line chart, agent cost breakdown table, budget management CRUD, budget warning banner)
+  - packages/orbiter-web/src/pages/monitoring.astro (updated — added "Cost tracking" link in header)
+  - packages/orbiter-web/src/layouts/PageLayout.astro (updated — global budget warning banner visible on all app pages when budget is warning/exceeded)
+  - packages/orbiter-web/src/orbiter_web/routes/costs.py (updated — added DELETE /api/costs/budgets/:id endpoint)
+- **Learnings for future iterations:**
+  - Settings tab lazy-loading pattern: set a `fooLoaded` boolean, check it in the tab click handler, call `fetchFoo()` on first show
+  - Budget check API at `/api/costs/budget-check` returns null when no budget set — always null-check before using
+  - The costs page reuses the same SVG line chart pattern from monitoring.astro
+  - PageLayout is the right place for global banners (budget warnings) since all app pages use it
+  - Pricing inputs use auto-save on "change" event (blur after edit) — simpler UX than a separate save button
+---
