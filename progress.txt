@@ -2021,3 +2021,23 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - `range` parameter name doesn't trigger ruff A002 (builtin shadowing) in this project config — no noqa needed
   - Custom time ranges use start/end ISO-8601 timestamps, falling back to predefined offsets (1h/24h/7d/30d)
 ---
+
+## 2026-02-17 - US-110
+- What was implemented: Monitoring dashboard UI at /monitoring with full metrics visualization
+- Files changed:
+  - packages/orbiter-web/src/pages/monitoring.astro (new — complete monitoring dashboard)
+- **Features implemented:**
+  - Time-range selector (1h, 24h, 7d, 30d) with active state styling
+  - 5 key metric cards: total runs, success rate %, avg latency, total tokens, total cost
+  - 5 vanilla JS + SVG charts: runs bar chart, tokens line chart, cost line chart, latency histogram, success/failure donut
+  - Per-agent breakdown table with clickable agent names (links to /workflows/:id)
+  - Auto-refresh toggle (30s interval) with visual toggle switch
+  - Manual refresh button with spin animation
+- **Learnings for future iterations:**
+  - SVG charts use `viewBox` for responsive sizing — container.clientWidth at render time determines layout
+  - Donut chart uses donutSlice() helper with SVG arc path commands — handles both inner and outer radius
+  - Histogram re-buckets timeseries latency data client-side into distribution bins
+  - All data comes from the 3 metrics API endpoints (US-109): /api/metrics/dashboard, /api/metrics/agents, /api/metrics/timeseries
+  - `fmtNumber()` helper formats large numbers with K/M suffixes for metric cards
+  - Range buttons use CSS class toggling (bg-white, shadow-sm) for active state
+---
