@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from orbiter_web.database import get_db
 from orbiter_web.routes.auth import get_current_user
+from orbiter_web.sanitize import sanitize_html
 
 router = APIRouter(prefix="/api/applications", tags=["applications"])
 
@@ -130,7 +131,7 @@ async def create_application(
             INSERT INTO applications (id, name, type, project_id, config_json, user_id, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (app_id, body.name, body.type, body.project_id, body.config_json, user["id"], now, now),
+            (app_id, sanitize_html(body.name), body.type, body.project_id, body.config_json, user["id"], now, now),
         )
         await db.commit()
 
@@ -159,6 +160,9 @@ async def update_application(
     updates = body.model_dump(exclude_none=True)
     if not updates:
         raise HTTPException(status_code=422, detail="No fields to update")
+
+    if "name" in updates and isinstance(updates["name"], str):
+        updates["name"] = sanitize_html(updates["name"])
 
     async with get_db() as db:
         await _verify_ownership(db, app_id, user["id"])

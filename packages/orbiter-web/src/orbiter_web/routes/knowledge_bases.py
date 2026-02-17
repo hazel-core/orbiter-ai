@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from orbiter_web.database import get_db
 from orbiter_web.routes.auth import get_current_user
+from orbiter_web.sanitize import sanitize_html
 from orbiter_web.services.document_processor import chunk_text, extract_text
 
 logger = logging.getLogger(__name__)
@@ -159,8 +160,8 @@ async def create_knowledge_base(
             """,
             (
                 kb_id,
-                body.name,
-                body.description,
+                sanitize_html(body.name),
+                sanitize_html(body.description),
                 body.embedding_model,
                 body.chunk_size,
                 body.chunk_overlap,
@@ -210,6 +211,10 @@ async def update_knowledge_base(
     updates = body.model_dump(exclude_none=True)
     if not updates:
         raise HTTPException(status_code=422, detail="No fields to update")
+
+    for field in ("name", "description"):
+        if field in updates and isinstance(updates[field], str):
+            updates[field] = sanitize_html(updates[field])
 
     # SQLite stores bools as integers
     if "reranker_enabled" in updates:

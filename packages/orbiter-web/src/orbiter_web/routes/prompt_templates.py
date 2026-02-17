@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from orbiter_web.database import get_db
 from orbiter_web.routes.auth import get_current_user
+from orbiter_web.sanitize import sanitize_html
 
 router = APIRouter(prefix="/api/prompt-templates", tags=["prompt_templates"])
 
@@ -281,7 +282,7 @@ async def create_template(
             INSERT INTO prompt_templates (id, name, content, variables_json, user_id, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (template_id, body.name, body.content, body.variables_json, user["id"], now, now),
+            (template_id, sanitize_html(body.name), sanitize_html(body.content), body.variables_json, user["id"], now, now),
         )
 
         # Create initial version
@@ -314,6 +315,10 @@ async def update_template(
     updates = body.model_dump(exclude_none=True)
     if not updates:
         raise HTTPException(status_code=422, detail="No fields to update")
+
+    for field in ("name", "content"):
+        if field in updates and isinstance(updates[field], str):
+            updates[field] = sanitize_html(updates[field])
 
     async with get_db() as db:
         existing = await _verify_ownership(db, template_id, user["id"])

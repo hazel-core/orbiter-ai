@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from orbiter_web.database import get_db
 from orbiter_web.routes.auth import get_current_user
+from orbiter_web.sanitize import sanitize_html
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
@@ -85,7 +86,7 @@ async def create_project(
             INSERT INTO projects (id, name, description, user_id, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (project_id, body.name, body.description, user["id"], now, now),
+            (project_id, sanitize_html(body.name), sanitize_html(body.description), user["id"], now, now),
         )
         await db.commit()
 
@@ -121,6 +122,10 @@ async def update_project(
     updates = body.model_dump(exclude_none=True)
     if not updates:
         raise HTTPException(status_code=422, detail="No fields to update")
+
+    for field in ("name", "description"):
+        if field in updates and isinstance(updates[field], str):
+            updates[field] = sanitize_html(updates[field])
 
     async with get_db() as db:
         # Verify the project exists and belongs to the user.

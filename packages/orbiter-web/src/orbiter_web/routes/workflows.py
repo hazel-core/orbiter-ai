@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from orbiter_web.database import get_db
 from orbiter_web.routes.auth import get_current_user
+from orbiter_web.sanitize import sanitize_html
 
 router = APIRouter(prefix="/api/workflows", tags=["workflows"])
 
@@ -137,8 +138,8 @@ async def create_workflow(
             """,
             (
                 workflow_id,
-                body.name,
-                body.description,
+                sanitize_html(body.name),
+                sanitize_html(body.description),
                 body.project_id,
                 body.nodes_json,
                 body.edges_json,
@@ -191,8 +192,8 @@ async def import_workflow(
             """,
             (
                 workflow_id,
-                body.name,
-                body.description,
+                sanitize_html(body.name),
+                sanitize_html(body.description),
                 body.project_id,
                 body.nodes_json,
                 body.edges_json,
@@ -229,6 +230,10 @@ async def update_workflow(
     updates = body.model_dump(exclude_none=True)
     if not updates:
         raise HTTPException(status_code=422, detail="No fields to update")
+
+    for field in ("name", "description"):
+        if field in updates and isinstance(updates[field], str):
+            updates[field] = sanitize_html(updates[field])
 
     async with get_db() as db:
         await _verify_ownership(db, workflow_id, user["id"])

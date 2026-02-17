@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 
 from orbiter_web.database import get_db
 from orbiter_web.routes.auth import get_current_user
+from orbiter_web.sanitize import sanitize_html
 
 router = APIRouter(prefix="/api/crews", tags=["crews"])
 
@@ -414,8 +415,8 @@ async def create_crew(
             """,
             (
                 crew_id,
-                body.name,
-                body.description,
+                sanitize_html(body.name),
+                sanitize_html(body.description),
                 body.process_type,
                 body.config_json,
                 body.project_id,
@@ -450,6 +451,10 @@ async def update_crew(
     updates = body.model_dump(exclude_none=True)
     if not updates:
         raise HTTPException(status_code=422, detail="No fields to update")
+
+    for field in ("name", "description"):
+        if field in updates and isinstance(updates[field], str):
+            updates[field] = sanitize_html(updates[field])
 
     async with get_db() as db:
         await _verify_crew_ownership(db, crew_id, user["id"])
@@ -522,8 +527,8 @@ async def add_crew_task(
                 task_id,
                 crew_id,
                 body.agent_id,
-                body.task_description,
-                body.expected_output,
+                sanitize_html(body.task_description),
+                sanitize_html(body.expected_output),
                 body.task_order,
                 body.dependencies_json,
                 now,
@@ -548,6 +553,10 @@ async def update_crew_task(
     updates = body.model_dump(exclude_none=True)
     if not updates:
         raise HTTPException(status_code=422, detail="No fields to update")
+
+    for field in ("task_description", "expected_output"):
+        if field in updates and isinstance(updates[field], str):
+            updates[field] = sanitize_html(updates[field])
 
     async with get_db() as db:
         await _verify_crew_ownership(db, crew_id, user["id"])

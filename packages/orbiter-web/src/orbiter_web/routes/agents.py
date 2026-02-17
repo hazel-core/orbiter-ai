@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from orbiter_web.database import get_db
 from orbiter_web.routes.auth import get_current_user
+from orbiter_web.sanitize import sanitize_html
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 
@@ -601,6 +602,14 @@ async def create_agent(
         agent_id = str(uuid.uuid4())
         now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
 
+        # Sanitize user-provided text fields.
+        name = sanitize_html(body.name)
+        description = sanitize_html(body.description)
+        instructions = sanitize_html(body.instructions)
+        persona_role = sanitize_html(body.persona_role)
+        persona_goal = sanitize_html(body.persona_goal)
+        persona_backstory = sanitize_html(body.persona_backstory)
+
         await db.execute(
             """
             INSERT INTO agents (
@@ -618,9 +627,9 @@ async def create_agent(
             """,
             (
                 agent_id,
-                body.name,
-                body.description,
-                body.instructions,
+                name,
+                description,
+                instructions,
                 body.model_provider,
                 body.model_name,
                 body.temperature,
@@ -631,9 +640,9 @@ async def create_agent(
                 body.handoffs_json,
                 body.hooks_json,
                 body.knowledge_base_ids,
-                body.persona_role,
-                body.persona_goal,
-                body.persona_backstory,
+                persona_role,
+                persona_goal,
+                persona_backstory,
                 int(body.autonomous_mode),
                 body.context_automation_level,
                 body.context_max_tokens_per_step,
@@ -673,6 +682,11 @@ async def update_agent(
     updates = body.model_dump(exclude_none=True)
     if not updates:
         raise HTTPException(status_code=422, detail="No fields to update")
+
+    # Sanitize user-provided text fields.
+    for field in ("name", "description", "instructions", "persona_role", "persona_goal", "persona_backstory"):
+        if field in updates and isinstance(updates[field], str):
+            updates[field] = sanitize_html(updates[field])
 
     # SQLite stores bools as integers
     if "autonomous_mode" in updates:
