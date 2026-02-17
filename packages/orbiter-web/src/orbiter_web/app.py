@@ -20,6 +20,7 @@ from orbiter_web.middleware.rate_limit import RateLimitMiddleware
 from orbiter_web.middleware.security import SecurityHeadersMiddleware
 from orbiter_web.routes.agents import router as agents_router
 from orbiter_web.routes.alerts import router as alerts_router
+from orbiter_web.routes.annotations import router as annotations_router
 from orbiter_web.routes.applications import router as applications_router
 from orbiter_web.routes.approvals import router as approvals_router
 from orbiter_web.routes.auth import router as auth_router
@@ -114,6 +115,7 @@ if settings.cors_origins:
 
 app.include_router(agents_router)
 app.include_router(alerts_router)
+app.include_router(annotations_router)
 app.include_router(approvals_router)
 app.include_router(checkpoints_router)
 app.include_router(neuron_pipelines_router)
