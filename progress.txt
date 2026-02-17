@@ -2008,3 +2008,16 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Blob size display: use `new Blob([str]).size` for accurate byte count in browser (handles UTF-8 correctly)
   - RunDetailView prop drilling: checkpoint data/callbacks are passed from the main component through RunDetailView — consider extracting to context if more sections need checkpoint data
 ---
+
+## 2026-02-17 - US-109
+- What was implemented: Metrics aggregation REST API with three endpoints: dashboard summary, per-agent breakdown, and timeseries data
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/routes/metrics.py (new — APIRouter with DashboardMetrics, AgentMetrics, TimeseriesPoint models, 3 endpoints)
+  - packages/orbiter-web/src/orbiter_web/app.py (updated — import and register metrics_router)
+- **Learnings for future iterations:**
+  - Metrics aggregate across both `workflow_runs` and `crew_runs` tables — crew_runs don't have token/cost tracking yet
+  - SQLite `strftime` can bucket by minute (%Y-%m-%dT%H:%M), hour (%Y-%m-%dT%H:00), or day (%Y-%m-%d) for timeseries
+  - Latency computed via `julianday(completed_at) - julianday(started_at) * 86400000` for milliseconds
+  - `range` parameter name doesn't trigger ruff A002 (builtin shadowing) in this project config — no noqa needed
+  - Custom time ranges use start/end ISO-8601 timestamps, falling back to predefined offsets (1h/24h/7d/30d)
+---
