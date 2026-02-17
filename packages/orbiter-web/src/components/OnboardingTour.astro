@@ -175,6 +175,12 @@
         description: "Configure model providers, API keys, and workspace preferences. You'll need to add a model provider to get started.",
         position: "right",
       },
+      {
+        target: "[data-nav='docs']",
+        title: "Documentation",
+        description: 'Read the <a href="/docs/getting-started" style="color:var(--zen-coral);text-decoration:underline">Getting Started Guide</a> for detailed setup instructions, troubleshooting tips, and environment variable reference.',
+        position: "right",
+      },
     ];
 
     var currentStep = 0;
@@ -220,7 +226,7 @@
       // Update text
       stepLabel.textContent = "Step " + (currentStep + 1) + " of " + steps.length;
       titleEl.textContent = step.title;
-      descEl.textContent = step.description;
+      descEl.innerHTML = step.description;
 
       // Update dots
       dotsContainer.innerHTML = "";
