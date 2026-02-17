@@ -21,7 +21,11 @@ MIGRATIONS_DIR = Path(__file__).parent / "migrations"
 
 @asynccontextmanager
 async def get_db() -> AsyncIterator[aiosqlite.Connection]:
-    """Yield an aiosqlite connection. Auto-creates the database file if needed."""
+    """Yield an aiosqlite connection as an async context manager.
+
+    Used by most of the codebase via ``async with get_db() as db:``.
+    For FastAPI dependencies, use :func:`get_db_dep` instead.
+    """
     db = await aiosqlite.connect(_DB_PATH)
     db.row_factory = aiosqlite.Row
     try:
@@ -30,6 +34,15 @@ async def get_db() -> AsyncIterator[aiosqlite.Connection]:
         yield db
     finally:
         await db.close()
+
+
+async def get_db_dep() -> AsyncIterator[aiosqlite.Connection]:
+    """FastAPI-compatible dependency that yields an aiosqlite connection.
+
+    FastAPI expects a bare async generator, not an async context manager.
+    """
+    async with get_db() as db:
+        yield db
 
 
 async def run_migrations() -> list[str]:

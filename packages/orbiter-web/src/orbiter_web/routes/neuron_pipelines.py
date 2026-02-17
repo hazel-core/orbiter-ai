@@ -10,7 +10,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from orbiter_web.database import get_db
+from orbiter_web.database import get_db_dep
 from orbiter_web.routes.auth import get_current_user
 
 router = APIRouter(prefix="/api/v1/agents", tags=["neuron-pipelines"])
@@ -81,7 +81,7 @@ def _row_to_response(row: Any) -> dict[str, Any]:
 async def list_pipelines(
     agent_id: str,
     user: dict = Depends(get_current_user),  # noqa: B008
-    db: Any = Depends(get_db),  # noqa: B008
+    db: Any = Depends(get_db_dep),  # noqa: B008
 ) -> list[PipelineResponse]:
     """List pipelines."""
     cursor = await db.execute(
@@ -97,7 +97,7 @@ async def create_pipeline(
     agent_id: str,
     body: PipelineCreate,
     user: dict = Depends(get_current_user),  # noqa: B008
-    db: Any = Depends(get_db),  # noqa: B008
+    db: Any = Depends(get_db_dep),  # noqa: B008
 ) -> PipelineResponse:
     # Verify agent ownership
     """Create pipeline."""
@@ -129,7 +129,7 @@ async def get_pipeline(
     agent_id: str,
     pipeline_id: str,
     user: dict = Depends(get_current_user),  # noqa: B008
-    db: Any = Depends(get_db),  # noqa: B008
+    db: Any = Depends(get_db_dep),  # noqa: B008
 ) -> PipelineResponse:
     """Get pipeline."""
     cursor = await db.execute(
@@ -148,7 +148,7 @@ async def update_pipeline(
     pipeline_id: str,
     body: PipelineUpdate,
     user: dict = Depends(get_current_user),  # noqa: B008
-    db: Any = Depends(get_db),  # noqa: B008
+    db: Any = Depends(get_db_dep),  # noqa: B008
 ) -> PipelineResponse:
     """Update pipeline."""
     cursor = await db.execute(
@@ -181,7 +181,7 @@ async def delete_pipeline(
     agent_id: str,
     pipeline_id: str,
     user: dict = Depends(get_current_user),  # noqa: B008
-    db: Any = Depends(get_db),  # noqa: B008
+    db: Any = Depends(get_db_dep),  # noqa: B008
 ) -> None:
     """Delete pipeline."""
     cursor = await db.execute(
@@ -200,7 +200,7 @@ async def preview_pipeline(
     agent_id: str,
     pipeline_id: str,
     user: dict = Depends(get_current_user),  # noqa: B008
-    db: Any = Depends(get_db),  # noqa: B008
+    db: Any = Depends(get_db_dep),  # noqa: B008
 ) -> dict[str, Any]:
     """Generate a preview of the assembled prompt from the neuron pipeline."""
     cursor = await db.execute(
