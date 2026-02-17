@@ -15,6 +15,9 @@ Usage::
     orbiter run -m openai:gpt-4o "Hello"
     orbiter --verbose run "Explain Python decorators"
     orbiter start worker --redis-url redis://localhost:6379
+    orbiter task list --status running
+    orbiter task status <task_id>
+    orbiter task cancel <task_id>
 """
 
 from __future__ import annotations
@@ -27,6 +30,7 @@ from urllib.parse import urlparse
 
 import typer
 from rich.console import Console
+from rich.table import Table
 
 # ---------------------------------------------------------------------------
 # Config file discovery
@@ -228,3 +232,206 @@ def start_worker(
     console.print("[dim]Press Ctrl+C to stop.[/dim]")
 
     asyncio.run(worker.start())
+
+
+# ---------------------------------------------------------------------------
+# Subcommand group: task
+# ---------------------------------------------------------------------------
+
+task_app = typer.Typer(
+    name="task",
+    help="Inspect and manage distributed tasks.",
+    no_args_is_help=True,
+)
+app.add_typer(task_app, name="task")
+
+
+def _resolve_redis_url(redis_url: str | None) -> str:
+    """Resolve Redis URL from flag or environment variable."""
+    url = redis_url or os.environ.get("ORBITER_REDIS_URL")
+    if not url:
+        console.print(
+            "[red]Error: --redis-url required or set ORBITER_REDIS_URL environment variable.[/red]"
+        )
+        raise typer.Exit(code=1)
+    return url
+
+
+def _format_timestamp(ts: float | None) -> str:
+    """Format a Unix timestamp as a human-readable string."""
+    if ts is None:
+        return "-"
+    from datetime import UTC, datetime
+
+    return datetime.fromtimestamp(ts, tz=UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
+
+
+def _format_duration(started: float | None, completed: float | None) -> str:
+    """Format duration between two timestamps."""
+    if started is None:
+        return "-"
+    if completed is None:
+        return "running..."
+    secs = completed - started
+    if secs < 1:
+        return f"{secs * 1000:.0f}ms"
+    if secs < 60:
+        return f"{secs:.1f}s"
+    return f"{secs / 60:.1f}m"
+
+
+def _status_color(status: str) -> str:
+    """Return a Rich color name for a task status."""
+    colors: dict[str, str] = {
+        "pending": "yellow",
+        "running": "blue",
+        "completed": "green",
+        "failed": "red",
+        "cancelled": "dim",
+        "retrying": "magenta",
+    }
+    return colors.get(status, "white")
+
+
+@task_app.command("status")
+def task_status(
+    task_id: Annotated[
+        str,
+        typer.Argument(help="Task ID to inspect."),
+    ],
+    redis_url: Annotated[
+        str | None,
+        typer.Option("--redis-url", help="Redis connection URL (default: ORBITER_REDIS_URL env var)."),
+    ] = None,
+) -> None:
+    """Show status details for a specific task."""
+    url = _resolve_redis_url(redis_url)
+
+    async def _show() -> None:
+        from orbiter.distributed.store import TaskStore  # pyright: ignore[reportMissingImports]
+
+        store = TaskStore(url)
+        await store.connect()
+        try:
+            result = await store.get_status(task_id)
+        finally:
+            await store.disconnect()
+
+        if result is None:
+            console.print(f"[yellow]Task not found: {task_id}[/yellow]")
+            raise typer.Exit(code=1)
+
+        color = _status_color(result.status)
+        console.print(f"[bold]Task {result.task_id}[/bold]")
+        console.print(f"  Status:      [{color}]{result.status}[/{color}]")
+        console.print(f"  Worker:      {result.worker_id or '-'}")
+        console.print(f"  Started:     {_format_timestamp(result.started_at)}")
+        console.print(f"  Completed:   {_format_timestamp(result.completed_at)}")
+        console.print(f"  Duration:    {_format_duration(result.started_at, result.completed_at)}")
+        console.print(f"  Retries:     {result.retries}")
+        if result.error:
+            console.print(f"  Error:       [red]{result.error}[/red]")
+        if result.result:
+            import json
+
+            preview = json.dumps(result.result)
+            if len(preview) > 200:
+                preview = preview[:200] + "..."
+            console.print(f"  Result:      {preview}")
+
+    asyncio.run(_show())
+
+
+@task_app.command("cancel")
+def task_cancel(
+    task_id: Annotated[
+        str,
+        typer.Argument(help="Task ID to cancel."),
+    ],
+    redis_url: Annotated[
+        str | None,
+        typer.Option("--redis-url", help="Redis connection URL (default: ORBITER_REDIS_URL env var)."),
+    ] = None,
+) -> None:
+    """Cancel a running distributed task."""
+    url = _resolve_redis_url(redis_url)
+
+    async def _cancel() -> None:
+        from orbiter.distributed.broker import TaskBroker  # pyright: ignore[reportMissingImports]
+
+        broker = TaskBroker(url)
+        await broker.connect()
+        try:
+            await broker.cancel(task_id)
+        finally:
+            await broker.disconnect()
+
+        console.print(f"[green]Task {task_id} cancelled.[/green]")
+
+    asyncio.run(_cancel())
+
+
+@task_app.command("list")
+def task_list(
+    status: Annotated[
+        str | None,
+        typer.Option("--status", help="Filter by status (pending, running, completed, failed, cancelled, retrying)."),
+    ] = None,
+    limit: Annotated[
+        int,
+        typer.Option("--limit", help="Maximum number of tasks to display."),
+    ] = 100,
+    redis_url: Annotated[
+        str | None,
+        typer.Option("--redis-url", help="Redis connection URL (default: ORBITER_REDIS_URL env var)."),
+    ] = None,
+) -> None:
+    """List recent distributed tasks."""
+    url = _resolve_redis_url(redis_url)
+
+    # Validate status filter if provided.
+    from orbiter.distributed.models import TaskStatus  # pyright: ignore[reportMissingImports]
+
+    status_filter: TaskStatus | None = None
+    if status is not None:
+        try:
+            status_filter = TaskStatus(status)
+        except ValueError as err:
+            valid = ", ".join(s.value for s in TaskStatus)
+            console.print(f"[red]Invalid status: {status}. Valid values: {valid}[/red]")
+            raise typer.Exit(code=1) from err
+
+    async def _list() -> None:
+        from orbiter.distributed.store import TaskStore  # pyright: ignore[reportMissingImports]
+
+        store = TaskStore(url)
+        await store.connect()
+        try:
+            results = await store.list_tasks(status=status_filter, limit=limit)
+        finally:
+            await store.disconnect()
+
+        if not results:
+            console.print("[dim]No tasks found.[/dim]")
+            return
+
+        table = Table(title="Distributed Tasks")
+        table.add_column("Task ID", style="cyan", no_wrap=True)
+        table.add_column("Status", no_wrap=True)
+        table.add_column("Worker", no_wrap=True)
+        table.add_column("Started", no_wrap=True)
+        table.add_column("Duration", no_wrap=True)
+
+        for r in results:
+            color = _status_color(r.status)
+            table.add_row(
+                r.task_id,
+                f"[{color}]{r.status}[/{color}]",
+                r.worker_id or "-",
+                _format_timestamp(r.started_at),
+                _format_duration(r.started_at, r.completed_at),
+            )
+
+        console.print(table)
+
+    asyncio.run(_list())

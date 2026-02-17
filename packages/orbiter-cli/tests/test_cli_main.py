@@ -10,7 +10,10 @@ from typer.testing import CliRunner
 
 from orbiter_cli.main import (
     CLIError,
+    _format_duration,
+    _format_timestamp,
     _mask_redis_url,
+    _status_color,
     app,
     find_config,
     load_config,
@@ -422,3 +425,421 @@ class TestStartWorkerCommand:
             concurrency=3,
             queue_name="my:queue",
         )
+
+
+# ---------------------------------------------------------------------------
+# Helper functions for task commands
+# ---------------------------------------------------------------------------
+
+
+class TestFormatTimestamp:
+    def test_none_returns_dash(self) -> None:
+        assert _format_timestamp(None) == "-"
+
+    def test_formats_unix_timestamp(self) -> None:
+        # 2024-01-15 12:30:00 UTC = 1705318200.0
+        result = _format_timestamp(1705318200.0)
+        assert "2024" in result
+        assert "UTC" in result
+
+
+class TestFormatDuration:
+    def test_none_started_returns_dash(self) -> None:
+        assert _format_duration(None, None) == "-"
+
+    def test_none_completed_returns_running(self) -> None:
+        assert _format_duration(1000.0, None) == "running..."
+
+    def test_milliseconds(self) -> None:
+        result = _format_duration(1000.0, 1000.5)
+        assert "ms" in result
+
+    def test_seconds(self) -> None:
+        result = _format_duration(1000.0, 1005.3)
+        assert "s" in result
+
+    def test_minutes(self) -> None:
+        result = _format_duration(1000.0, 1120.0)
+        assert "m" in result
+
+
+class TestStatusColor:
+    def test_known_statuses(self) -> None:
+        assert _status_color("pending") == "yellow"
+        assert _status_color("running") == "blue"
+        assert _status_color("completed") == "green"
+        assert _status_color("failed") == "red"
+        assert _status_color("cancelled") == "dim"
+        assert _status_color("retrying") == "magenta"
+
+    def test_unknown_status(self) -> None:
+        assert _status_color("unknown") == "white"
+
+
+# ---------------------------------------------------------------------------
+# CLI: task subcommand group
+# ---------------------------------------------------------------------------
+
+
+class TestTaskCommandRegistered:
+    def test_task_subcommand_registered(self) -> None:
+        """The 'task' subcommand group is registered on the app."""
+        result = runner.invoke(app, ["task", "--help"])
+        assert result.exit_code == 0
+        assert "status" in result.output.lower()
+        assert "cancel" in result.output.lower()
+        assert "list" in result.output.lower()
+
+    def test_task_status_help(self) -> None:
+        result = runner.invoke(app, ["task", "status", "--help"])
+        assert result.exit_code == 0
+        assert "--redis-url" in result.output
+        assert "task-id" in result.output.lower() or "TASK_ID" in result.output
+
+    def test_task_cancel_help(self) -> None:
+        result = runner.invoke(app, ["task", "cancel", "--help"])
+        assert result.exit_code == 0
+        assert "--redis-url" in result.output
+
+    def test_task_list_help(self) -> None:
+        result = runner.invoke(app, ["task", "list", "--help"])
+        assert result.exit_code == 0
+        assert "--redis-url" in result.output
+        assert "--status" in result.output
+        assert "--limit" in result.output
+
+
+class TestTaskStatusCommand:
+    def test_no_redis_url_exits_1(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("ORBITER_REDIS_URL", raising=False)
+        result = runner.invoke(app, ["task", "status", "abc123"])
+        assert result.exit_code == 1
+        assert "redis-url" in result.output.lower() or "ORBITER_REDIS_URL" in result.output
+
+    def test_task_not_found(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("ORBITER_REDIS_URL", raising=False)
+        mock_store = MagicMock()
+        mock_store.connect = AsyncMock()
+        mock_store.disconnect = AsyncMock()
+        mock_store.get_status = AsyncMock(return_value=None)
+
+        with patch(
+            "orbiter.distributed.store.TaskStore", return_value=mock_store
+        ):
+            result = runner.invoke(
+                app,
+                ["task", "status", "nonexistent", "--redis-url", "redis://localhost:6379"],
+            )
+        assert result.exit_code == 1
+        assert "not found" in result.output.lower()
+
+    def test_shows_task_details(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("ORBITER_REDIS_URL", raising=False)
+
+        from orbiter.distributed.models import (  # pyright: ignore[reportMissingImports]
+            TaskResult,
+            TaskStatus,
+        )
+
+        task_result = TaskResult(
+            task_id="abc123",
+            status=TaskStatus.RUNNING,
+            worker_id="worker-1",
+            started_at=1705318200.0,
+            completed_at=None,
+            retries=0,
+        )
+
+        mock_store = MagicMock()
+        mock_store.connect = AsyncMock()
+        mock_store.disconnect = AsyncMock()
+        mock_store.get_status = AsyncMock(return_value=task_result)
+
+        with patch(
+            "orbiter.distributed.store.TaskStore", return_value=mock_store
+        ):
+            result = runner.invoke(
+                app,
+                ["task", "status", "abc123", "--redis-url", "redis://localhost:6379"],
+            )
+        assert result.exit_code == 0
+        assert "abc123" in result.output
+        assert "running" in result.output.lower()
+        assert "worker-1" in result.output
+
+    def test_shows_error_field(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("ORBITER_REDIS_URL", raising=False)
+
+        from orbiter.distributed.models import (  # pyright: ignore[reportMissingImports]
+            TaskResult,
+            TaskStatus,
+        )
+
+        task_result = TaskResult(
+            task_id="fail1",
+            status=TaskStatus.FAILED,
+            error="Connection timeout",
+            started_at=1000.0,
+            completed_at=1005.0,
+        )
+
+        mock_store = MagicMock()
+        mock_store.connect = AsyncMock()
+        mock_store.disconnect = AsyncMock()
+        mock_store.get_status = AsyncMock(return_value=task_result)
+
+        with patch(
+            "orbiter.distributed.store.TaskStore", return_value=mock_store
+        ):
+            result = runner.invoke(
+                app,
+                ["task", "status", "fail1", "--redis-url", "redis://localhost:6379"],
+            )
+        assert result.exit_code == 0
+        assert "Connection timeout" in result.output
+
+    def test_shows_result_preview(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("ORBITER_REDIS_URL", raising=False)
+
+        from orbiter.distributed.models import (  # pyright: ignore[reportMissingImports]
+            TaskResult,
+            TaskStatus,
+        )
+
+        task_result = TaskResult(
+            task_id="done1",
+            status=TaskStatus.COMPLETED,
+            result={"output": "hello world"},
+            started_at=1000.0,
+            completed_at=1002.0,
+        )
+
+        mock_store = MagicMock()
+        mock_store.connect = AsyncMock()
+        mock_store.disconnect = AsyncMock()
+        mock_store.get_status = AsyncMock(return_value=task_result)
+
+        with patch(
+            "orbiter.distributed.store.TaskStore", return_value=mock_store
+        ):
+            result = runner.invoke(
+                app,
+                ["task", "status", "done1", "--redis-url", "redis://localhost:6379"],
+            )
+        assert result.exit_code == 0
+        assert "hello world" in result.output
+
+    def test_uses_env_var(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("ORBITER_REDIS_URL", "redis://envhost:6379")
+
+        mock_store = MagicMock()
+        mock_store.connect = AsyncMock()
+        mock_store.disconnect = AsyncMock()
+        mock_store.get_status = AsyncMock(return_value=None)
+
+        with patch(
+            "orbiter.distributed.store.TaskStore", return_value=mock_store
+        ) as mock_cls:
+            runner.invoke(app, ["task", "status", "abc123"])
+        mock_cls.assert_called_once_with("redis://envhost:6379")
+
+
+class TestTaskCancelCommand:
+    def test_no_redis_url_exits_1(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("ORBITER_REDIS_URL", raising=False)
+        result = runner.invoke(app, ["task", "cancel", "abc123"])
+        assert result.exit_code == 1
+
+    def test_cancels_task(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("ORBITER_REDIS_URL", raising=False)
+
+        mock_broker = MagicMock()
+        mock_broker.connect = AsyncMock()
+        mock_broker.disconnect = AsyncMock()
+        mock_broker.cancel = AsyncMock()
+
+        with patch(
+            "orbiter.distributed.broker.TaskBroker", return_value=mock_broker
+        ):
+            result = runner.invoke(
+                app,
+                ["task", "cancel", "task-to-cancel", "--redis-url", "redis://localhost:6379"],
+            )
+        assert result.exit_code == 0
+        assert "cancelled" in result.output.lower()
+        mock_broker.cancel.assert_called_once_with("task-to-cancel")
+
+    def test_uses_env_var(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("ORBITER_REDIS_URL", "redis://envhost:6379")
+
+        mock_broker = MagicMock()
+        mock_broker.connect = AsyncMock()
+        mock_broker.disconnect = AsyncMock()
+        mock_broker.cancel = AsyncMock()
+
+        with patch(
+            "orbiter.distributed.broker.TaskBroker", return_value=mock_broker
+        ) as mock_cls:
+            runner.invoke(app, ["task", "cancel", "abc123"])
+        mock_cls.assert_called_once_with("redis://envhost:6379")
+
+
+class TestTaskListCommand:
+    def test_no_redis_url_exits_1(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("ORBITER_REDIS_URL", raising=False)
+        result = runner.invoke(app, ["task", "list"])
+        assert result.exit_code == 1
+
+    def test_empty_list(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("ORBITER_REDIS_URL", raising=False)
+
+        mock_store = MagicMock()
+        mock_store.connect = AsyncMock()
+        mock_store.disconnect = AsyncMock()
+        mock_store.list_tasks = AsyncMock(return_value=[])
+
+        with patch(
+            "orbiter.distributed.store.TaskStore", return_value=mock_store
+        ):
+            result = runner.invoke(
+                app,
+                ["task", "list", "--redis-url", "redis://localhost:6379"],
+            )
+        assert result.exit_code == 0
+        assert "no tasks" in result.output.lower()
+
+    def test_lists_tasks_in_table(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("ORBITER_REDIS_URL", raising=False)
+
+        from orbiter.distributed.models import (  # pyright: ignore[reportMissingImports]
+            TaskResult,
+            TaskStatus,
+        )
+
+        tasks = [
+            TaskResult(
+                task_id="task-1",
+                status=TaskStatus.COMPLETED,
+                worker_id="w1",
+                started_at=1000.0,
+                completed_at=1005.0,
+            ),
+            TaskResult(
+                task_id="task-2",
+                status=TaskStatus.RUNNING,
+                worker_id="w2",
+                started_at=2000.0,
+            ),
+        ]
+
+        mock_store = MagicMock()
+        mock_store.connect = AsyncMock()
+        mock_store.disconnect = AsyncMock()
+        mock_store.list_tasks = AsyncMock(return_value=tasks)
+
+        with patch(
+            "orbiter.distributed.store.TaskStore", return_value=mock_store
+        ):
+            result = runner.invoke(
+                app,
+                ["task", "list", "--redis-url", "redis://localhost:6379"],
+            )
+        assert result.exit_code == 0
+        assert "task-1" in result.output
+        assert "task-2" in result.output
+        assert "Distributed Tasks" in result.output
+
+    def test_filters_by_status(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("ORBITER_REDIS_URL", raising=False)
+
+        from orbiter.distributed.models import TaskStatus  # pyright: ignore[reportMissingImports]
+
+        mock_store = MagicMock()
+        mock_store.connect = AsyncMock()
+        mock_store.disconnect = AsyncMock()
+        mock_store.list_tasks = AsyncMock(return_value=[])
+
+        with patch(
+            "orbiter.distributed.store.TaskStore", return_value=mock_store
+        ):
+            runner.invoke(
+                app,
+                ["task", "list", "--status", "running", "--redis-url", "redis://localhost:6379"],
+            )
+        mock_store.list_tasks.assert_called_once_with(
+            status=TaskStatus.RUNNING, limit=100
+        )
+
+    def test_invalid_status_exits_1(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("ORBITER_REDIS_URL", raising=False)
+        result = runner.invoke(
+            app,
+            ["task", "list", "--status", "bogus", "--redis-url", "redis://localhost:6379"],
+        )
+        assert result.exit_code == 1
+        assert "invalid status" in result.output.lower()
+
+    def test_limit_option(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("ORBITER_REDIS_URL", raising=False)
+
+        mock_store = MagicMock()
+        mock_store.connect = AsyncMock()
+        mock_store.disconnect = AsyncMock()
+        mock_store.list_tasks = AsyncMock(return_value=[])
+
+        with patch(
+            "orbiter.distributed.store.TaskStore", return_value=mock_store
+        ):
+            runner.invoke(
+                app,
+                ["task", "list", "--limit", "50", "--redis-url", "redis://localhost:6379"],
+            )
+        mock_store.list_tasks.assert_called_once_with(
+            status=None, limit=50
+        )
+
+    def test_uses_env_var(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("ORBITER_REDIS_URL", "redis://envhost:6379")
+
+        mock_store = MagicMock()
+        mock_store.connect = AsyncMock()
+        mock_store.disconnect = AsyncMock()
+        mock_store.list_tasks = AsyncMock(return_value=[])
+
+        with patch(
+            "orbiter.distributed.store.TaskStore", return_value=mock_store
+        ) as mock_cls:
+            runner.invoke(app, ["task", "list"])
+        mock_cls.assert_called_once_with("redis://envhost:6379")
