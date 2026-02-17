@@ -3006,3 +3006,39 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Backend already has profile (GET/PUT) and password (PUT) endpoints in routes/auth.py — no backend changes needed for this story
   - Role badge styles map: admin=coral, developer=zen-blue, viewer=default (matches Badge.astro pattern)
 ---
+
+## 2026-02-17 - US-140
+- Implemented version history backend for agents and workflows
+- Files changed:
+  - `packages/orbiter-web/src/orbiter_web/migrations/064_create_config_versions.sql` (NEW)
+  - `packages/orbiter-web/src/orbiter_web/routes/config_versions.py` (NEW)
+  - `packages/orbiter-web/src/orbiter_web/routes/agents.py` (modified — added auto-versioning on create/update)
+  - `packages/orbiter-web/src/orbiter_web/routes/workflows.py` (modified — added auto-versioning on create/update)
+  - `packages/orbiter-web/src/orbiter_web/app.py` (modified — registered config_versions_router)
+- **Learnings for future iterations:**
+  - Config version tracking uses a single `config_versions` table with `entity_type` + `entity_id` polymorphism (agent/workflow)
+  - Auto-versioning is hooked into both create and update endpoints — every save creates a version
+  - Snapshot helpers `_snapshot_agent()` and `_snapshot_workflow()` in config_versions.py define which fields get versioned
+  - Rollback creates a NEW version (doesn't delete history) — same pattern as prompt_templates
+  - Route file uses raw paths (`/api/v1/agents/{agent_id}/versions`) instead of router prefix since it spans both agents and workflows
+---
+
+## 2026-02-17 - US-190
+- What was implemented: Workspace data export/import REST API
+  - POST /api/v1/settings/export — triggers workspace export, returns metadata with export_id
+  - GET /api/v1/settings/export/:id/download — returns ZIP file
+  - POST /api/v1/settings/import — accepts ZIP file, imports entities without overwriting
+  - Export includes: agents, workflows, tools, prompt_templates, knowledge_bases (configs only), providers (no keys)
+  - Export format: ZIP containing JSON files per entity type + manifest.json
+  - Import creates new entities with "(Import)" suffix if name already exists
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/services/workspace_export.py (new — export/import service with ZIP generation)
+  - packages/orbiter-web/src/orbiter_web/routes/workspace_export.py (new — 3 API endpoints)
+  - packages/orbiter-web/src/orbiter_web/app.py (updated — register workspace_export_router, ruff auto-fixed import ordering)
+- **Learnings for future iterations:**
+  - Export service pattern: query each table with user_id filter, build ZIP in-memory with io.BytesIO + zipfile, save to data/uploads/exports/
+  - Import dedup: resolve_name() checks for existing name in table and appends " (Import)" suffix
+  - FileResponse for ZIP downloads: use media_type="application/zip" and path as str
+  - Audit logging: call audit_log() after export/import for security trail
+  - Ruff auto-fix for import sorting: I001 can be fixed with --fix when adding new imports to app.py
+---
