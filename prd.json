@@ -422,7 +422,7 @@
         "Covers both Redis-only and Redis+Temporal modes"
       ],
       "priority": 25,
-      "passes": false,
+      "passes": true,
       "notes": "Create docs/distributed/ directory. Use Mermaid diagrams for architecture visualization. Document all Redis keys/streams/channels used by the system."
     },
     {
