@@ -3415,7 +3415,7 @@
         "Linked from /docs page and onboarding tour"
       ],
       "priority": 156,
-      "passes": false,
+      "passes": true,
       "notes": "Documentation: critical for onboarding. Currently no setup docs exist"
     },
     {

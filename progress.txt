@@ -3316,3 +3316,17 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Ruff RUF001 catches ambiguous Unicode chars like en-dash (–) in strings — use hyphen (-) instead in descriptions
   - The help panel in PageLayout.astro uses data-keywords for search filtering — include relevant keywords like "swagger openapi" on new links
 ---
+
+## 2026-02-17 - US-195
+- What was implemented: Comprehensive getting started guide covering installation, first run, user creation, provider config, agent creation, playground testing, troubleshooting, and env vars reference
+- Files changed:
+  - packages/orbiter-web/src/content/docs/getting-started.md (rewritten — full quickstart with installation, CLI commands, troubleshooting, env vars reference table)
+  - packages/orbiter-web/src/components/OnboardingTour.astro (updated — added "Documentation" step linking to getting-started guide, changed description rendering from textContent to innerHTML for link support)
+- **Learnings for future iterations:**
+  - The in-app docs at src/content/docs/ use Astro content collections with frontmatter (title, description, section, order)
+  - Content config at content.config.ts defines allowed sections: getting-started, guides, api-reference, concepts
+  - OnboardingTour uses textContent for descriptions — use innerHTML when HTML links are needed in step descriptions
+  - CLI entry point is `python -m orbiter_web.cli` with subcommands: create-user, migrate
+  - Settings class in config.py reads all ORBITER_* env vars — reference these when documenting configuration
+  - docs/getting-started/quickstart.md (project-level) is for the framework SDK; src/content/docs/getting-started.md is for the web platform
+---
