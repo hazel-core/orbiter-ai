@@ -3104,3 +3104,17 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - API keys use SHA-256 hash via `_hash_key()` — similar pattern to deployments' `_hash_api_key()`
   - `Header(...)` in FastAPI doesn't trigger ruff B008 (unlike `Depends()`) — no noqa needed
 ---
+
+## 2026-02-17 - US-142
+- Implemented NL to workflow generation backend: two AI endpoints in workflows.py
+- POST /api/v1/workflows/ai-generate — accepts {description, model?}, generates workflow nodes + edges via LLM
+- POST /api/v1/workflows/{id}/ai-refine — accepts {instruction, model?}, modifies existing workflow via LLM
+- Files changed: packages/orbiter-web/src/orbiter_web/routes/workflows.py (+480 lines)
+- **Learnings for future iterations:**
+  - AI generation endpoints must be placed BEFORE /{id} param routes in FastAPI (route ordering matters)
+  - Reused same multi-provider model call pattern from agents.py (_call_model_for_generation)
+  - Node category colors map (_NODE_CATEGORY_COLORS) mirrors NodeSidebar.tsx — keep in sync
+  - Workflow JSON validation: filter invalid node types, inject categoryColor, ensure "type": "workflow" for canvas rendering
+  - System prompt should instruct model to return ONLY JSON (no markdown fences), but parser strips them as fallback
+  - max_tokens=4096 for workflow generation (larger than agents' 2048) since workflows can have many nodes
+---
