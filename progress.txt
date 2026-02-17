@@ -2664,3 +2664,21 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - The llm_as_judge evaluator falls back to semantic_similarity if no provider is available — keeps evals runnable even without API keys
   - Ruff RUF002 catches en-dash (–) in docstrings — use hyphen-minus (-) instead for ranges like "0.0-1.0"
 ---
+
+## 2026-02-17 09:35 - US-179
+- What was implemented: RBAC role column migration and auth updates
+  - Created migration 055_add_role_column.sql: ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'developer'
+  - Updated UserResponse model to include role field
+  - Updated get_current_user to SELECT u.role from sessions join
+  - Updated login endpoint to include role in response
+  - Updated CLI create-user with --role flag (choices: admin/developer/viewer, default: developer)
+  - --admin flag backward compat: sets role to 'admin' automatically
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/migrations/055_add_role_column.sql (new)
+  - packages/orbiter-web/src/orbiter_web/routes/auth.py (modified)
+  - packages/orbiter-web/src/orbiter_web/cli.py (modified)
+- **Learnings for future iterations:**
+  - 6 places query `u.id, u.email, u.created_at` from sessions join (auth.py, websocket.py, playground.py, crews.py, runs.py, workflow_runs.py) — US-180 route guards will need these updated too
+  - Existing is_admin column (migration 024) still present; role column is the new canonical source of truth
+  - UserResponse is the only Pydantic model for user data — adding fields here affects /api/auth/me and /api/auth/login responses
+---

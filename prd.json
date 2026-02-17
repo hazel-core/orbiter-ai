@@ -3145,7 +3145,7 @@
         "Typecheck passes"
       ],
       "priority": 52,
-      "passes": false,
+      "passes": true,
       "notes": "Gap fill: API contract defines admin/developer/viewer roles but no role column exists"
     },
     {
