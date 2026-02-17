@@ -3343,3 +3343,14 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - WebSocket manager is ~160 lines in websocket.py with channel-based multiplexing for 6 channels
   - AgentService in services/agent_runtime.py has 3 methods: build_agent, run_agent, stream_agent
 ---
+
+## 2026-02-17 - US-197
+- What was implemented: Security documentation at docs/guides/security.md
+- Files changed:
+  - docs/guides/security.md (new — comprehensive security guide)
+- **Learnings for future iterations:**
+  - Security docs should be written by auditing the actual codebase implementations, not from memory
+  - Key security files: config.py (env vars), crypto.py (Fernet encryption), middleware/rate_limit.py, middleware/security.py, middleware/csrf.py, sanitize.py, routes/auth.py (sessions + RBAC), routes/ci.py (API keys)
+  - sanitize_html() is applied in 20+ route files — any new route that writes user text must also call it
+  - Middleware execution order matters: SecurityHeaders (outermost) → RateLimit → CSRF (innermost)
+---

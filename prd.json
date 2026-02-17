@@ -3452,7 +3452,7 @@
         "Covers: input sanitization \u2014 what's sanitized and where"
       ],
       "priority": 158,
-      "passes": false,
+      "passes": true,
       "notes": "Documentation: security guide for production deployments"
     },
     {
