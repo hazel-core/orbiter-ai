@@ -97,6 +97,8 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
 - Settings tabs: add tab button + panel div + lazy-load check in tab click handler; use `vsLoaded` / `providersLoaded` pattern for one-time fetch
 - Context config fields: stored as proper columns on agents table (not in hooks_json meta); automation_level, max_tokens_per_step, max_total_tokens, memory_type, workspace_enabled
 - Neuron pipelines: separate `neuron_pipelines` table, CRUD at `/api/agents/:id/pipelines`; neurons stored as JSON array in `neurons_json` column; auto-save with debounce
+- Input sanitization: use `sanitize_html()` from `orbiter_web/sanitize.py` on all user-provided text fields before DB storage; apply in route handlers (not models)
+- Security headers: `SecurityHeadersMiddleware` in `middleware/security.py` adds CSP, X-Content-Type-Options, X-Frame-Options; add frameable paths to `_FRAMEABLE_PATHS` set
 
 ---
 
@@ -2130,4 +2132,20 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - The `logger = logging.getLogger(...)` line must come AFTER all imports to avoid ruff E402 (module-level import not at top of file)
   - `_DB_PATH` is exported from `database.py` — can be imported directly for use elsewhere
   - The lifespan function runs `_validate_startup()` before `run_migrations()` so DB path validation happens first
+---
+
+## 2026-02-17 - US-163
+- What was implemented: CSP headers and input sanitization
+- Added `SecurityHeadersMiddleware` in `middleware/security.py` — sets CSP, X-Content-Type-Options, X-Frame-Options on all responses
+- CSP: `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:`
+- X-Content-Type-Options: nosniff
+- X-Frame-Options: DENY (SAMEORIGIN for widget embed paths via `_FRAMEABLE_PATHS` set)
+- Created `sanitize.py` with `sanitize_html()` — strips HTML tags and neutralizes dangerous patterns (javascript:, vbscript:, data:text/html, on*= event handlers)
+- Applied sanitization to all user text fields before DB storage in: agents, projects, applications, crews, knowledge_bases, workflows, prompt_templates
+- Files changed: `middleware/security.py` (new), `sanitize.py` (new), `app.py`, `routes/agents.py`, `routes/projects.py`, `routes/applications.py`, `routes/crews.py`, `routes/knowledge_bases.py`, `routes/workflows.py`, `routes/prompt_templates.py`
+- **Learnings for future iterations:**
+  - Middleware in FastAPI is applied in reverse order of `add_middleware()` — SecurityHeaders is added last so runs first (outermost)
+  - Pure-Python sanitization via regex is sufficient for text fields — no external dep (nh3/bleach) needed
+  - For update endpoints using `model_dump(exclude_none=True)`, sanitize the dict values before building the SQL SET clause
+  - Ruff N806: don't use UPPER_CASE for local variables inside functions — use tuple/set literal directly in for-loop
 ---
