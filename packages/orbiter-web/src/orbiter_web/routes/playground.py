@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import json
 import time
 import uuid
@@ -64,12 +66,16 @@ async def _load_conversation_messages(conversation_id: str) -> list[dict[str, st
 class _TokenCollector:
     """Wraps a WebSocket to collect streamed token content and trace data."""
 
-    def __init__(self, websocket: WebSocket) -> None:
+    def __init__(self, websocket: WebSocket, cancel_event: asyncio.Event | None = None) -> None:
         self._ws = websocket
         self.collected = ""
         self.usage: dict[str, int] | None = None
+        self._cancel = cancel_event
 
     async def send_json(self, data: Any) -> None:
+        # Check if takeover was requested — stop forwarding tokens
+        if self._cancel and self._cancel.is_set():
+            raise asyncio.CancelledError("takeover")
         if data.get("type") == "token":
             self.collected += data.get("content", "")
         elif data.get("type") == "done":
@@ -249,11 +255,13 @@ async def _stream_openai(
 
     # Send tool call trace events
     for tc in tool_calls_acc.values():
-        await websocket.send_json({
-            "type": "tool_call",
-            "name": tc["name"],
-            "arguments": tc["arguments"],
-        })
+        await websocket.send_json(
+            {
+                "type": "tool_call",
+                "name": tc["name"],
+                "arguments": tc["arguments"],
+            }
+        )
 
     await websocket.send_json(
         {
@@ -351,18 +359,22 @@ async def _stream_anthropic(
                     thinking_content += delta.get("thinking", "")
             elif event_type == "content_block_stop":
                 if current_block_type == "tool_use" and current_tool_name:
-                    await websocket.send_json({
-                        "type": "tool_call",
-                        "name": current_tool_name,
-                        "arguments": current_tool_input,
-                    })
+                    await websocket.send_json(
+                        {
+                            "type": "tool_call",
+                            "name": current_tool_name,
+                            "arguments": current_tool_input,
+                        }
+                    )
                     current_tool_name = ""
                     current_tool_input = ""
                 elif current_block_type == "thinking" and thinking_content:
-                    await websocket.send_json({
-                        "type": "reasoning",
-                        "content": thinking_content,
-                    })
+                    await websocket.send_json(
+                        {
+                            "type": "reasoning",
+                            "content": thinking_content,
+                        }
+                    )
                     thinking_content = ""
                 current_block_type = None
             elif event_type == "message_start":
@@ -454,11 +466,13 @@ async def _stream_gemini(
                         await websocket.send_json({"type": "token", "content": text})
                     # Gemini function calls
                     if fc := part.get("functionCall"):
-                        await websocket.send_json({
-                            "type": "tool_call",
-                            "name": fc.get("name", ""),
-                            "arguments": json.dumps(fc.get("args", {})),
-                        })
+                        await websocket.send_json(
+                            {
+                                "type": "tool_call",
+                                "name": fc.get("name", ""),
+                                "arguments": json.dumps(fc.get("args", {})),
+                            }
+                        )
                 if candidate.get("finishReason"):
                     finish_reason = candidate["finishReason"]
 
@@ -549,6 +563,54 @@ async def _stream_ollama(
     )
 
 
+async def _run_stream(
+    provider_type: str,
+    collector: _TokenCollector,
+    api_key: str,
+    base_url: str,
+    model_name: str,
+    system_prompt: str,
+    history: list[dict[str, str]],
+    temperature: float,
+    max_tokens: int | None,
+) -> None:
+    """Dispatch to the appropriate streaming function."""
+    if provider_type in ("openai", "custom"):
+        await _stream_openai(
+            collector,
+            api_key,
+            base_url,
+            model_name,
+            history,
+            temperature,
+            max_tokens,  # type: ignore[arg-type]
+        )
+    elif provider_type == "anthropic":
+        await _stream_anthropic(
+            collector,
+            api_key,
+            model_name,
+            system_prompt,
+            history,
+            temperature,
+            max_tokens,  # type: ignore[arg-type]
+        )
+    elif provider_type == "gemini":
+        await _stream_gemini(
+            collector,
+            api_key,
+            model_name,
+            history,
+            temperature,
+            max_tokens,  # type: ignore[arg-type]
+        )
+    elif provider_type == "ollama":
+        await _stream_ollama(collector, base_url, model_name, history, temperature)  # type: ignore[arg-type]
+    else:
+        msg = f"Unsupported provider: {provider_type}"
+        raise ValueError(msg)
+
+
 @router.websocket("/api/playground/{agent_id}/chat")
 async def playground_chat(websocket: WebSocket, agent_id: str) -> None:
     """WebSocket endpoint for streaming chat with an agent."""
@@ -616,14 +678,31 @@ async def playground_chat(websocket: WebSocket, agent_id: str) -> None:
     if system_prompt:
         history.append({"role": "system", "content": system_prompt})
 
-    try:
+    # Takeover state
+    cancel_event = asyncio.Event()
+    collector: _TokenCollector | None = None
+    stream_task: asyncio.Task[None] | None = None
+    is_paused = False
+
+    # Message queue for commands received while streaming
+    msg_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+
+    async def _receive_loop() -> None:
+        """Read from WebSocket and dispatch messages."""
         while True:
             raw = await websocket.receive_text()
             try:
-                msg = json.loads(raw)
+                parsed = json.loads(raw)
             except json.JSONDecodeError:
                 await websocket.send_json({"type": "error", "message": "Invalid JSON"})
                 continue
+            await msg_queue.put(parsed)
+
+    receive_task = asyncio.create_task(_receive_loop())
+
+    try:
+        while True:
+            msg = await msg_queue.get()
 
             # Handle conversation loading
             if msg.get("type") == "load_conversation":
@@ -650,6 +729,180 @@ async def playground_chat(websocket: WebSocket, agent_id: str) -> None:
                         )
                 continue
 
+            # ---- Takeover commands (only valid while streaming) ----
+            if msg.get("type") == "takeover":
+                if stream_task and not stream_task.done():
+                    cancel_event.set()
+                    stream_task.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await stream_task
+                    is_paused = True
+                    # Save partial response so far
+                    partial = collector.collected if collector else ""
+                    await websocket.send_json(
+                        {
+                            "type": "takeover_ack",
+                            "partial_content": partial,
+                        }
+                    )
+                    await websocket.send_json(
+                        {
+                            "type": "takeover_event",
+                            "action": "paused",
+                            "timestamp": time.time(),
+                        }
+                    )
+                else:
+                    await websocket.send_json(
+                        {"type": "error", "message": "No active stream to take over"}
+                    )
+                continue
+
+            if msg.get("type") == "stop":
+                if is_paused:
+                    # Save partial content as the assistant response
+                    partial = collector.collected if collector else ""
+                    if partial and conversation_id:
+                        history.append({"role": "assistant", "content": partial})
+                        usage_str = (
+                            json.dumps(collector.usage) if (collector and collector.usage) else None
+                        )
+                        await _save_message(conversation_id, "assistant", partial, usage_str)
+                    is_paused = False
+                    cancel_event.clear()
+                    await websocket.send_json(
+                        {
+                            "type": "takeover_stopped",
+                            "partial_content": partial,
+                        }
+                    )
+                    await websocket.send_json(
+                        {
+                            "type": "takeover_event",
+                            "action": "stopped",
+                            "timestamp": time.time(),
+                        }
+                    )
+                else:
+                    await websocket.send_json({"type": "error", "message": "Not in takeover mode"})
+                continue
+
+            if msg.get("type") == "resume":
+                if is_paused:
+                    # Save partial as assistant message, then resume agent
+                    partial = collector.collected if collector else ""
+                    if partial and conversation_id:
+                        history.append({"role": "assistant", "content": partial})
+                        usage_str = (
+                            json.dumps(collector.usage) if (collector and collector.usage) else None
+                        )
+                        await _save_message(conversation_id, "assistant", partial, usage_str)
+                    is_paused = False
+                    cancel_event.clear()
+                    await websocket.send_json(
+                        {
+                            "type": "takeover_event",
+                            "action": "resumed",
+                            "timestamp": time.time(),
+                        }
+                    )
+                    # Re-stream: send the history back to the model for a fresh response
+                    cancel_event = asyncio.Event()
+                    collector = _TokenCollector(websocket, cancel_event)
+                    try:
+                        await _run_stream(
+                            provider_type,
+                            collector,
+                            api_key,
+                            base_url,
+                            model_name,
+                            system_prompt,
+                            history,
+                            temperature,
+                            max_tokens,
+                        )
+                    except (asyncio.CancelledError, Exception) as exc:
+                        if not cancel_event.is_set():
+                            await websocket.send_json(
+                                {"type": "error", "message": f"Stream error: {exc!s}"}
+                            )
+                        continue
+                    # Persist the resumed assistant response
+                    assistant_content = collector.collected or "(empty response)"
+                    history.append({"role": "assistant", "content": assistant_content})
+                    usage_str = json.dumps(collector.usage) if collector.usage else None
+                    if conversation_id:
+                        await _save_message(
+                            conversation_id, "assistant", assistant_content, usage_str
+                        )
+                else:
+                    await websocket.send_json({"type": "error", "message": "Not in takeover mode"})
+                continue
+
+            if msg.get("type") == "inject":
+                if is_paused:
+                    inject_content = msg.get("content", "").strip()
+                    if not inject_content:
+                        await websocket.send_json(
+                            {"type": "error", "message": "Empty inject message"}
+                        )
+                        continue
+                    # Save partial assistant response
+                    partial = collector.collected if collector else ""
+                    if partial and conversation_id:
+                        history.append({"role": "assistant", "content": partial})
+                        usage_str = (
+                            json.dumps(collector.usage) if (collector and collector.usage) else None
+                        )
+                        await _save_message(conversation_id, "assistant", partial, usage_str)
+                    # Add injected user message
+                    history.append({"role": "user", "content": inject_content})
+                    if conversation_id:
+                        await _save_message(conversation_id, "user", inject_content)
+                    is_paused = False
+                    cancel_event.clear()
+                    await websocket.send_json(
+                        {
+                            "type": "takeover_event",
+                            "action": "injected",
+                            "content": inject_content,
+                            "timestamp": time.time(),
+                        }
+                    )
+                    # Stream response with injected context
+                    cancel_event = asyncio.Event()
+                    collector = _TokenCollector(websocket, cancel_event)
+                    try:
+                        await _run_stream(
+                            provider_type,
+                            collector,
+                            api_key,
+                            base_url,
+                            model_name,
+                            system_prompt,
+                            history,
+                            temperature,
+                            max_tokens,
+                        )
+                    except (asyncio.CancelledError, Exception) as exc:
+                        if not cancel_event.is_set():
+                            await websocket.send_json(
+                                {"type": "error", "message": f"Stream error: {exc!s}"}
+                            )
+                        continue
+                    # Persist the new assistant response
+                    assistant_content = collector.collected or "(empty response)"
+                    history.append({"role": "assistant", "content": assistant_content})
+                    usage_str = json.dumps(collector.usage) if collector.usage else None
+                    if conversation_id:
+                        await _save_message(
+                            conversation_id, "assistant", assistant_content, usage_str
+                        )
+                else:
+                    await websocket.send_json({"type": "error", "message": "Not in takeover mode"})
+                continue
+
+            # ---- Regular message ----
             content = msg.get("content", "").strip()
             if not content:
                 await websocket.send_json({"type": "error", "message": "Empty message"})
@@ -669,46 +922,62 @@ async def playground_chat(websocket: WebSocket, agent_id: str) -> None:
             history.append({"role": "user", "content": content})
             await _save_message(conversation_id, "user", content)
 
-            # Stream response, collecting tokens
-            collector = _TokenCollector(websocket)
-            try:
-                if provider_type in ("openai", "custom"):
-                    await _stream_openai(
-                        collector, api_key, base_url, model_name, history, temperature, max_tokens
-                    )  # type: ignore[arg-type]
-                elif provider_type == "anthropic":
-                    await _stream_anthropic(
-                        collector,
-                        api_key,
-                        model_name,
-                        system_prompt,
-                        history,
-                        temperature,
-                        max_tokens,
-                    )  # type: ignore[arg-type]
-                elif provider_type == "gemini":
-                    await _stream_gemini(
-                        collector, api_key, model_name, history, temperature, max_tokens
-                    )  # type: ignore[arg-type]
-                elif provider_type == "ollama":
-                    await _stream_ollama(collector, base_url, model_name, history, temperature)  # type: ignore[arg-type]
-                else:
+            # Stream response — run in background to allow takeover
+            cancel_event = asyncio.Event()
+            collector = _TokenCollector(websocket, cancel_event)
+            stream_task = asyncio.create_task(
+                _run_stream(
+                    provider_type,
+                    collector,
+                    api_key,
+                    base_url,
+                    model_name,
+                    system_prompt,
+                    history,
+                    temperature,
+                    max_tokens,
+                )
+            )
+
+            # Wait for either stream completion or a queued command
+            while not stream_task.done():
+                # Check for incoming messages with a short timeout
+                try:
+                    cmd = await asyncio.wait_for(msg_queue.get(), timeout=0.1)
+                    # Re-queue the command so the main loop processes it
+                    await msg_queue.put(cmd)
+                    if cmd.get("type") == "takeover":
+                        # Break out to let the main loop handle takeover
+                        break
+                except TimeoutError:
+                    continue
+
+            if stream_task.done():
+                # Stream completed normally — check for errors
+                exc = stream_task.exception() if not stream_task.cancelled() else None
+                if exc:
                     await websocket.send_json(
-                        {"type": "error", "message": f"Unsupported provider: {provider_type}"}
+                        {"type": "error", "message": f"Stream error: {exc!s}"}
                     )
                     continue
-            except Exception as exc:
-                await websocket.send_json({"type": "error", "message": f"Stream error: {exc!s}"})
-                continue
 
-            # Persist the full assistant response
-            assistant_content = collector.collected or "(empty response)"
-            history.append({"role": "assistant", "content": assistant_content})
-            usage_str = json.dumps(collector.usage) if collector.usage else None
-            await _save_message(conversation_id, "assistant", assistant_content, usage_str)
+                # Persist the full assistant response
+                assistant_content = collector.collected or "(empty response)"
+                history.append({"role": "assistant", "content": assistant_content})
+                usage_str = json.dumps(collector.usage) if collector.usage else None
+                await _save_message(conversation_id, "assistant", assistant_content, usage_str)
+                stream_task = None
 
     except WebSocketDisconnect:
         pass
+    finally:
+        receive_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await receive_task
+        if stream_task and not stream_task.done():
+            stream_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await stream_task
 
 
 # ---- Compare mode helpers ----
@@ -749,21 +1018,42 @@ async def _stream_for_model(
     try:
         if provider_type in ("openai", "custom"):
             await _stream_openai(
-                collector, api_key, base_url, model_name, messages, temperature, max_tokens  # type: ignore[arg-type]
+                collector,
+                api_key,
+                base_url,
+                model_name,
+                messages,
+                temperature,
+                max_tokens,  # type: ignore[arg-type]
             )
         elif provider_type == "anthropic":
             await _stream_anthropic(
-                collector, api_key, model_name, system_prompt, messages, temperature, max_tokens  # type: ignore[arg-type]
+                collector,
+                api_key,
+                model_name,
+                system_prompt,
+                messages,
+                temperature,
+                max_tokens,  # type: ignore[arg-type]
             )
         elif provider_type == "gemini":
             await _stream_gemini(
-                collector, api_key, model_name, messages, temperature, max_tokens  # type: ignore[arg-type]
+                collector,
+                api_key,
+                model_name,
+                messages,
+                temperature,
+                max_tokens,  # type: ignore[arg-type]
             )
         elif provider_type == "ollama":
             await _stream_ollama(collector, base_url, model_name, messages, temperature)  # type: ignore[arg-type]
         else:
             await websocket.send_json(
-                {"type": "error", "model_index": model_index, "message": f"Unsupported provider: {provider_type}"}
+                {
+                    "type": "error",
+                    "model_index": model_index,
+                    "message": f"Unsupported provider: {provider_type}",
+                }
             )
     except Exception as exc:
         await websocket.send_json(
@@ -816,14 +1106,22 @@ async def playground_compare(websocket: WebSocket) -> None:
                 mname = m.get("model_name", "")
                 if not ptype or not mname:
                     await websocket.send_json(
-                        {"type": "error", "model_index": i, "message": "Missing provider or model name"}
+                        {
+                            "type": "error",
+                            "model_index": i,
+                            "message": "Missing provider or model name",
+                        }
                     )
                     continue
 
                 pid = await _find_provider_by_type(ptype, user["id"])
                 if not pid:
                     await websocket.send_json(
-                        {"type": "error", "model_index": i, "message": f"No {ptype} provider configured"}
+                        {
+                            "type": "error",
+                            "model_index": i,
+                            "message": f"No {ptype} provider configured",
+                        }
                     )
                     continue
 
@@ -845,8 +1143,16 @@ async def playground_compare(websocket: WebSocket) -> None:
 
                 tasks.append(
                     _stream_for_model(
-                        websocket, i, ptype, api_key, burl, mname,
-                        system_prompt, messages, temperature, max_tokens,
+                        websocket,
+                        i,
+                        ptype,
+                        api_key,
+                        burl,
+                        mname,
+                        system_prompt,
+                        messages,
+                        temperature,
+                        max_tokens,
                     )
                 )
 

@@ -36,6 +36,10 @@ const speakerOffIcon = '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none"
       <div id="agent-info" class="text-xs text-muted hidden">
         <span id="agent-model" class="inline-flex items-center gap-1 px-2 py-0.5 bg-subtle rounded-full"></span>
       </div>
+      <!-- Agent status badge -->
+      <div id="agent-status-badge" class="hidden">
+        <span id="agent-status-text" class="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full"></span>
+      </div>
       <div class="ml-auto flex items-center gap-1">
         <button
           id="thread-toggle-btn"
@@ -201,6 +205,34 @@ const speakerOffIcon = '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none"
           </button>
         </div>
 
+        <!-- Takeover controls bar (shown when paused) -->
+        <div id="takeover-bar" class="hidden flex-shrink-0 border-t border-coral/20 bg-coral/5 px-4 py-2.5">
+          <div class="flex items-center gap-3 max-w-4xl mx-auto">
+            <span class="text-xs font-medium text-coral whitespace-nowrap">Human Control</span>
+            <textarea
+              id="inject-input"
+              rows="1"
+              placeholder="Inject a message to the agent..."
+              class="flex-1 px-3 py-2 text-sm border border-coral/20 rounded-xl bg-paper text-dark placeholder:text-muted/60 focus:outline-none focus:ring-2 focus:ring-coral/20 focus:border-coral transition-colors resize-none max-h-24"
+            ></textarea>
+            <button
+              id="inject-btn"
+              class="flex-shrink-0 px-3 py-2 text-xs font-medium bg-coral text-white rounded-lg hover:bg-coral/90 transition-colors"
+              title="Send message and resume agent"
+            >Inject &amp; Resume</button>
+            <button
+              id="resume-btn"
+              class="flex-shrink-0 px-3 py-2 text-xs font-medium bg-zen-green text-white rounded-lg hover:bg-zen-green/90 transition-colors"
+              title="Resume agent execution"
+            >Resume</button>
+            <button
+              id="stop-btn"
+              class="flex-shrink-0 px-3 py-2 text-xs font-medium bg-dark text-paper rounded-lg hover:bg-dark/80 transition-colors"
+              title="Stop execution and save partial results"
+            >Stop</button>
+          </div>
+        </div>
+
         <!-- Input area -->
         <div class="flex-shrink-0 border-t border-dark/[0.08] bg-paper px-4 py-3">
           <div id="connection-status" class="hidden text-xs text-coral mb-2 px-1"></div>
@@ -212,6 +244,11 @@ const speakerOffIcon = '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none"
               disabled
               class="flex-1 px-4 py-2.5 text-sm border border-dark/[0.08] rounded-xl bg-paper text-dark placeholder:text-muted/60 focus:outline-none focus:ring-2 focus:ring-coral/20 focus:border-coral transition-colors resize-none max-h-40 disabled:opacity-50"
             ></textarea>
+            <button
+              id="takeover-btn"
+              class="hidden flex-shrink-0 px-3 py-2.5 text-xs font-medium border-2 border-coral text-coral rounded-xl hover:bg-coral hover:text-white transition-colors"
+              title="Take over agent execution"
+            >Take Over</button>
             <button
               id="mic-btn"
               disabled
@@ -377,6 +414,17 @@ let isStreaming = false;
 let userScrolledUp = false;
 let tracePanelOpen = false;
 let traceCounter = 0;
+
+/* Takeover elements & state */
+const agentStatusBadge = document.getElementById("agent-status-badge")!;
+const agentStatusText = document.getElementById("agent-status-text")!;
+const takeoverBtn = document.getElementById("takeover-btn") as HTMLButtonElement;
+const takeoverBar = document.getElementById("takeover-bar")!;
+const injectInput = document.getElementById("inject-input") as HTMLTextAreaElement;
+const injectBtn = document.getElementById("inject-btn") as HTMLButtonElement;
+const resumeBtn = document.getElementById("resume-btn") as HTMLButtonElement;
+const stopBtn = document.getElementById("stop-btn") as HTMLButtonElement;
+let isPaused = false;
 
 /* Voice input & TTS state */
 const micBtn = document.getElementById("mic-btn") as HTMLButtonElement;
@@ -1300,6 +1348,129 @@ async function loadAgents() {
   }
 }
 
+/* ---- Agent status badge ---- */
+type AgentStatus = "idle" | "running" | "paused";
+
+function setAgentStatus(status: AgentStatus) {
+  if (status === "idle") {
+    agentStatusBadge.classList.add("hidden");
+    takeoverBtn.classList.add("hidden");
+    takeoverBar.classList.add("hidden");
+    isPaused = false;
+    return;
+  }
+  agentStatusBadge.classList.remove("hidden");
+  agentStatusText.className = "inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full";
+  if (status === "running") {
+    agentStatusText.textContent = "Running";
+    agentStatusText.classList.add("bg-zen-green/10", "text-zen-green");
+    takeoverBtn.classList.remove("hidden");
+    takeoverBar.classList.add("hidden");
+    isPaused = false;
+  } else if (status === "paused") {
+    agentStatusText.textContent = "Paused (Human Control)";
+    agentStatusText.classList.add("bg-coral/10", "text-coral");
+    takeoverBtn.classList.add("hidden");
+    takeoverBar.classList.remove("hidden");
+    isPaused = true;
+    injectInput.focus();
+  }
+}
+
+/* ---- Takeover trace logging ---- */
+const TAKEOVER_ICON = '<svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>';
+
+function addTakeoverTraceEntry(action: string, detail?: string) {
+  traceCounter++;
+  traceEmpty.classList.add("hidden");
+  const el = document.createElement("div");
+  el.className = "border border-coral/20 rounded-lg overflow-hidden bg-coral/5";
+
+  const header = document.createElement("div");
+  header.className = "flex items-center gap-2 px-3 py-2 text-left";
+
+  const iconSpan = document.createElement("span");
+  iconSpan.className = "flex-shrink-0 text-coral";
+  iconSpan.innerHTML = TAKEOVER_ICON;
+
+  const label = document.createElement("span");
+  label.className = "text-xs font-medium text-coral";
+  const actionLabels: Record<string, string> = {
+    paused: "Takeover: Agent paused",
+    resumed: "Takeover: Agent resumed",
+    stopped: "Takeover: Execution stopped",
+    injected: "Takeover: Message injected",
+  };
+  label.textContent = actionLabels[action] || ("Takeover: " + action);
+
+  const timeEl = document.createElement("span");
+  timeEl.className = "text-[10px] text-muted/60 flex-shrink-0 tabular-nums ml-auto";
+  timeEl.textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+
+  header.appendChild(iconSpan);
+  header.appendChild(label);
+  header.appendChild(timeEl);
+  el.appendChild(header);
+
+  if (detail) {
+    const body = document.createElement("div");
+    body.className = "px-3 pb-2 text-[11px] text-dark/70";
+    body.textContent = detail;
+    el.appendChild(body);
+  }
+
+  traceEntries.appendChild(el);
+  traceEntries.scrollTop = traceEntries.scrollHeight;
+}
+
+/* ---- Takeover action handlers ---- */
+takeoverBtn.addEventListener("click", function() {
+  if (ws && ws.readyState === WebSocket.OPEN && isStreaming) {
+    ws.send(JSON.stringify({ type: "takeover" }));
+  }
+});
+
+injectBtn.addEventListener("click", function() {
+  const text = injectInput.value.trim();
+  if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
+  addUserMessage(text);
+  ws.send(JSON.stringify({ type: "inject", content: text }));
+  injectInput.value = "";
+  setAgentStatus("running");
+  isStreaming = true;
+  messageInput.disabled = true;
+  sendBtn.disabled = true;
+  startAgentMessage();
+});
+
+resumeBtn.addEventListener("click", function() {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: "resume" }));
+    setAgentStatus("running");
+    isStreaming = true;
+    messageInput.disabled = true;
+    sendBtn.disabled = true;
+    startAgentMessage();
+  }
+});
+
+stopBtn.addEventListener("click", function() {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: "stop" }));
+    setAgentStatus("idle");
+    isStreaming = false;
+    messageInput.disabled = false;
+    sendBtn.disabled = false;
+  }
+});
+
+injectInput.addEventListener("keydown", function(e) {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    injectBtn.click();
+  }
+});
+
 /* ---- WebSocket management ---- */
 function connectWebSocket(agentId: string, conversationId?: string) {
   if (ws) {
@@ -1340,6 +1511,7 @@ function connectWebSocket(agentId: string, conversationId?: string) {
     sendBtn.disabled = true;
     micBtn.disabled = true;
     isStreaming = false;
+    setAgentStatus("idle");
     ws = null;
     if (isRecording && speechRecognition) {
       speechRecognition.stop();
@@ -1387,6 +1559,26 @@ function connectWebSocket(agentId: string, conversationId?: string) {
       if (data.tree) {
         addContextSnapshot(data.tree);
       }
+    } else if (data.type === "takeover_ack") {
+      /* Agent paused — show takeover controls */
+      setAgentStatus("paused");
+      /* Finish the current streaming bubble with partial content */
+      if (currentStreamBubble && streamedContent) {
+        currentStreamBubble.textContent = "";
+        currentStreamBubble.className = "px-4 py-2.5 rounded-2xl rounded-bl-sm bg-paper border border-coral/20 text-dark text-sm break-words chat-prose min-w-0";
+        currentStreamBubble.innerHTML = renderMarkdown(streamedContent) + '<div class="text-[10px] text-coral mt-1 italic">Paused by human takeover</div>';
+      }
+      currentStreamBubble = null;
+      streamedContent = "";
+    } else if (data.type === "takeover_stopped") {
+      /* Execution stopped — finalize partial content */
+      setAgentStatus("idle");
+      isStreaming = false;
+      messageInput.disabled = false;
+      sendBtn.disabled = false;
+      addTakeoverTraceEntry("stopped");
+    } else if (data.type === "takeover_event") {
+      addTakeoverTraceEntry(data.action || "unknown", data.content);
     }
   };
 }
@@ -1603,6 +1795,7 @@ function finishStream(data: { usage?: { prompt_tokens?: number; completion_token
   isStreaming = false;
   messageInput.disabled = false;
   sendBtn.disabled = false;
+  setAgentStatus("idle");
   messageInput.focus();
   scrollToBottom();
 }
@@ -1667,6 +1860,7 @@ function clearMessages() {
   userScrolledUp = false;
   scrollBottomBtn.classList.add("hidden");
   scrollBottomBtn.classList.remove("flex");
+  setAgentStatus("idle");
   clearTraceEntries();
   /* Reconnect to reset conversation history on server (new conversation) */
   if (currentAgentId) {
@@ -1686,6 +1880,7 @@ function sendMessage() {
   isStreaming = true;
   messageInput.disabled = true;
   sendBtn.disabled = true;
+  setAgentStatus("running");
   /* Reset scroll tracking so auto-scroll works for the new response */
   userScrolledUp = false;
   scrollBottomBtn.classList.add("hidden");
