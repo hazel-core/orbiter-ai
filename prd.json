@@ -456,7 +456,7 @@
         "docs/streaming-events.md with: all event types with field descriptions, detailed=True usage guide, event filtering examples, SSE integration example (FastAPI/Django), frontend consumption patterns, migration from AWorld output types"
       ],
       "priority": 28,
-      "passes": false,
+      "passes": true,
       "notes": "Create docs/streaming-events.md. Document all 8 event types: TextEvent, ToolCallEvent, StepEvent, ToolResultEvent, ReasoningEvent, ErrorEvent, StatusEvent, UsageEvent. Include FastAPI SSE example."
     },
     {

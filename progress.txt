@@ -611,3 +611,20 @@ Started: Mon Feb 17 2026
   - Documentation-only stories don't affect pyright/ruff/tests — just verify pre-existing errors haven't changed
   - All 3493 tests continue to pass
 ---
+
+## 2026-02-17 - US-028
+- Created `docs/streaming-events.md` with comprehensive streaming events documentation
+- All 8 event types documented with field tables: TextEvent, ToolCallEvent, StepEvent, ToolResultEvent, ReasoningEvent, ErrorEvent, StatusEvent, UsageEvent
+- `detailed=True` usage guide with parameter comparison table
+- Event emission order diagram showing step lifecycle
+- Event filtering examples with `event_types` parameter
+- Multi-agent streaming (Swarm) section covering workflow, handoff, and team modes
+- SSE integration examples for FastAPI and Django
+- Frontend consumption patterns: JavaScript EventSource and Fetch API with ReadableStream
+- JSON serialization/deserialization examples with discriminated union pattern
+- Distributed streaming section linking to `orbiter-distributed` architecture docs
+- Files changed: `docs/streaming-events.md` (new), `prd.json`
+- **Learnings for future iterations:**
+  - Documentation-only stories don't affect pyright/ruff/tests — just verify pre-existing errors haven't changed
+  - All 3493 tests continue to pass
+---
