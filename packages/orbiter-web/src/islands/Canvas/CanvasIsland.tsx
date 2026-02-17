@@ -408,6 +408,18 @@ const icons = {
       <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
     </svg>
   ),
+  aiGenerate: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 2l2.09 6.26L20 10l-5.91 1.74L12 18l-2.09-6.26L4 10l5.91-1.74L12 2z" />
+      <path d="M18 14l1.05 3.15L22 18l-2.95.85L18 22l-1.05-3.15L14 18l2.95-.85L18 14z" />
+    </svg>
+  ),
+  aiRefine: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 2l2.09 6.26L20 10l-5.91 1.74L12 18l-2.09-6.26L4 10l5.91-1.74L12 2z" />
+      <path d="M2 20l3-3" /><path d="M22 4l-3 3" />
+    </svg>
+  ),
 };
 
 /* ------------------------------------------------------------------ */
@@ -946,6 +958,11 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
   const [historyNodeStatuses, setHistoryNodeStatuses] = useState<Record<string, NodeExecStatus>>({});
   const validationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  /* AI generation state */
+  const [aiModalOpen, setAiModalOpen] = useState(false);
+  const [aiModalMode, setAiModalMode] = useState<"generate" | "refine">("generate");
+  const [aiLoading, setAiLoading] = useState(false);
+
   /* History tracking */
   const { past, future, record, canUndo, canRedo, skipRecord } =
     useUndoRedo(nodes, edges);
@@ -1059,6 +1076,62 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
         alert("Export error: " + err.message);
       });
   }, [workflowId, workflowName]);
+
+  /* AI workflow generation / refinement */
+  const handleAISubmit = useCallback(
+    async (text: string) => {
+      setAiLoading(true);
+      try {
+        let url: string;
+        let body: Record<string, unknown>;
+        if (aiModalMode === "refine" && workflowId) {
+          url = `/api/v1/workflows/${workflowId}/ai-refine`;
+          body = { instruction: text };
+        } else {
+          url = "/api/v1/workflows/ai-generate";
+          body = { description: text };
+        }
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ detail: "Generation failed" }));
+          throw new Error(err.detail ?? "Generation failed");
+        }
+        const data: { nodes: Node[]; edges: Edge[] } = await res.json();
+        record();
+        // Enrich edges with handle-type coloring
+        const nodeMap = new Map(data.nodes.map((n) => [n.id, n]));
+        const coloredEdges = data.edges.map((e) => {
+          const srcNode = nodeMap.get(e.source);
+          let color = HANDLE_COLORS.any;
+          let label: string = "any";
+          if (srcNode) {
+            const nt = (srcNode.data as { nodeType?: string }).nodeType ?? "default";
+            const handles = getHandlesForNodeType(nt);
+            const h = handles.find((h) => h.id === (e.sourceHandle ?? "output"));
+            if (h) {
+              color = HANDLE_COLORS[h.dataType];
+              label = h.dataType;
+            }
+          }
+          return { ...e, type: "typed" as const, data: { color, label } };
+        });
+        setNodes(data.nodes);
+        setEdges(coloredEdges);
+        setAiModalOpen(false);
+        // Fit view after a tick so React Flow can measure
+        setTimeout(() => fitView({ padding: 0.2, duration: 300 }), 50);
+      } catch (err) {
+        throw err;
+      } finally {
+        setAiLoading(false);
+      }
+    },
+    [aiModalMode, workflowId, record, setNodes, setEdges, fitView],
+  );
 
   /* Load canvas state from backend */
   useEffect(() => {
@@ -1859,6 +1932,24 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
               )}
             </>
           )}
+
+          <Separator />
+          <ToolbarButton
+            onClick={() => { setAiModalMode("generate"); setAiModalOpen(true); }}
+            title="AI Generate Workflow"
+            disabled={aiLoading}
+          >
+            {icons.aiGenerate}
+          </ToolbarButton>
+          {nodes.length > 0 && workflowId && (
+            <ToolbarButton
+              onClick={() => { setAiModalMode("refine"); setAiModalOpen(true); }}
+              title="AI Refine Workflow"
+              disabled={aiLoading}
+            >
+              {icons.aiRefine}
+            </ToolbarButton>
+          )}
         </div>
       </Panel>
 
@@ -2218,7 +2309,292 @@ function CanvasFlow({ workflowId }: { workflowId?: string }) {
           onClose={() => setSingleRunNodeId(null)}
         />
       )}
+
+      {/* Empty canvas CTA */}
+      {loaded && nodes.length === 0 && !aiModalOpen && (
+        <div
+          className="nodrag nopan"
+          style={{
+            position: "absolute",
+            top: "50%",
+            left: "50%",
+            transform: "translate(-50%, -50%)",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 16,
+            textAlign: "center",
+            fontFamily: "'Bricolage Grotesque', sans-serif",
+            pointerEvents: "auto",
+          }}
+        >
+          <div style={{ fontSize: 14, fontWeight: 500, color: "var(--zen-muted, #999)" }}>
+            Drag nodes from the sidebar or let AI build your workflow
+          </div>
+          <button
+            onClick={() => { setAiModalMode("generate"); setAiModalOpen(true); }}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "10px 20px",
+              fontSize: 13,
+              fontWeight: 600,
+              fontFamily: "'Bricolage Grotesque', sans-serif",
+              borderRadius: 8,
+              border: "1px solid var(--zen-coral, #F76F53)",
+              background: "var(--zen-coral, #F76F53)",
+              color: "#fff",
+              cursor: "pointer",
+              transition: "opacity 150ms",
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 2l2.09 6.26L20 10l-5.91 1.74L12 18l-2.09-6.26L4 10l5.91-1.74L12 2z" />
+            </svg>
+            AI Generate Workflow
+          </button>
+        </div>
+      )}
+
+      {/* AI Generate / Refine modal */}
+      {aiModalOpen && (
+        <AIGenerateModal
+          mode={aiModalMode}
+          loading={aiLoading}
+          onSubmit={handleAISubmit}
+          onClose={() => { if (!aiLoading) setAiModalOpen(false); }}
+        />
+      )}
     </ReactFlow>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* AIGenerateModal — text input modal for AI workflow generation        */
+/* ------------------------------------------------------------------ */
+
+function AIGenerateModal({
+  mode,
+  loading,
+  onSubmit,
+  onClose,
+}: {
+  mode: "generate" | "refine";
+  loading: boolean;
+  onSubmit: (text: string) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [text, setText] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    // Focus the textarea on mount
+    setTimeout(() => textareaRef.current?.focus(), 50);
+  }, []);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !loading) onClose();
+      if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && text.trim() && !loading) {
+        handleSubmit();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  });
+
+  const handleSubmit = async () => {
+    if (!text.trim() || loading) return;
+    setError(null);
+    try {
+      await onSubmit(text.trim());
+    } catch (err) {
+      setError((err as Error).message || "Generation failed");
+    }
+  };
+
+  const title = mode === "generate" ? "AI Generate Workflow" : "AI Refine Workflow";
+  const placeholder =
+    mode === "generate"
+      ? "Describe the workflow you want to create\u2026\n\nExample: Create a customer support chatbot that classifies incoming messages, routes urgent ones to a human agent, and auto-responds to FAQs using a knowledge base."
+      : "Describe how to modify the existing workflow\u2026\n\nExample: Add an error handling branch after the API call node that retries up to 3 times before sending a failure notification.";
+  const buttonLabel = mode === "generate" ? "Generate" : "Refine";
+
+  return (
+    <div
+      className="nodrag nopan nowheel"
+      style={{
+        position: "absolute",
+        top: "50%",
+        left: "50%",
+        transform: "translate(-50%, -50%)",
+        width: 480,
+        maxHeight: "80vh",
+        zIndex: 30,
+        display: "flex",
+        flexDirection: "column",
+        background: "var(--zen-paper, #f2f0e3)",
+        border: "1px solid var(--zen-subtle, #e0ddd0)",
+        borderRadius: 12,
+        boxShadow: "0 8px 32px rgba(0,0,0,0.18)",
+        overflow: "hidden",
+        fontFamily: "'Bricolage Grotesque', sans-serif",
+      }}
+    >
+      {/* Header */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "14px 16px 12px",
+          borderBottom: "1px solid var(--zen-subtle, #e0ddd0)",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--zen-coral, #F76F53)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 2l2.09 6.26L20 10l-5.91 1.74L12 18l-2.09-6.26L4 10l5.91-1.74L12 2z" />
+          </svg>
+          <span style={{ fontSize: 14, fontWeight: 600, color: "var(--zen-dark, #2e2e2e)" }}>
+            {title}
+          </span>
+        </div>
+        <button
+          onClick={onClose}
+          disabled={loading}
+          title="Close (Esc)"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: 26,
+            height: 26,
+            border: "none",
+            borderRadius: 6,
+            background: "transparent",
+            color: "var(--zen-muted, #999)",
+            cursor: loading ? "default" : "pointer",
+            opacity: loading ? 0.4 : 1,
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+
+      {/* Body */}
+      <div style={{ flex: 1, padding: "14px 16px", overflow: "auto" }}>
+        <textarea
+          ref={textareaRef}
+          value={text}
+          onChange={(e) => { setText(e.target.value); setError(null); }}
+          placeholder={placeholder}
+          disabled={loading}
+          spellCheck={false}
+          style={{
+            width: "100%",
+            minHeight: 140,
+            padding: "10px 12px",
+            fontSize: 13,
+            fontFamily: "'Bricolage Grotesque', sans-serif",
+            lineHeight: 1.6,
+            background: "var(--zen-subtle, #e0ddd0)",
+            border: error ? "1px solid #ef4444" : "1px solid transparent",
+            borderRadius: 8,
+            color: "var(--zen-dark, #2e2e2e)",
+            resize: "vertical",
+            outline: "none",
+            opacity: loading ? 0.6 : 1,
+          }}
+        />
+        {error && (
+          <div style={{ fontSize: 12, color: "#ef4444", marginTop: 6 }}>{error}</div>
+        )}
+        {loading && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              marginTop: 10,
+              fontSize: 12,
+              color: "var(--zen-muted, #999)",
+            }}
+          >
+            <span className="ai-spinner" />
+            Generating workflow&hellip;
+            <style>{`
+              @keyframes aiSpin { to { transform: rotate(360deg); } }
+              .ai-spinner {
+                display: inline-block;
+                width: 14px;
+                height: 14px;
+                border: 2px solid var(--zen-subtle, #e0ddd0);
+                border-top-color: var(--zen-coral, #F76F53);
+                border-radius: 50%;
+                animation: aiSpin 0.8s linear infinite;
+              }
+            `}</style>
+          </div>
+        )}
+      </div>
+
+      {/* Footer */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          padding: "10px 16px",
+          borderTop: "1px solid var(--zen-subtle, #e0ddd0)",
+        }}
+      >
+        <span style={{ fontSize: 11, color: "var(--zen-muted, #999)" }}>
+          {mod}Enter to submit
+        </span>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            onClick={onClose}
+            disabled={loading}
+            style={{
+              padding: "6px 14px",
+              fontSize: 12,
+              fontWeight: 500,
+              fontFamily: "'Bricolage Grotesque', sans-serif",
+              borderRadius: 6,
+              border: "1px solid var(--zen-subtle, #e0ddd0)",
+              background: "transparent",
+              color: "var(--zen-dark, #2e2e2e)",
+              cursor: loading ? "default" : "pointer",
+              opacity: loading ? 0.4 : 1,
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={!text.trim() || loading}
+            style={{
+              padding: "6px 14px",
+              fontSize: 12,
+              fontWeight: 600,
+              fontFamily: "'Bricolage Grotesque', sans-serif",
+              borderRadius: 6,
+              border: "1px solid var(--zen-coral, #F76F53)",
+              background: "var(--zen-coral, #F76F53)",
+              color: "#fff",
+              cursor: !text.trim() || loading ? "default" : "pointer",
+              opacity: !text.trim() || loading ? 0.5 : 1,
+            }}
+          >
+            {loading ? "Generating\u2026" : buttonLabel}
+          </button>
+        </div>
       </div>
     </div>
   );

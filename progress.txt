@@ -3118,3 +3118,22 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - System prompt should instruct model to return ONLY JSON (no markdown fences), but parser strips them as fallback
   - max_tokens=4096 for workflow generation (larger than agents' 2048) since workflows can have many nodes
 ---
+
+## 2026-02-17 - US-143
+- Implemented NL to workflow UI: AI Generate button, text input modal, loading state, canvas rendering, and Refine button
+- Files changed: packages/orbiter-web/src/islands/Canvas/CanvasIsland.tsx (+376 lines)
+- **Features:**
+  - AI Generate button in the canvas toolbar (sparkle icon) — opens modal for NL description
+  - Empty canvas CTA: prominent "AI Generate Workflow" button centered on empty canvas
+  - AIGenerateModal component: textarea with placeholder examples, loading spinner, error display, Cmd+Enter shortcut
+  - AI Refine button (visible when nodes exist + workflowId) — opens same modal in "refine" mode
+  - Calls POST /api/v1/workflows/ai-generate (generate mode) or POST /api/v1/workflows/{id}/ai-refine (refine mode)
+  - Generated nodes/edges rendered on canvas with handle-type coloring, followed by fitView()
+  - Loading state disables modal controls, shows spinner animation
+- **Learnings for future iterations:**
+  - AI modal re-uses same codebase patterns: inline SVG icons, var(--zen-*) CSS custom properties, 'Bricolage Grotesque' font
+  - handleAISubmit enriches edges with handle-type coloring (same logic as initial load) so edges render correctly
+  - Empty canvas detection: `loaded && nodes.length === 0` — must check `loaded` to avoid flash before data arrives
+  - AIGenerateModal uses useEffect for keydown (Escape, Cmd+Enter) — no deps array means it re-binds each render to capture fresh `text` state
+  - Modal uses absolute positioning with translate(-50%, -50%) to center in ReactFlow canvas, consistent with MockInputPanel
+---
