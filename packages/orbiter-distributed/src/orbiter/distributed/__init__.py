@@ -2,4 +2,10 @@
 
 from __future__ import annotations
 
-__all__: list[str] = []
+from orbiter.distributed.models import TaskPayload, TaskResult, TaskStatus
+
+__all__: list[str] = [
+    "TaskPayload",
+    "TaskResult",
+    "TaskStatus",
+]
