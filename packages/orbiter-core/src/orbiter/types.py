@@ -256,4 +256,91 @@ class ToolResultEvent(BaseModel):
     agent_name: str = ""
 
 
-StreamEvent = TextEvent | ToolCallEvent | StepEvent | ToolResultEvent
+class ReasoningEvent(BaseModel):
+    """Streaming event for reasoning content from the model.
+
+    Args:
+        type: Discriminator literal, always ``"reasoning"``.
+        text: The reasoning text content.
+        agent_name: Name of the agent producing this event.
+    """
+
+    model_config = {"frozen": True}
+
+    type: Literal["reasoning"] = "reasoning"
+    text: str
+    agent_name: str = ""
+
+
+class ErrorEvent(BaseModel):
+    """Streaming event for errors during agent execution.
+
+    Args:
+        type: Discriminator literal, always ``"error"``.
+        error: The error message.
+        error_type: The type/class of the error.
+        agent_name: Name of the agent that encountered the error.
+        step_number: The step during which the error occurred (None if not step-specific).
+        recoverable: Whether the error is recoverable.
+    """
+
+    model_config = {"frozen": True}
+
+    type: Literal["error"] = "error"
+    error: str
+    error_type: str
+    agent_name: str = ""
+    step_number: int | None = None
+    recoverable: bool = False
+
+
+class StatusEvent(BaseModel):
+    """Streaming event for agent status changes.
+
+    Args:
+        type: Discriminator literal, always ``"status"``.
+        status: The current status of the agent.
+        agent_name: Name of the agent whose status changed.
+        message: Human-readable description of the status change.
+    """
+
+    model_config = {"frozen": True}
+
+    type: Literal["status"] = "status"
+    status: Literal[
+        "starting", "running", "waiting_for_tool", "completed", "cancelled", "error"
+    ]
+    agent_name: str = ""
+    message: str = ""
+
+
+class UsageEvent(BaseModel):
+    """Streaming event for per-step token usage.
+
+    Args:
+        type: Discriminator literal, always ``"usage"``.
+        usage: Token usage statistics for this step.
+        agent_name: Name of the agent that consumed the tokens.
+        step_number: The step this usage is associated with.
+        model: The model identifier used for this step.
+    """
+
+    model_config = {"frozen": True}
+
+    type: Literal["usage"] = "usage"
+    usage: Usage
+    agent_name: str = ""
+    step_number: int = 0
+    model: str = ""
+
+
+StreamEvent = (
+    TextEvent
+    | ToolCallEvent
+    | StepEvent
+    | ToolResultEvent
+    | ReasoningEvent
+    | ErrorEvent
+    | StatusEvent
+    | UsageEvent
+)
