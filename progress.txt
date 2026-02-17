@@ -1976,3 +1976,23 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Until agent runtime is wired, context snapshots are synthesized from trace entries in buildContextSnapshotFromTrace()
   - clearTraceEntries() must also call clearContextSnapshots() to keep both panels in sync
 ---
+
+## 2026-02-17 - US-107
+- What was implemented
+  - Migration 034: `checkpoints` table (id, run_id, name, step_number, state_blob, created_at) with index on run_id
+  - POST `/api/runs/:runId/checkpoints` — saves execution state as a named checkpoint
+  - GET `/api/runs/:runId/checkpoints` — lists checkpoints for a run (paginated, ordered by step_number desc)
+  - POST `/api/runs/:runId/checkpoints/:cpId/restore` — restores from checkpoint and resets run status to pending
+  - `maybe_auto_checkpoint()` helper — creates auto-checkpoints at configurable intervals (default every 5 steps)
+  - `cleanup_old_checkpoints()` helper — deletes checkpoints older than N days (default 30)
+  - Registered checkpoints_router in app.py
+- Files changed
+  - packages/orbiter-web/src/orbiter_web/migrations/034_create_checkpoints.sql (new)
+  - packages/orbiter-web/src/orbiter_web/routes/checkpoints.py (new)
+  - packages/orbiter-web/src/orbiter_web/app.py (added import + include_router)
+- **Learnings for future iterations:**
+  - Ruff I001 (import sort): always add new imports in alphabetical order among the existing import block
+  - Ruff SIM105: use `contextlib.suppress(ExcType)` instead of try/except/pass — applies throughout the codebase
+  - Checkpoint state_blob is stored as JSON TEXT; use json.loads with contextlib.suppress for safe deserialization
+  - Run ownership check pattern: `_verify_run_ownership(db, run_id, user_id)` queries workflow_runs filtered by user_id
+---
