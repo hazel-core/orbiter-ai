@@ -6,6 +6,7 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
 - **API versioning**: All API routes use `/api/v1/` prefix. Health check at `/api/health` is unversioned. Legacy `/api/...` paths 301-redirect to `/api/v1/...` via `APIVersionRedirectMiddleware`. Frontend calls all use `/api/v1/`. Vite proxy uses `/api` which matches both.
 - Node error handling: `_get_node_error_config(node)` reads retry_count, retry_delay_ms, on_error, fallback_value, timeout_ms from `node.data`; `_execute_node_with_retry()` wraps `_execute_node` with timeout + exponential backoff + on_error strategy
 - Schedules: CRUD at `/api/v1/schedules`, background polling in `services/scheduler.py` using `croniter`; fires workflow runs with `trigger_type='schedule'`; starts/stops via app lifespan
+- Webhooks: trigger at POST `/api/v1/webhooks/:workflowId/:hookId` (unauthenticated, CSRF-exempt); CRUD at `/api/v1/webhook-configs`; notification templates at `/api/v1/notification-templates`
 - Sandbox execution: `execute_code(code, config)` in `services/sandbox.py` — runs Python in isolated subprocess with import allowlist, filesystem restriction, and timeout; returns SandboxResult with stdout/stderr/files
 - Sandbox import restriction: don't block exec/eval/compile from builtins (breaks importlib); use explicit import allowlist + safe stdlib set instead
 - Built-in tools: add to `BUILTIN_TOOLS` list in `routes/tools.py` — they get merged into list_tools endpoint automatically
@@ -3185,4 +3186,22 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Health status indicators: green dot for "connected", red for "error", grey for "disconnected"
   - Button component has no "danger" variant — use `!bg-coral !text-white` overrides on primary variant for destructive actions (same pattern as team remove modal)
   - No browser testing tools available — manual browser verification needed
+---
+
+## 2026-02-17 - US-147
+- What was implemented: Webhook triggers backend — webhook URL generation, trigger execution, CRUD management, request logging, notification templates
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/migrations/068_create_webhooks.sql (new — webhooks + notification_templates tables)
+  - packages/orbiter-web/src/orbiter_web/routes/webhooks.py (new — 14 routes: webhook trigger POST, CRUD for webhook-configs, regenerate token, request log, notification template CRUD + defaults)
+  - packages/orbiter-web/src/orbiter_web/app.py (updated — register webhooks_router)
+  - packages/orbiter-web/src/orbiter_web/middleware/csrf.py (updated — exempt /api/v1/webhooks/ prefix from CSRF)
+  - prd.json (mark US-147 as passing)
+- **Learnings for future iterations:**
+  - Webhook trigger endpoint is unauthenticated (external callers) — validated by workflow_id + hook_id match in DB, not session cookie
+  - CSRF exemption needed for webhook prefixes since external POST requests don't have session cookies
+  - Webhook CRUD uses /api/v1/webhook-configs prefix (not /api/v1/webhooks) to avoid collision with the trigger URL pattern
+  - Request log is stored as JSON array in request_log_json column, capped at 50 entries, most recent last
+  - Notification template defaults available at GET /api/v1/notification-templates/defaults — returns config schemas for slack/discord/email
+  - url_token is generated via secrets.token_urlsafe(32) for secure random tokens
+  - No browser testing needed — this is a backend-only story
 ---
