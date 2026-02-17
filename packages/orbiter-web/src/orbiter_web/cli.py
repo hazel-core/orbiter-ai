@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import sys
 import uuid
 
 import bcrypt
 
-from orbiter_web.database import get_db, run_migrations
+from orbiter_web.database import MIGRATIONS_DIR, get_db, run_migrations
 
 
 def _hash_password(password: str) -> str:
@@ -47,6 +48,61 @@ async def _create_user(
     print(f"User created: {email} (id: {user_id}, role: {role})")
 
 
+async def _migrate(*, status: bool = False) -> None:
+    """Run pending migrations or show migration status."""
+    if status:
+        await _show_migration_status()
+    else:
+        await _run_migrations()
+
+
+async def _show_migration_status() -> None:
+    """Show applied and pending migrations."""
+    # Collect all migration files.
+    all_migrations: list[str] = []
+    if MIGRATIONS_DIR.is_dir():
+        all_migrations = sorted(f for f in os.listdir(MIGRATIONS_DIR) if f.endswith(".sql"))
+
+    if not all_migrations:
+        print("No migration files found.")
+        return
+
+    # Get applied migrations from DB.
+    applied: set[str] = set()
+    async with get_db() as db:
+        # Check if _migrations table exists.
+        cursor = await db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='_migrations'"
+        )
+        if await cursor.fetchone():
+            cursor = await db.execute("SELECT name FROM _migrations ORDER BY id")
+            rows = await cursor.fetchall()
+            applied = {row[0] for row in rows}
+
+    pending_count = 0
+    applied_count = 0
+    for name in all_migrations:
+        if name in applied:
+            print(f"  [applied]  {name}")
+            applied_count += 1
+        else:
+            print(f"  [pending]  {name}")
+            pending_count += 1
+
+    print(f"\n{applied_count} applied, {pending_count} pending")
+
+
+async def _run_migrations() -> None:
+    """Run all pending migrations, printing each as it's applied."""
+    applied = await run_migrations()
+    if applied:
+        for name in applied:
+            print(f"  Applied: {name}")
+        print(f"\n{len(applied)} migration(s) applied successfully.")
+    else:
+        print("No pending migrations.")
+
+
 def main() -> None:
     """Entry point for the CLI."""
     parser = argparse.ArgumentParser(prog="orbiter-web", description="Orbiter Web CLI")
@@ -65,12 +121,26 @@ def main() -> None:
         help="User role (default: developer)",
     )
 
+    migrate_parser = subparsers.add_parser("migrate", help="Run database migrations")
+    migrate_parser.add_argument(
+        "--status",
+        action="store_true",
+        default=False,
+        help="Show migration status instead of running migrations",
+    )
+
     args = parser.parse_args()
 
     if args.command == "create-user":
         asyncio.run(
             _create_user(args.email, args.password, admin=args.admin, role=args.role)
         )
+    elif args.command == "migrate":
+        try:
+            asyncio.run(_migrate(status=args.status))
+        except Exception as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            sys.exit(1)
     else:
         parser.print_help()
         sys.exit(1)
