@@ -20,6 +20,16 @@ const copyIcon = '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" strok
   <div class="flex-1 min-h-0 relative">
     <CanvasIsland client:only="react" workflowId={id} />
 
+    <!-- Floating Version History button -->
+    <a
+      id="version-history-link"
+      class="absolute top-3 right-36 z-20 inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium border border-dark/[0.08] text-dark bg-paper/90 backdrop-blur-sm rounded-lg hover:bg-dark/[0.05] transition-colors shadow-sm"
+      title="Version history"
+    >
+      <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      Versions
+    </a>
+
     <!-- Floating Deploy button -->
     <button
       id="deploy-api-btn"
@@ -106,6 +116,12 @@ const copyIcon = '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" strok
     var deploySubmitBtn = document.getElementById("deploy-submit-btn");
     var deployFormContent = document.getElementById("deploy-form-content");
     var deploySuccessContent = document.getElementById("deploy-success-content");
+
+    /* Version history link */
+    var versionHistoryLink = document.getElementById("version-history-link");
+    if (versionHistoryLink) {
+      versionHistoryLink.href = "/versions?type=workflow&id=" + encodeURIComponent(workflowId);
+    }
 
     deployBtn.addEventListener("click", function () {
       deployFormContent.classList.remove("hidden");
