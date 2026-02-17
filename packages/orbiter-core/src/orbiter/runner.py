@@ -141,6 +141,7 @@ async def _stream(
     provider: Any = None,
     max_steps: int | None = None,
     detailed: bool = False,
+    event_types: set[str] | None = None,
 ) -> AsyncIterator[StreamEvent]:
     """Stream agent execution, yielding events in real-time.
 
@@ -166,6 +167,10 @@ async def _stream(
         detailed: When ``True``, emit rich event types (StepEvent,
             UsageEvent, ToolResultEvent, StatusEvent) in addition to
             the default TextEvent and ToolCallEvent.
+        event_types: When provided, only events whose ``type`` field
+            matches one of the given strings are yielded.  When
+            ``None`` (default), all events pass through (respecting
+            the *detailed* flag).
 
     Yields:
         ``TextEvent`` for text chunks and ``ToolCallEvent`` for tool
@@ -176,6 +181,9 @@ async def _stream(
     """
     resolved = provider or _resolve_provider(agent)
 
+    def _passes_filter(event: StreamEvent) -> bool:
+        return event_types is None or event.type in event_types
+
     # Detect Swarm: delegate to its stream() method
     if hasattr(agent, "flow_order"):
         async for event in agent.stream(
@@ -184,6 +192,7 @@ async def _stream(
             provider=resolved,
             detailed=detailed,
             max_steps=max_steps,
+            event_types=event_types,
         ):
             yield event
         return
@@ -213,22 +222,26 @@ async def _stream(
     model_name = getattr(agent, "model", "") or ""
 
     if detailed:
-        yield StatusEvent(
+        _ev = StatusEvent(
             status="starting",
             agent_name=agent.name,
             message=f"Agent '{agent.name}' starting execution",
         )
+        if _passes_filter(_ev):
+            yield _ev
 
     for step_num in range(steps):
         step_started_at = time.time()
 
         if detailed:
-            yield StepEvent(
+            _ev = StepEvent(
                 step_number=step_num + 1,
                 agent_name=agent.name,
                 status="started",
                 started_at=step_started_at,
             )
+            if _passes_filter(_ev):
+                yield _ev
 
         try:
             # Accumulate text and tool call deltas from the stream
@@ -246,7 +259,9 @@ async def _stream(
                 # Yield text deltas
                 if chunk.delta:
                     text_parts.append(chunk.delta)
-                    yield TextEvent(text=chunk.delta, agent_name=agent.name)
+                    _ev = TextEvent(text=chunk.delta, agent_name=agent.name)
+                    if _passes_filter(_ev):
+                        yield _ev
 
                 # Accumulate tool call deltas
                 for tcd in chunk.tool_call_deltas:
@@ -268,12 +283,14 @@ async def _stream(
                     )
 
             if detailed:
-                yield UsageEvent(
+                _ev = UsageEvent(
                     usage=step_usage,
                     agent_name=agent.name,
                     step_number=step_num + 1,
                     model=model_name,
                 )
+                if _passes_filter(_ev):
+                    yield _ev
 
             # Build completed tool calls
             tool_calls = [
@@ -289,7 +306,7 @@ async def _stream(
             # No tool calls — done streaming
             if not tool_calls:
                 if detailed:
-                    yield StepEvent(
+                    _ev = StepEvent(
                         step_number=step_num + 1,
                         agent_name=agent.name,
                         status="completed",
@@ -297,20 +314,26 @@ async def _stream(
                         completed_at=time.time(),
                         usage=step_usage,
                     )
-                    yield StatusEvent(
+                    if _passes_filter(_ev):
+                        yield _ev
+                    _ev = StatusEvent(
                         status="completed",
                         agent_name=agent.name,
                         message=f"Agent '{agent.name}' completed execution",
                     )
+                    if _passes_filter(_ev):
+                        yield _ev
                 return
 
             # Yield ToolCallEvent for each tool call
             for tc in tool_calls:
-                yield ToolCallEvent(
+                _ev = ToolCallEvent(
                     tool_name=tc.name,
                     tool_call_id=tc.id,
                     agent_name=agent.name,
                 )
+                if _passes_filter(_ev):
+                    yield _ev
 
             # Execute tools and feed results back
             full_text = "".join(text_parts)
@@ -328,7 +351,7 @@ async def _stream(
                     else 0.0
                 )
                 for action, tr in zip(actions, tool_results):
-                    yield ToolResultEvent(
+                    _ev = ToolResultEvent(
                         tool_name=tr.tool_name,
                         tool_call_id=tr.tool_call_id,
                         arguments=action.arguments,
@@ -338,9 +361,11 @@ async def _stream(
                         duration_ms=per_tool_duration_ms,
                         agent_name=agent.name,
                     )
+                    if _passes_filter(_ev):
+                        yield _ev
 
             if detailed:
-                yield StepEvent(
+                _ev = StepEvent(
                     step_number=step_num + 1,
                     agent_name=agent.name,
                     status="completed",
@@ -348,6 +373,8 @@ async def _stream(
                     completed_at=time.time(),
                     usage=step_usage,
                 )
+                if _passes_filter(_ev):
+                    yield _ev
 
             # Append assistant message + tool results to conversation
             msg_list.append(
@@ -356,19 +383,23 @@ async def _stream(
             msg_list.extend(tool_results)
 
         except Exception as exc:
-            yield ErrorEvent(
+            _ev = ErrorEvent(
                 error=str(exc),
                 error_type=type(exc).__name__,
                 agent_name=agent.name,
                 step_number=step_num + 1,
                 recoverable=False,
             )
+            if _passes_filter(_ev):
+                yield _ev
             if detailed:
-                yield StatusEvent(
+                _ev = StatusEvent(
                     status="error",
                     agent_name=agent.name,
                     message=str(exc),
                 )
+                if _passes_filter(_ev):
+                    yield _ev
             raise
 
 

@@ -1070,3 +1070,209 @@ class TestRunStreamDetailedStepNumbers:
         assert len(usage_events) == 2
         assert usage_events[0].step_number == 1
         assert usage_events[1].step_number == 2
+
+
+# ---------------------------------------------------------------------------
+# run.stream() event_types filtering
+# ---------------------------------------------------------------------------
+
+
+class TestRunStreamEventFiltering:
+    """Tests for event_types parameter — filtering which events are yielded."""
+
+    async def test_filter_text_only(self) -> None:
+        """event_types={'text'} yields only TextEvent."""
+        agent = Agent(name="bot", instructions="Be nice.")
+        chunks = [
+            _FakeStreamChunk(delta="Hello"),
+            _FakeStreamChunk(delta="!", finish_reason="stop"),
+        ]
+        provider = _make_stream_provider([chunks])
+
+        events = [
+            ev
+            async for ev in run.stream(
+                agent, "Hi", provider=provider, detailed=True, event_types={"text"}
+            )
+        ]
+
+        assert len(events) == 2
+        assert all(isinstance(e, TextEvent) for e in events)
+
+    async def test_filter_tool_result_only(self) -> None:
+        """event_types={'tool_result'} yields only ToolResultEvent."""
+
+        @tool
+        def greet(name: str) -> str:
+            """Greet someone."""
+            return f"Hi {name}!"
+
+        agent = Agent(name="bot", tools=[greet])
+        round1 = [
+            _FakeStreamChunk(
+                tool_call_deltas=[
+                    _FakeToolCallDelta(index=0, id="tc1", name="greet"),
+                ]
+            ),
+            _FakeStreamChunk(
+                tool_call_deltas=[
+                    _FakeToolCallDelta(index=0, arguments='{"name":"Alice"}'),
+                ],
+                finish_reason="tool_calls",
+            ),
+        ]
+        round2 = [_FakeStreamChunk(delta="Done!")]
+        provider = _make_stream_provider([round1, round2])
+
+        events = [
+            ev
+            async for ev in run.stream(
+                agent,
+                "Greet Alice",
+                provider=provider,
+                detailed=True,
+                event_types={"tool_result"},
+            )
+        ]
+
+        assert len(events) == 1
+        assert isinstance(events[0], ToolResultEvent)
+        assert events[0].tool_name == "greet"
+
+    async def test_filter_multiple_types(self) -> None:
+        """event_types={'text', 'tool_call'} yields only those two types."""
+
+        @tool
+        def compute() -> str:
+            """Compute."""
+            return "42"
+
+        agent = Agent(name="bot", tools=[compute])
+        round1 = [
+            _FakeStreamChunk(
+                tool_call_deltas=[
+                    _FakeToolCallDelta(index=0, id="tc1", name="compute"),
+                ]
+            ),
+            _FakeStreamChunk(
+                tool_call_deltas=[
+                    _FakeToolCallDelta(index=0, arguments="{}"),
+                ],
+                finish_reason="tool_calls",
+            ),
+        ]
+        round2 = [_FakeStreamChunk(delta="Result: 42")]
+        provider = _make_stream_provider([round1, round2])
+
+        events = [
+            ev
+            async for ev in run.stream(
+                agent,
+                "calc",
+                provider=provider,
+                detailed=True,
+                event_types={"text", "tool_call"},
+            )
+        ]
+
+        for ev in events:
+            assert isinstance(ev, (TextEvent, ToolCallEvent))
+        assert any(isinstance(e, TextEvent) for e in events)
+        assert any(isinstance(e, ToolCallEvent) for e in events)
+
+    async def test_filter_none_passes_all(self) -> None:
+        """event_types=None (default) passes all events through."""
+        agent = Agent(name="bot")
+        chunks = [_FakeStreamChunk(delta="ok")]
+        provider = _make_stream_provider([chunks])
+
+        events = [
+            ev
+            async for ev in run.stream(
+                agent, "Hi", provider=provider, detailed=True, event_types=None
+            )
+        ]
+
+        type_names = {type(e).__name__ for e in events}
+        # Should have StatusEvent, StepEvent, TextEvent, UsageEvent at minimum
+        assert "StatusEvent" in type_names
+        assert "TextEvent" in type_names
+
+    async def test_filter_empty_set_yields_nothing(self) -> None:
+        """event_types=set() yields no events."""
+        agent = Agent(name="bot")
+        chunks = [_FakeStreamChunk(delta="ok")]
+        provider = _make_stream_provider([chunks])
+
+        events = [
+            ev
+            async for ev in run.stream(
+                agent, "Hi", provider=provider, detailed=True, event_types=set()
+            )
+        ]
+
+        assert len(events) == 0
+
+    async def test_filter_without_detailed(self) -> None:
+        """event_types works with detailed=False (default mode)."""
+        agent = Agent(name="bot")
+        chunks = [
+            _FakeStreamChunk(delta="Hello"),
+            _FakeStreamChunk(delta=" world"),
+        ]
+        provider = _make_stream_provider([chunks])
+
+        # Filter to only text — should get TextEvents (same as no filter, since
+        # detailed=False only emits TextEvent/ToolCallEvent anyway)
+        events = [
+            ev
+            async for ev in run.stream(
+                agent, "Hi", provider=provider, event_types={"text"}
+            )
+        ]
+
+        assert len(events) == 2
+        assert all(isinstance(e, TextEvent) for e in events)
+
+    async def test_filter_error_events(self) -> None:
+        """Error events are filtered by event_types like any other event."""
+        agent = Agent(name="bot")
+
+        async def failing_stream(messages: Any, **kwargs: Any) -> AsyncIterator[Any]:
+            raise RuntimeError("connection failed")
+            yield  # noqa: RUF027
+
+        mock = AsyncMock()
+        mock.stream = failing_stream
+
+        # Filter to text only — error events should be filtered out
+        events: list[StreamEvent] = []
+        with pytest.raises(RuntimeError, match="connection failed"):
+            async for ev in run.stream(
+                agent, "Hi", provider=mock, detailed=True, event_types={"text"}
+            ):
+                events.append(ev)
+
+        # No events should pass the filter (error event is filtered out)
+        assert len(events) == 0
+
+    async def test_filter_preserves_error_when_included(self) -> None:
+        """Error events pass through when 'error' is in event_types."""
+        agent = Agent(name="bot")
+
+        async def failing_stream(messages: Any, **kwargs: Any) -> AsyncIterator[Any]:
+            raise RuntimeError("connection failed")
+            yield  # noqa: RUF027
+
+        mock = AsyncMock()
+        mock.stream = failing_stream
+
+        events: list[StreamEvent] = []
+        with pytest.raises(RuntimeError, match="connection failed"):
+            async for ev in run.stream(
+                agent, "Hi", provider=mock, detailed=True, event_types={"error"}
+            ):
+                events.append(ev)
+
+        assert len(events) == 1
+        assert isinstance(events[0], ErrorEvent)

@@ -149,6 +149,7 @@ class Swarm:
         provider: Any = None,
         detailed: bool = False,
         max_steps: int | None = None,
+        event_types: set[str] | None = None,
     ) -> AsyncIterator[StreamEvent]:
         """Stream swarm execution, yielding events from each sub-agent.
 
@@ -162,6 +163,8 @@ class Swarm:
             provider: LLM provider for all agents.
             detailed: When ``True``, emit rich event types.
             max_steps: Maximum LLM-tool round-trips per agent.
+            event_types: When provided, only events whose ``type`` field
+                matches one of the given strings are yielded.
 
         Yields:
             ``StreamEvent`` instances from sub-agent execution.
@@ -170,18 +173,21 @@ class Swarm:
             async for event in self._stream_workflow(
                 input, messages=messages, provider=provider,
                 detailed=detailed, max_steps=max_steps,
+                event_types=event_types,
             ):
                 yield event
         elif self.mode == "handoff":
             async for event in self._stream_handoff(
                 input, messages=messages, provider=provider,
                 detailed=detailed, max_steps=max_steps,
+                event_types=event_types,
             ):
                 yield event
         elif self.mode == "team":
             async for event in self._stream_team(
                 input, messages=messages, provider=provider,
                 detailed=detailed, max_steps=max_steps,
+                event_types=event_types,
             ):
                 yield event
         else:
@@ -195,6 +201,7 @@ class Swarm:
         provider: Any = None,
         detailed: bool = False,
         max_steps: int | None = None,
+        event_types: set[str] | None = None,
     ) -> AsyncIterator[StreamEvent]:
         """Stream workflow mode: agents run sequentially, chaining output→input.
 
@@ -204,17 +211,22 @@ class Swarm:
         from orbiter.runner import run
         from orbiter.types import TextEvent
 
+        def _passes_filter(event: StreamEvent) -> bool:
+            return event_types is None or event.type in event_types
+
         current_input = input
 
         for agent_name in self.flow_order:
             agent = self.agents[agent_name]
 
             if detailed:
-                yield StatusEvent(
+                _ev = StatusEvent(
                     status="running",
                     agent_name=agent_name,
                     message=f"Workflow executing agent '{agent_name}'",
                 )
+                if _passes_filter(_ev):
+                    yield _ev
 
             # For groups/nested swarms, delegate to their stream if available
             if getattr(agent, "is_group", False) or getattr(agent, "is_swarm", False):
@@ -226,7 +238,8 @@ class Swarm:
                     ):
                         if isinstance(event, TextEvent):
                             text_parts.append(event.text)
-                        yield event
+                        if _passes_filter(event):
+                            yield event
                     current_input = "".join(text_parts)
                 else:
                     result = await agent.run(
@@ -243,7 +256,8 @@ class Swarm:
             ):
                 if isinstance(event, TextEvent):
                     text_parts.append(event.text)
-                yield event
+                if _passes_filter(event):
+                    yield event
 
             current_input = "".join(text_parts)
 
@@ -255,6 +269,7 @@ class Swarm:
         provider: Any = None,
         detailed: bool = False,
         max_steps: int | None = None,
+        event_types: set[str] | None = None,
     ) -> AsyncIterator[StreamEvent]:
         """Stream handoff mode: agents delegate dynamically.
 
@@ -264,6 +279,9 @@ class Swarm:
         from orbiter.runner import run
         from orbiter.types import TextEvent
 
+        def _passes_filter(event: StreamEvent) -> bool:
+            return event_types is None or event.type in event_types
+
         current_agent_name = self.flow_order[0]
         current_input = input
         handoff_count = 0
@@ -272,11 +290,13 @@ class Swarm:
             agent = self.agents[current_agent_name]
 
             if detailed:
-                yield StatusEvent(
+                _ev = StatusEvent(
                     status="running",
                     agent_name=current_agent_name,
                     message=f"Handoff executing agent '{current_agent_name}'",
                 )
+                if _passes_filter(_ev):
+                    yield _ev
 
             # Stream the agent's execution and collect text
             text_parts: list[str] = []
@@ -286,7 +306,8 @@ class Swarm:
             ):
                 if isinstance(event, TextEvent):
                     text_parts.append(event.text)
-                yield event
+                if _passes_filter(event):
+                    yield event
 
             output_text = "".join(text_parts)
 
@@ -303,11 +324,13 @@ class Swarm:
                 raise SwarmError(f"Max handoffs ({self.max_handoffs}) exceeded in swarm")
 
             if detailed:
-                yield StatusEvent(
+                _ev = StatusEvent(
                     status="running",
                     agent_name=next_agent,
                     message=f"Handoff from '{current_agent_name}' to '{next_agent}'",
                 )
+                if _passes_filter(_ev):
+                    yield _ev
 
             current_agent_name = next_agent
             current_input = output_text
@@ -320,9 +343,13 @@ class Swarm:
         provider: Any = None,
         detailed: bool = False,
         max_steps: int | None = None,
+        event_types: set[str] | None = None,
     ) -> AsyncIterator[StreamEvent]:
         """Stream team mode: lead delegates to workers via tools."""
         from orbiter.runner import run
+
+        def _passes_filter(event: StreamEvent) -> bool:
+            return event_types is None or event.type in event_types
 
         if len(self.agents) < 2:
             raise SwarmError("Team mode requires at least two agents (lead + workers)")
@@ -349,15 +376,18 @@ class Swarm:
 
         try:
             if detailed:
-                yield StatusEvent(
+                _ev = StatusEvent(
                     status="running",
                     agent_name=lead_name,
                     message=f"Team lead '{lead_name}' starting execution",
                 )
+                if _passes_filter(_ev):
+                    yield _ev
 
             async for event in run.stream(
                 lead, input, messages=messages, provider=provider,
                 detailed=detailed, max_steps=max_steps,
+                event_types=event_types,
             ):
                 yield event
         finally:

@@ -1,0 +1,115 @@
+# Ralph Progress Log
+Started: Mon Feb 17 2026
+
+## Codebase Patterns
+- Streaming event types are frozen Pydantic BaseModels in `packages/orbiter-core/src/orbiter/types.py`
+- Use `model_config = {"frozen": True}` for all event types
+- `StreamEvent` is a Union type alias at the bottom of `types.py` — all new event types must be added to it
+- Existing `TextEvent` and `ToolCallEvent` use `agent_name: str = ""` as default
+- The stale `test_streaming_events.py` was rewritten in US-002 with correct PRD field names — future event types (US-003) should add tests to this file
+- `_stream()` in `runner.py` uses `detailed=True` to enable rich events — when adding Swarm streaming (US-005), pass `detailed` through to the per-agent stream call
+- `StreamChunk` has a `usage` field (populated on final chunk with `total_tokens > 0`) — use this to build `UsageEvent`
+- `agent._execute_tools()` wraps errors with "Tool 'X' failed: " prefix — test error messages with `in` not `==`
+- Stream tests use `_FakeStreamChunk`, `_FakeToolCallDelta`, `_make_stream_provider` helpers in `test_runner.py` (also duplicated in `test_swarm.py`)
+- Agent model string is at `agent.model` (may be empty string or None) — use `getattr(agent, "model", "") or ""`
+- Swarm streaming collects text from `TextEvent` objects for output chaining — avoids double LLM execution
+- `run.stream()` detects Swarm via `hasattr(agent, 'flow_order')` and delegates to `Swarm.stream()`, same pattern as `run()`
+- Swarm `stream()` imports `run` inside methods to avoid circular imports (runner.py → swarm.py cycle)
+- Event filtering via `event_types: set[str] | None` — Swarm workflow/handoff must filter at yield points (not inner `run.stream()`) to preserve TextEvent collection for output chaining
+
+---
+
+## 2026-02-17 - US-001
+- Added `StepEvent` frozen Pydantic BaseModel to `orbiter/types.py`
+- Fields: `type: Literal["step"]`, `step_number: int`, `agent_name: str`, `status: Literal["started", "completed"]`, `started_at: float`, `completed_at: float | None`, `usage: Usage | None`
+- Updated `StreamEvent` union to include `StepEvent`
+- Files changed: `packages/orbiter-core/src/orbiter/types.py`
+- **Learnings for future iterations:**
+  - Follow the exact frozen BaseModel pattern: `model_config = {"frozen": True}`, type literal with default, required fields first, optional fields with defaults
+  - `StreamEvent` union is a simple type alias (not Annotated/Discriminated) — just add `| NewType` at the end
+  - There's a pre-existing `packages/orbiter-core/tests/test_streaming_events.py` that uses wrong field names (e.g., `step_num` instead of `step_number`). It needs to be rewritten to match PRD specs in a later story.
+  - All 682 existing orbiter-core tests pass with the change — no downstream breakage
+---
+
+## 2026-02-17 - US-002
+- Added `ToolResultEvent` frozen Pydantic BaseModel to `orbiter/types.py`
+- Fields: `type: Literal["tool_result"]`, `tool_name: str`, `tool_call_id: str`, `arguments: dict[str, Any]`, `result: str`, `error: str | None`, `success: bool`, `duration_ms: float`, `agent_name: str`
+- Updated `StreamEvent` union to include `ToolResultEvent`
+- Rewrote stale `test_streaming_events.py` with correct PRD field names (11 tests)
+- Files changed: `packages/orbiter-core/src/orbiter/types.py`, `packages/orbiter-core/tests/test_streaming_events.py`
+- **Learnings for future iterations:**
+  - The stale test file has been rewritten — US-003 should add new test classes to `test_streaming_events.py` for ReasoningEvent, ErrorEvent, StatusEvent, UsageEvent
+  - Required fields for ToolResultEvent are only `tool_name` and `tool_call_id` — all others have sensible defaults
+  - `arguments` uses `Field(default_factory=dict)` to avoid mutable default sharing
+  - All 693 orbiter-core tests pass (11 new + 682 existing)
+---
+
+## 2026-02-17 - US-003
+- Added four new streaming event types to `orbiter/types.py`: `ReasoningEvent`, `ErrorEvent`, `StatusEvent`, `UsageEvent`
+- `ReasoningEvent`: `type: Literal["reasoning"]`, `text: str`, `agent_name: str`
+- `ErrorEvent`: `type: Literal["error"]`, `error: str`, `error_type: str`, `agent_name: str`, `step_number: int | None`, `recoverable: bool`
+- `StatusEvent`: `type: Literal["status"]`, `status: Literal["starting", "running", "waiting_for_tool", "completed", "cancelled", "error"]`, `agent_name: str`, `message: str`
+- `UsageEvent`: `type: Literal["usage"]`, `usage: Usage`, `agent_name: str`, `step_number: int`, `model: str`
+- Updated `StreamEvent` union to include all 8 event types
+- Added 24 new tests across 4 test classes + updated union test class (32 total in file)
+- Files changed: `packages/orbiter-core/src/orbiter/types.py`, `packages/orbiter-core/tests/test_streaming_events.py`
+- **Learnings for future iterations:**
+  - `StatusEvent.status` uses a Literal union with 6 values — invalid values correctly rejected by Pydantic validation
+  - `UsageEvent` embeds the existing `Usage` model — `.model_dump()` correctly nests it as a dict
+  - All required fields for new types: `ReasoningEvent(text)`, `ErrorEvent(error, error_type)`, `StatusEvent(status)`, `UsageEvent(usage)` — rest have defaults
+  - Total orbiter-core tests now: 714 (32 streaming + 682 existing)
+---
+
+## 2026-02-17 - US-004
+- Added `detailed=True` parameter to `_stream()` in `runner.py`
+- When `detailed=False` (default): only `TextEvent` and `ToolCallEvent` emitted (backward compatible)
+- When `detailed=True`: emits `StatusEvent('starting')` at start, `StepEvent(status='started')` before each LLM call, `UsageEvent` after each LLM call, `ToolCallEvent` for each tool call, `ToolResultEvent` after each tool execution, `StepEvent(status='completed')` at step end, `StatusEvent('completed')` at finish
+- `ErrorEvent` emitted on errors regardless of `detailed` flag, re-raises after yielding
+- When `detailed=True` and error occurs, also emits `StatusEvent(status='error')`
+- Added 18 new tests across 6 test classes: `TestRunStreamDetailedFalse` (2), `TestRunStreamDetailedText` (2), `TestRunStreamDetailedToolCalls` (4), `TestRunStreamDetailedUsage` (2), `TestRunStreamDetailedErrors` (3), `TestRunStreamDetailedStepNumbers` (1)
+- Files changed: `packages/orbiter-core/src/orbiter/runner.py`, `packages/orbiter-core/tests/test_runner.py`
+- **Learnings for future iterations:**
+  - `StreamChunk.usage` is a `Usage` object (not None) — check `total_tokens > 0` to detect actual usage data
+  - Usage is typically only on the final chunk — capture it during the stream loop and emit `UsageEvent` after the loop ends
+  - Tools execute in parallel via `asyncio.TaskGroup()` — individual tool timing isn't available, so duration is split evenly across tools
+  - Error handling in `_stream()` wraps each step in try/except — yields `ErrorEvent` then re-raises to let caller handle
+  - `agent.model` attribute holds the model string for `UsageEvent.model` field
+  - Total orbiter-core tests now: 728 (37 runner + 32 streaming + 659 other)
+---
+
+## 2026-02-17 - US-005
+- Added `stream()` method to `Swarm` class with streaming variants for all three modes: workflow, handoff, and team
+- Workflow streaming: agents run sequentially, text is collected from `TextEvent` objects for output→input chaining (avoids double execution)
+- Handoff streaming: agents delegate dynamically, text collected from `TextEvent` for handoff detection via lightweight `RunResult`
+- Team streaming: lead agent streams with delegate tools added temporarily, tools restored after execution (including on error)
+- `StatusEvent(status='running')` emitted for each agent transition (workflow steps, handoff transitions, team lead start)
+- Handoff streaming emits `StatusEvent` with "Handoff from 'X' to 'Y'" message for agent transitions
+- Updated `_stream()` in `runner.py` to detect Swarm via `hasattr(agent, 'flow_order')` and delegate to `Swarm.stream()`
+- All events include the correct `agent_name` of the sub-agent that produced them
+- Added 14 new test cases across 5 test classes: `TestSwarmStreamWorkflow` (4), `TestSwarmStreamHandoff` (4), `TestSwarmStreamTeam` (4), `TestSwarmStreamUnsupportedMode` (1), `TestSwarmStreamViaRun` (1)
+- Files changed: `packages/orbiter-core/src/orbiter/swarm.py`, `packages/orbiter-core/src/orbiter/runner.py`, `packages/orbiter-core/tests/test_swarm.py`
+- **Learnings for future iterations:**
+  - Key design: collect text from `TextEvent` objects during streaming to avoid double LLM execution (no need for separate non-streaming `call_runner` call)
+  - `_detect_handoff()` works with a lightweight `RunResult(output=text)` — just needs `.output` for string matching
+  - Swarm's `stream()` uses `from orbiter.runner import run` inside methods to avoid circular imports (runner.py imports from swarm indirectly)
+  - Team mode streaming must restore lead tools in a `try/finally` block, same as the non-streaming `_run_team()`
+  - Stream test helpers (`_FakeStreamChunk`, `_FakeToolCallDelta`, `_make_stream_provider`) duplicated from `test_runner.py` — consider extracting to a shared conftest.py if more tests need them
+  - Total orbiter-core tests now: 742 (37 runner + 32 streaming + 62 swarm + 611 other)
+---
+
+## 2026-02-17 - US-006
+- Added `event_types: set[str] | None` parameter to `_stream()` in `runner.py`
+- When `event_types` is provided, only events whose `type` field matches are yielded
+- When `event_types` is `None` (default), all events pass through (respecting `detailed` flag)
+- Added `event_types` parameter to `Swarm.stream()` and all three mode methods (`_stream_workflow`, `_stream_handoff`, `_stream_team`)
+- Swarm workflow/handoff modes: filtering applied at yield points while still collecting TextEvent text for output chaining (inner `run.stream()` called unfiltered)
+- Swarm team mode: `event_types` passed through to inner `run.stream()` (no text collection needed)
+- Added 8 new tests in `TestRunStreamEventFiltering` class covering: single type filter, tool_result filter, multiple types, None passthrough, empty set, without detailed, error filtering, error inclusion
+- Files changed: `packages/orbiter-core/src/orbiter/runner.py`, `packages/orbiter-core/src/orbiter/swarm.py`, `packages/orbiter-core/tests/test_runner.py`
+- **Learnings for future iterations:**
+  - Swarm workflow/handoff modes need unfiltered access to TextEvents for output chaining — don't pass `event_types` to inner `run.stream()`, filter at the Swarm level instead
+  - Swarm team mode doesn't collect text, so it's safe to pass `event_types` through to inner `run.stream()`
+  - All event types have a `.type` string attribute (e.g., `"text"`, `"tool_call"`, `"status"`) which is the discriminator used for filtering
+  - The `_passes_filter` helper pattern: `event_types is None or event.type in event_types` is clean and reusable
+  - Total orbiter-core tests now: 750 (45 runner + 32 streaming + 62 swarm + 611 other)
+---
