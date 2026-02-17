@@ -2167,3 +2167,17 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - The `request` parameter is required by FastAPI's handler signature even if unused — ruff ARG rules are not enabled in this project so no noqa needed
   - Pydantic validation error `loc` tuple starts with "body"/"query"/"path" — skip first element for user-friendly field paths
 ---
+
+## 2026-02-17 - US-116
+- What was implemented: Log viewer UI page at /monitoring/logs with streaming log viewer
+- Files changed:
+  - packages/orbiter-web/src/pages/monitoring/logs.astro (new — full log viewer page)
+- **Learnings for future iterations:**
+  - Log API at `/api/logs` supports: level, source, agent_id, start_time, end_time, search filtering with limit/offset pagination
+  - WebSocket streaming at `/api/logs/stream` — send JSON filter objects to narrow stream
+  - Severity color coding pattern: debug=gray, info=blue, warn=yellow, error=red — use `levelColors` and `levelDots` maps
+  - Source badges: agent=purple, tool=cyan, model=orange, system=gray
+  - Expandable metadata: use `data-toggle` attribute + hidden div pattern for accordion-style expand/collapse
+  - Export pattern: create Blob + temporary anchor element + `URL.createObjectURL()` for download
+  - Time range filtering: convert relative ranges (1h, 24h, 7d, 30d) to ISO timestamps client-side, pass as `start_time` param
+---
