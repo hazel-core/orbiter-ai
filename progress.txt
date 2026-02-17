@@ -2554,3 +2554,18 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Session cookie name is `SESSION_COOKIE = "orbiter_session"` — use `Cookie(None)` param to access it in endpoints
   - `get_current_user` dependency returns dict with id, email, created_at — no password_hash included (need separate query)
 ---
+
+## 2026-02-17 - US-176
+- What was implemented: Password reset flow with forgot-password and reset-password endpoints
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/migrations/050_create_password_resets.sql (new — password_resets table)
+  - packages/orbiter-web/src/orbiter_web/routes/auth.py (updated — added forgot-password, reset-password endpoints)
+  - packages/orbiter-web/src/orbiter_web/middleware/csrf.py (updated — added CSRF exemptions for reset endpoints)
+  - packages/orbiter-web/src/pages/reset-password.astro (new — reset password frontend page)
+- **Learnings for future iterations:**
+  - Unauthenticated POST endpoints (like forgot-password, reset-password) need CSRF exemption in `_EXEMPT_PATHS` in `middleware/csrf.py`
+  - forgot-password should always return success message regardless of whether email exists (prevents user enumeration)
+  - Reset tokens are stored as bcrypt hashes — iterate over unexpired/unused rows and checkpw each (no index-based lookup on hashed value)
+  - Reset page uses BaseLayout (not PageLayout) since it's unauthenticated, same pattern as login page
+  - Token passed via URL query param `?token=...` and read with `URLSearchParams` in inline script
+---

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -13,6 +14,8 @@ from pydantic import BaseModel, Field
 
 from orbiter_web.config import settings
 from orbiter_web.database import get_db
+
+logger = logging.getLogger("orbiter_web")
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -218,3 +221,101 @@ async def get_csrf_token(
         raise HTTPException(status_code=401, detail="Not authenticated")
 
     return {"token": row["csrf_token"]}
+
+
+# ---------------------------------------------------------------------------
+# Password reset flow
+# ---------------------------------------------------------------------------
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str = Field(..., min_length=1)
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=8)
+
+
+@router.post("/forgot-password", response_model=MessageResponse)
+async def forgot_password(body: ForgotPasswordRequest) -> dict[str, str]:
+    """Generate a password reset token and log it (email integration is future work)."""
+    async with get_db() as db:
+        cursor = await db.execute(
+            "SELECT id FROM users WHERE email = ?",
+            (body.email,),
+        )
+        user = await cursor.fetchone()
+
+    # Always return success to avoid leaking whether an email is registered.
+    if user is None:
+        return {"message": "If that email exists, a reset link has been sent"}
+
+    # Generate reset token and store its bcrypt hash.
+    token = str(uuid.uuid4())
+    token_hash = bcrypt.hashpw(token.encode(), bcrypt.gensalt()).decode()
+    reset_id = str(uuid.uuid4())
+    expires_at = (datetime.now(UTC) + timedelta(hours=1)).strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
+
+    async with get_db() as db:
+        await db.execute(
+            "INSERT INTO password_resets (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)",
+            (reset_id, user["id"], token_hash, expires_at),
+        )
+        await db.commit()
+
+    # Log the token (email integration is future work).
+    logger.info("Password reset token for %s: %s", body.email, token)
+
+    return {"message": "If that email exists, a reset link has been sent"}
+
+
+@router.post("/reset-password", response_model=MessageResponse)
+async def reset_password(body: ResetPasswordRequest) -> dict[str, str]:
+    """Reset a user's password using a valid reset token."""
+    # Find all unused, non-expired reset tokens.
+    async with get_db() as db:
+        cursor = await db.execute(
+            """
+            SELECT id, user_id, token_hash
+            FROM password_resets
+            WHERE used = 0 AND expires_at > datetime('now')
+            ORDER BY created_at DESC
+            """,
+        )
+        rows = await cursor.fetchall()
+
+    # Check the provided token against stored hashes.
+    matched_reset: dict[str, Any] | None = None
+    for row in rows:
+        if bcrypt.checkpw(body.token.encode(), row["token_hash"].encode()):
+            matched_reset = dict(row)
+            break
+
+    if matched_reset is None:
+        raise HTTPException(
+            status_code=400, detail="Invalid or expired reset token"
+        )
+
+    # Update password, mark token as used, and invalidate all sessions.
+    new_hash = _hash_password(body.new_password)
+    user_id = matched_reset["user_id"]
+
+    async with get_db() as db:
+        await db.execute(
+            "UPDATE users SET password_hash = ? WHERE id = ?",
+            (new_hash, user_id),
+        )
+        await db.execute(
+            "UPDATE password_resets SET used = 1 WHERE id = ?",
+            (matched_reset["id"],),
+        )
+        await db.execute(
+            "DELETE FROM sessions WHERE user_id = ?",
+            (user_id,),
+        )
+        await db.commit()
+
+    return {"message": "Password updated"}

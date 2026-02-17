@@ -3095,7 +3095,7 @@
         "Typecheck passes"
       ],
       "priority": 50,
-      "passes": false,
+      "passes": true,
       "notes": "Gap fill: no password recovery path. Users permanently locked out if they forget password"
     },
     {
