@@ -3020,7 +3020,7 @@
         "Typecheck passes"
       ],
       "priority": 30,
-      "passes": false,
+      "passes": true,
       "notes": "Gap fill: US-045 node sidebar lists Schedule trigger but no backend implements it"
     },
     {

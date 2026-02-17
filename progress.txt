@@ -3,6 +3,7 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
 ---
 
 ## Codebase Patterns
+- Schedules: CRUD at `/api/schedules`, background polling in `services/scheduler.py` using `croniter`; fires workflow runs with `trigger_type='schedule'`; starts/stops via app lifespan
 - Sandbox execution: `execute_code(code, config)` in `services/sandbox.py` — runs Python in isolated subprocess with import allowlist, filesystem restriction, and timeout; returns SandboxResult with stdout/stderr/files
 - Sandbox import restriction: don't block exec/eval/compile from builtins (breaks importlib); use explicit import allowlist + safe stdlib set instead
 - Built-in tools: add to `BUILTIN_TOOLS` list in `routes/tools.py` — they get merged into list_tools endpoint automatically
@@ -2464,4 +2465,20 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Approvals bell pattern in PageLayout is the template for badge + modal/dropdown UI patterns
   - Notification dropdown uses `position: relative` on container + `absolute right-0 top-full` on dropdown for proper positioning
   - Entity type to URL mapping: agent -> /agents/:id, workflow -> /workflows/:id/canvas, project -> /projects/:id, knowledge_base -> /knowledge/:id
+---
+
+## 2026-02-17 - US-172
+- What was implemented: Schedule/cron trigger backend — migration for `schedules` table, background scheduler service with asyncio polling loop using `croniter` for cron expression parsing, full CRUD REST API at `/api/schedules`, and app lifespan integration (start on startup, stop on shutdown). When a schedule fires, it creates a workflow run with `trigger_type='schedule'` and executes the workflow in the background.
+- Files changed:
+  - `packages/orbiter-web/src/orbiter_web/migrations/047_create_schedules.sql` — new table with indexes
+  - `packages/orbiter-web/src/orbiter_web/services/scheduler.py` — background polling loop, compute_next_run, fire_schedule
+  - `packages/orbiter-web/src/orbiter_web/routes/schedules.py` — CRUD endpoints (POST, GET list, GET by id, PUT, DELETE)
+  - `packages/orbiter-web/src/orbiter_web/app.py` — scheduler start/stop in lifespan, router registration
+  - `packages/orbiter-web/pyproject.toml` — added `croniter>=2.0` dependency
+- **Learnings for future iterations:**
+  - `croniter` library handles cron parsing; use `croniter.is_valid(expr)` for validation and `croniter(expr, base).get_next(datetime)` for next fire time
+  - `workflow_runs` table already has `trigger_type` column (default 'manual') from migration 018 — schedule triggers use 'schedule'
+  - Scheduler polls DB every 15 seconds for enabled schedules where `next_run_at <= now`
+  - Scheduler disables schedules automatically if their workflow is deleted (ON DELETE CASCADE handles the row, but if fetched before deletion the service disables it)
+  - Ruff doesn't enable PLW0603 by default — don't add `# noqa: PLW0603` for global statements
 ---
