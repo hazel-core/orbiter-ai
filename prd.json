@@ -293,7 +293,7 @@
         "Pyright passes"
       ],
       "priority": 17,
-      "passes": false,
+      "passes": true,
       "notes": "Add task subcommand group to packages/orbiter-cli/src/orbiter_cli/main.py. Uses TaskStore for status/list and TaskBroker for cancel. Rich tables for formatted output (rich is already a dependency of typer)."
     },
     {
@@ -310,7 +310,7 @@
         "Pyright passes"
       ],
       "priority": 18,
-      "passes": false,
+      "passes": true,
       "notes": "Add health data publishing to Worker class from US-012. Create WorkerHealth dataclass and get_worker_fleet_status() in orbiter/distributed/health.py. Add 'orbiter worker list' CLI command. Uses orbiter.observability.health.HealthCheck protocol."
     },
     {

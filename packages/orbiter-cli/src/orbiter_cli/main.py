@@ -435,3 +435,65 @@ def task_list(
         console.print(table)
 
     asyncio.run(_list())
+
+
+# ---------------------------------------------------------------------------
+# Subcommand group: worker
+# ---------------------------------------------------------------------------
+
+worker_app = typer.Typer(
+    name="worker",
+    help="Manage and monitor distributed workers.",
+    no_args_is_help=True,
+)
+app.add_typer(worker_app, name="worker")
+
+
+@worker_app.command("list")
+def worker_list(
+    redis_url: Annotated[
+        str | None,
+        typer.Option("--redis-url", help="Redis connection URL (default: ORBITER_REDIS_URL env var)."),
+    ] = None,
+) -> None:
+    """List all active distributed workers and their health."""
+    url = _resolve_redis_url(redis_url)
+
+    async def _list_workers() -> None:
+        from orbiter.distributed.health import (  # pyright: ignore[reportMissingImports]
+            get_worker_fleet_status,
+        )
+
+        workers = await get_worker_fleet_status(url)
+
+        if not workers:
+            console.print("[dim]No active workers found.[/dim]")
+            return
+
+        table = Table(title="Distributed Workers")
+        table.add_column("Worker ID", style="cyan", no_wrap=True)
+        table.add_column("Status", no_wrap=True)
+        table.add_column("Hostname", no_wrap=True)
+        table.add_column("Tasks", no_wrap=True)
+        table.add_column("Failed", no_wrap=True)
+        table.add_column("Current Task", no_wrap=True)
+        table.add_column("Concurrency", no_wrap=True)
+        table.add_column("Last Heartbeat", no_wrap=True)
+
+        for w in workers:
+            status_color = "green" if w.alive else "red"
+            status_text = w.status if w.alive else "dead"
+            table.add_row(
+                w.worker_id,
+                f"[{status_color}]{status_text}[/{status_color}]",
+                w.hostname,
+                str(w.tasks_processed),
+                str(w.tasks_failed),
+                w.current_task_id or "-",
+                str(w.concurrency),
+                _format_timestamp(w.last_heartbeat),
+            )
+
+        console.print(table)
+
+    asyncio.run(_list_workers())

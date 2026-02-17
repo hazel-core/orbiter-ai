@@ -843,3 +843,137 @@ class TestTaskListCommand:
         ) as mock_cls:
             runner.invoke(app, ["task", "list"])
         mock_cls.assert_called_once_with("redis://envhost:6379")
+
+
+# ---------------------------------------------------------------------------
+# CLI: worker subcommand group
+# ---------------------------------------------------------------------------
+
+
+class TestWorkerCommandRegistered:
+    def test_worker_subcommand_registered(self) -> None:
+        """The 'worker' subcommand group is registered on the app."""
+        result = runner.invoke(app, ["worker", "--help"])
+        assert result.exit_code == 0
+        assert "list" in result.output.lower()
+
+    def test_worker_list_help(self) -> None:
+        result = runner.invoke(app, ["worker", "list", "--help"])
+        assert result.exit_code == 0
+        assert "--redis-url" in result.output
+
+
+class TestWorkerListCommand:
+    def test_no_redis_url_exits_1(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("ORBITER_REDIS_URL", raising=False)
+        result = runner.invoke(app, ["worker", "list"])
+        assert result.exit_code == 1
+        assert "redis-url" in result.output.lower() or "ORBITER_REDIS_URL" in result.output
+
+    def test_empty_worker_list(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("ORBITER_REDIS_URL", raising=False)
+
+        with patch(
+            "orbiter.distributed.health.get_worker_fleet_status",
+            new_callable=AsyncMock,
+            return_value=[],
+        ):
+            result = runner.invoke(
+                app,
+                ["worker", "list", "--redis-url", "redis://localhost:6379"],
+            )
+        assert result.exit_code == 0
+        assert "no active workers" in result.output.lower()
+
+    def test_lists_workers_in_table(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("ORBITER_REDIS_URL", raising=False)
+
+        from orbiter.distributed.health import WorkerHealth  # pyright: ignore[reportMissingImports]
+
+        workers = [
+            WorkerHealth(
+                worker_id="w1",
+                status="running",
+                tasks_processed=5,
+                tasks_failed=1,
+                hostname="host1",
+                concurrency=2,
+                last_heartbeat=1705318200.0,
+                alive=True,
+            ),
+            WorkerHealth(
+                worker_id="w2",
+                status="running",
+                tasks_processed=3,
+                tasks_failed=0,
+                current_task_id="task-abc",
+                hostname="host2",
+                concurrency=1,
+                last_heartbeat=1705318200.0,
+                alive=True,
+            ),
+        ]
+
+        with patch(
+            "orbiter.distributed.health.get_worker_fleet_status",
+            new_callable=AsyncMock,
+            return_value=workers,
+        ):
+            result = runner.invoke(
+                app,
+                ["worker", "list", "--redis-url", "redis://localhost:6379"],
+            )
+        assert result.exit_code == 0
+        assert "w1" in result.output
+        assert "w2" in result.output
+        assert "host1" in result.output
+        assert "host2" in result.output
+        assert "Distributed Workers" in result.output
+
+    def test_dead_worker_shown(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("ORBITER_REDIS_URL", raising=False)
+
+        from orbiter.distributed.health import WorkerHealth  # pyright: ignore[reportMissingImports]
+
+        workers = [
+            WorkerHealth(
+                worker_id="dead-w",
+                status="running",
+                hostname="gone",
+                alive=False,
+            ),
+        ]
+
+        with patch(
+            "orbiter.distributed.health.get_worker_fleet_status",
+            new_callable=AsyncMock,
+            return_value=workers,
+        ):
+            result = runner.invoke(
+                app,
+                ["worker", "list", "--redis-url", "redis://localhost:6379"],
+            )
+        assert result.exit_code == 0
+        assert "dead-w" in result.output
+        assert "dead" in result.output.lower()
+
+    def test_uses_env_var(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("ORBITER_REDIS_URL", "redis://envhost:6379")
+
+        with patch(
+            "orbiter.distributed.health.get_worker_fleet_status",
+            new_callable=AsyncMock,
+            return_value=[],
+        ) as mock_fn:
+            runner.invoke(app, ["worker", "list"])
+        mock_fn.assert_called_once_with("redis://envhost:6379")

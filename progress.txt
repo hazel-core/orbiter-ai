@@ -36,6 +36,10 @@ Started: Mon Feb 17 2026
 - `distributed()` in client.py is the main public API — connects broker/store/subscriber, submits TaskPayload, returns TaskHandle
 - `TaskHandle` wraps all distributed components (broker, store, subscriber) — provides result(), stream(), cancel(), status() methods
 - CLI subcommand groups: `sub = typer.Typer()` + `app.add_typer(sub, name="name")` — lazy-import heavy deps inside command functions
+- CLI Redis URL resolution: use `_resolve_redis_url()` helper — checks `--redis-url` flag then `ORBITER_REDIS_URL` env var, prints error and exits on missing
+- Rich tables available via typer dependency — use `from rich.table import Table` without extra installs
+- Worker health data is at `orbiter:workers:{worker_id}` Redis hash (set by heartbeat loop) — read via HGETALL, scan via `SCAN match=orbiter:workers:*`
+- `HealthCheck` protocol from `orbiter.observability.health` requires sync `check()` method — use sync `redis.from_url()` (not async) inside implementations
 
 ---
 
@@ -353,4 +357,48 @@ Started: Mon Feb 17 2026
   - `CliRunner` from `typer.testing` captures Rich console output — search for plain text in `result.output`, Rich markup is stripped
   - `monkeypatch.delenv("ORBITER_REDIS_URL", raising=False)` for clean env in tests — `raising=False` prevents error if var not set
   - Total tests: 1154 (44 CLI + 126 distributed + 786 orbiter-core + others)
+---
+
+## 2026-02-17 - US-017
+- Added `task` subcommand group to `orbiter_cli/main.py` with three commands: `status`, `cancel`, `list`
+- `orbiter task status <task_id>` shows task details: status (color-coded), worker ID, started/completed timestamps, duration, retries, error, and result preview (truncated at 200 chars)
+- `orbiter task cancel <task_id>` cancels a running task via `TaskBroker.cancel()`
+- `orbiter task list` shows a Rich table of recent tasks with columns: Task ID, Status, Worker, Started, Duration
+- `--status` filter validates against `TaskStatus` enum values, shows error with valid values on invalid input
+- `--limit` option controls max tasks displayed (default 100)
+- All three commands accept `--redis-url` or fall back to `ORBITER_REDIS_URL` env var via shared `_resolve_redis_url()` helper
+- Helper functions: `_format_timestamp()` (UTC), `_format_duration()` (ms/s/m), `_status_color()` (Rich color per status)
+- Lazy imports for `TaskStore`, `TaskBroker`, `TaskStatus` inside command functions
+- Added 29 new tests across 7 test classes: `TestFormatTimestamp` (2), `TestFormatDuration` (4), `TestStatusColor` (2), `TestTaskCommandRegistered` (4), `TestTaskStatusCommand` (6), `TestTaskCancelCommand` (3), `TestTaskListCommand` (7)
+- Files changed: `packages/orbiter-cli/src/orbiter_cli/main.py`, `packages/orbiter-cli/tests/test_cli_main.py`
+- **Learnings for future iterations:**
+  - `Rich.Table` is included via typer dependency — no additional install needed
+  - `datetime.UTC` alias preferred over `datetime.timezone.utc` per ruff UP017
+  - `raise typer.Exit(code=1) from err` required in except blocks per ruff B904
+  - Lazy imports inside async inner functions work well for CLI commands — avoids loading heavy Redis/distributed deps at import time
+  - `TaskStore` and `TaskBroker` need `connect()`/`disconnect()` lifecycle — use try/finally in async inner functions
+  - `_resolve_redis_url()` extracted as shared helper for redis URL resolution across task commands — reuse for future commands
+  - Tests mock at the real module path (`orbiter.distributed.store.TaskStore`, `orbiter.distributed.broker.TaskBroker`) for lazy imports
+  - Total tests: 1172 (73 CLI + 126 distributed + 786 orbiter-core + others)
+---
+
+## 2026-02-17 - US-019
+- Created `WorkerHealth` frozen dataclass in `orbiter/distributed/health.py` with fields: worker_id, status, tasks_processed, tasks_failed, current_task_id, started_at, last_heartbeat, concurrency, hostname, alive
+- Created `WorkerHealthCheck` class implementing `orbiter.observability.health.HealthCheck` protocol — reads worker heartbeat hash from Redis via sync `redis.from_url()`, reports HEALTHY/DEGRADED/UNHEALTHY based on heartbeat freshness
+- Created `get_worker_fleet_status(redis_url)` async function — scans `orbiter:workers:*` keys via async Redis SCAN, parses each into `WorkerHealth`, detects dead workers (>60s since heartbeat)
+- Created `_parse_worker_health(worker_id, data)` helper for Redis hash → `WorkerHealth` conversion
+- Added `orbiter worker list` CLI command to `orbiter_cli/main.py` via `worker_app = typer.Typer()` subcommand group — shows Rich table with worker ID, status, hostname, tasks, failed, current task, concurrency, last heartbeat
+- Dead workers displayed with "dead" status in red color
+- Updated `orbiter.distributed.__init__` to export `WorkerHealth`, `WorkerHealthCheck`, `get_worker_fleet_status`
+- Added 16 tests in `test_health.py`: `TestWorkerHealth` (3), `TestWorkerHealthCheck` (6), `TestParseWorkerHealth` (4), `TestGetWorkerFleetStatus` (3)
+- Added 7 tests in `test_cli_main.py`: `TestWorkerCommandRegistered` (2), `TestWorkerListCommand` (5)
+- Files changed: `packages/orbiter-distributed/src/orbiter/distributed/health.py` (new), `packages/orbiter-distributed/src/orbiter/distributed/__init__.py`, `packages/orbiter-distributed/tests/test_health.py` (new), `packages/orbiter-cli/src/orbiter_cli/main.py`, `packages/orbiter-cli/tests/test_cli_main.py`
+- **Learnings for future iterations:**
+  - `WorkerHealthCheck.check()` uses sync `redis.from_url()` (not async) because the `HealthCheck` protocol requires a sync `check()` method
+  - For patching sync `redis` in tests of `WorkerHealthCheck.check()`, patch at `redis.from_url` (top-level module) since the import is local (`import redis` inside method)
+  - `get_worker_fleet_status()` uses async Redis SCAN (`r.scan(cursor=..., match=..., count=...)`) — returns `(cursor, keys)` tuple, loop until cursor is 0
+  - Redis SCAN and HGETALL in async need `# type: ignore[misc]` for pyright (same pattern as store.py)
+  - Worker alive detection: `time.time() - last_heartbeat < 60.0` — consistent with heartbeat TTL convention
+  - CLI `worker` subcommand group follows same pattern as `task` group: `worker_app = typer.Typer()` + `app.add_typer(worker_app, name="worker")`
+  - Total tests: 1195 (80 CLI + 142 distributed + 786 orbiter-core + others)
 ---
