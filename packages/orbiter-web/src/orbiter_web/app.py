@@ -33,8 +33,8 @@ from orbiter_web.routes.knowledge_bases import router as knowledge_bases_router
 from orbiter_web.routes.logs import router as logs_router
 from orbiter_web.routes.metrics import router as metrics_router
 from orbiter_web.routes.models import router as models_router
-from orbiter_web.routes.notifications import router as notifications_router
 from orbiter_web.routes.neuron_pipelines import router as neuron_pipelines_router
+from orbiter_web.routes.notifications import router as notifications_router
 from orbiter_web.routes.plans import router as plans_router
 from orbiter_web.routes.playground import router as playground_router
 from orbiter_web.routes.plugins import router as plugins_router
@@ -43,6 +43,7 @@ from orbiter_web.routes.prompt_templates import router as prompt_templates_route
 from orbiter_web.routes.provider_keys import router as provider_keys_router
 from orbiter_web.routes.providers import router as providers_router
 from orbiter_web.routes.runs import router as runs_router
+from orbiter_web.routes.sandbox import router as sandbox_router
 from orbiter_web.routes.search import router as search_router
 from orbiter_web.routes.threads import router as threads_router
 from orbiter_web.routes.tools import router as tools_router
@@ -137,6 +138,7 @@ app.include_router(playground_router)
 app.include_router(plugins_router)
 app.include_router(projects_router)
 app.include_router(runs_router)
+app.include_router(sandbox_router)
 app.include_router(search_router)
 app.include_router(prompt_templates_router)
 app.include_router(provider_keys_router)

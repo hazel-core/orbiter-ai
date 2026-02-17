@@ -28,6 +28,35 @@ router = APIRouter(prefix="/api/tools", tags=["tools"])
 VALID_CATEGORIES = {"search", "code", "file", "data", "communication", "custom"}
 VALID_TOOL_TYPES = {"function", "http", "schema", "mcp"}
 
+# Built-in tools that are always available
+_CODE_INTERPRETER_SCHEMA = json.dumps({
+    "type": "object",
+    "description": "Execute Python code in a sandboxed environment with access to pandas, numpy, matplotlib, and other common libraries.",
+    "properties": {
+        "code": {
+            "type": "string",
+            "description": "Python code to execute",
+        },
+    },
+    "required": ["code"],
+})
+
+BUILTIN_TOOLS: list[dict[str, Any]] = [
+    {
+        "id": "builtin:code_interpreter",
+        "name": "code_interpreter",
+        "description": "Execute Python code in a sandboxed environment. Has access to pandas, numpy, matplotlib, json, csv, math, and other common libraries. Can generate files (charts, CSVs) and capture stdout/stderr.",
+        "category": "code",
+        "schema_json": _CODE_INTERPRETER_SCHEMA,
+        "code": "",
+        "tool_type": "function",
+        "usage_count": 0,
+        "project_id": "",
+        "user_id": "",
+        "created_at": "2025-01-01 00:00:00",
+    },
+]
+
 # ---------------------------------------------------------------------------
 # Pydantic models
 # ---------------------------------------------------------------------------
@@ -724,7 +753,17 @@ async def list_tools(
     project_id: str | None = Query(None),
     user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
 ) -> list[dict[str, Any]]:
-    """Return all tools for the current user, optionally filtered by category and/or project."""
+    """Return all tools for the current user, optionally filtered by category and/or project.
+
+    Includes built-in tools (e.g. code_interpreter) merged with user-defined tools.
+    """
+    # Start with built-in tools
+    results: list[dict[str, Any]] = []
+    for bt in BUILTIN_TOOLS:
+        if category and bt["category"] != category:
+            continue
+        results.append(bt)
+
     async with get_db() as db:
         conditions = ["user_id = ?"]
         params: list[str] = [user["id"]]
@@ -742,7 +781,9 @@ async def list_tools(
             params,
         )
         rows = await cursor.fetchall()
-        return [_row_to_dict(r) for r in rows]
+        results.extend(_row_to_dict(r) for r in rows)
+
+    return results
 
 
 @router.post("", response_model=ToolResponse, status_code=201)
