@@ -68,6 +68,430 @@ class WorkflowResponse(BaseModel):
     updated_at: str
 
 
+class WorkflowAIGenerateRequest(BaseModel):
+    description: str = Field(..., min_length=1)
+    model: str | None = None  # "provider_id:model_name" format, or uses default
+
+
+class WorkflowAIRefineRequest(BaseModel):
+    instruction: str = Field(..., min_length=1)
+    model: str | None = None
+
+
+class WorkflowAIResponse(BaseModel):
+    nodes: list[dict[str, Any]]
+    edges: list[dict[str, Any]]
+
+
+# ---------------------------------------------------------------------------
+# Node category → color mapping (mirrors NodeSidebar.tsx)
+# ---------------------------------------------------------------------------
+
+_NODE_CATEGORY_COLORS: dict[str, str] = {
+    # triggers
+    "chat_input": "#F76F53",
+    "webhook": "#F76F53",
+    "schedule": "#F76F53",
+    "manual": "#F76F53",
+    # llm
+    "llm_call": "#6287f5",
+    "prompt_template": "#6287f5",
+    "model_selector": "#6287f5",
+    # agent
+    "agent_node": "#a78bfa",
+    "sub_agent": "#a78bfa",
+    # tools
+    "function_tool": "#63f78b",
+    "http_request": "#63f78b",
+    "code_python": "#63f78b",
+    "code_javascript": "#63f78b",
+    # logic
+    "conditional": "#f59e0b",
+    "switch": "#f59e0b",
+    "loop_iterator": "#f59e0b",
+    "aggregator": "#f59e0b",
+    "approval_gate": "#f59e0b",
+    # data
+    "variable_assigner": "#14b8a6",
+    "template_jinja": "#14b8a6",
+    "json_transform": "#14b8a6",
+    "text_splitter": "#14b8a6",
+    # knowledge
+    "knowledge_retrieval": "#8b5cf6",
+    "document_loader": "#8b5cf6",
+    "embedding_node": "#8b5cf6",
+    # output
+    "chat_response": "#ec4899",
+    "api_response": "#ec4899",
+    "file_output": "#ec4899",
+    "notification": "#ec4899",
+}
+
+_VALID_NODE_TYPES = set(_NODE_CATEGORY_COLORS.keys())
+
+# ---------------------------------------------------------------------------
+# AI workflow generation system prompt
+# ---------------------------------------------------------------------------
+
+_WORKFLOW_SYSTEM_PROMPT = """\
+You are a workflow design assistant. Given a natural language description, \
+generate a workflow as a JSON object with two arrays: "nodes" and "edges".
+
+## Node format
+Each node is an object:
+{
+  "id": "<unique_string>",
+  "type": "workflow",
+  "data": {
+    "nodeType": "<one of the valid types>",
+    "label": "<human-readable label>"
+  },
+  "position": {"x": <number>, "y": <number>}
+}
+
+## Valid node types by category
+- Triggers (start a flow, output-only): chat_input, webhook, schedule, manual
+- LLM: llm_call, prompt_template, model_selector
+- Agent: agent_node, sub_agent
+- Tools: function_tool, http_request, code_python, code_javascript
+- Logic: conditional, switch, loop_iterator, aggregator, approval_gate
+- Data: variable_assigner, template_jinja, json_transform, text_splitter
+- Knowledge: knowledge_retrieval, document_loader, embedding_node
+- Output (end a flow, input-only): chat_response, api_response, file_output, notification
+
+## Edge format
+Each edge connects two nodes:
+{
+  "id": "<unique_string>",
+  "source": "<source_node_id>",
+  "target": "<target_node_id>",
+  "sourceHandle": "output",
+  "targetHandle": "input"
+}
+For conditional nodes, use sourceHandle "output-true" or "output-false" for branches.
+
+## Layout rules
+- Place nodes left-to-right. Triggers on the left (x≈100), outputs on the right.
+- Space nodes ~250px apart horizontally, ~150px apart vertically for parallel paths.
+- Every workflow should start with a trigger node and end with an output node.
+
+## Response rules
+- Return ONLY valid JSON — no markdown fences, no explanation, no extra text.
+- Use short, descriptive labels for each node.
+- Keep the workflow minimal but complete for the described task.
+"""
+
+_REFINE_SYSTEM_PROMPT = """\
+You are a workflow refinement assistant. You will receive an existing workflow \
+(nodes and edges as JSON) and a user instruction describing how to modify it.
+
+Apply the requested changes and return the COMPLETE updated workflow as a JSON \
+object with "nodes" and "edges" arrays. Follow the same format rules:
+
+## Node format
+{"id": "<string>", "type": "workflow", "data": {"nodeType": "<type>", "label": "<label>"}, "position": {"x": <num>, "y": <num>}}
+
+## Valid node types
+Triggers: chat_input, webhook, schedule, manual
+LLM: llm_call, prompt_template, model_selector
+Agent: agent_node, sub_agent
+Tools: function_tool, http_request, code_python, code_javascript
+Logic: conditional, switch, loop_iterator, aggregator, approval_gate
+Data: variable_assigner, template_jinja, json_transform, text_splitter
+Knowledge: knowledge_retrieval, document_loader, embedding_node
+Output: chat_response, api_response, file_output, notification
+
+## Edge format
+{"id": "<string>", "source": "<node_id>", "target": "<node_id>", "sourceHandle": "output", "targetHandle": "input"}
+
+## Rules
+- Preserve existing node IDs when not removing nodes.
+- Re-layout positions if new nodes are added so nothing overlaps.
+- Return ONLY valid JSON — no markdown fences, no explanation.
+"""
+
+
+# ---------------------------------------------------------------------------
+# AI helpers
+# ---------------------------------------------------------------------------
+
+
+async def _resolve_provider(user_id: str, model_spec: str | None) -> tuple[str, str]:
+    """Resolve provider_id and model_name from an optional model spec string.
+
+    Returns (provider_id, model_name).
+    """
+    provider_id: str | None = None
+    model_name: str | None = None
+
+    if model_spec:
+        if ":" in model_spec:
+            provider_id, model_name = model_spec.split(":", 1)
+        else:
+            model_name = model_spec
+
+    if not provider_id:
+        async with get_db() as db:
+            cursor = await db.execute(
+                """
+                SELECT p.id, p.provider_type FROM providers p
+                WHERE p.user_id = ?
+                AND (
+                    p.encrypted_api_key IS NOT NULL AND p.encrypted_api_key != ''
+                    OR EXISTS (
+                        SELECT 1 FROM provider_keys pk
+                        WHERE pk.provider_id = p.id AND pk.status = 'active'
+                    )
+                )
+                ORDER BY p.created_at ASC LIMIT 1
+                """,
+                (user_id,),
+            )
+            row = await cursor.fetchone()
+            if row is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail="No provider with API keys configured. Add a provider in Settings > Models first.",
+                )
+            provider_id = row["id"]
+            if not model_name:
+                ptype = row["provider_type"]
+                model_name = {
+                    "openai": "gpt-4o",
+                    "anthropic": "claude-sonnet-4-5-20250514",
+                    "gemini": "gemini-2.0-flash",
+                    "ollama": "llama3.2",
+                    "custom": "gpt-4o",
+                }.get(ptype, "gpt-4o")
+
+    if not model_name:
+        model_name = "gpt-4o"
+
+    return provider_id, model_name  # type: ignore[return-value]
+
+
+async def _call_model_for_workflow(
+    provider_id: str,
+    model_name: str,
+    system_prompt: str,
+    user_prompt: str,
+    user_id: str,
+) -> str:
+    """Call a model and return the raw text output."""
+    import httpx
+
+    from orbiter_web.crypto import decrypt_api_key
+
+    async with get_db() as db:
+        cursor = await db.execute(
+            "SELECT * FROM providers WHERE id = ? AND user_id = ?",
+            (provider_id, user_id),
+        )
+        provider_row = await cursor.fetchone()
+        if provider_row is None:
+            raise HTTPException(status_code=404, detail="Provider not found")
+        provider = dict(provider_row)
+
+        api_key = ""
+        if provider.get("encrypted_api_key"):
+            api_key = decrypt_api_key(provider["encrypted_api_key"])
+        else:
+            cursor = await db.execute(
+                "SELECT encrypted_api_key FROM provider_keys WHERE provider_id = ? AND status = 'active' LIMIT 1",
+                (provider_id,),
+            )
+            key_row = await cursor.fetchone()
+            if key_row:
+                api_key = decrypt_api_key(key_row["encrypted_api_key"])
+
+        if not api_key:
+            raise HTTPException(status_code=400, detail="No API key configured for provider")
+
+    provider_type = provider["provider_type"]
+    base_url = provider.get("base_url") or ""
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
+
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            if provider_type in ("openai", "custom"):
+                url = (base_url or "https://api.openai.com") + "/v1/chat/completions"
+                resp = await client.post(
+                    url,
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": model_name,
+                        "messages": messages,
+                        "max_tokens": 4096,
+                        "temperature": 0.7,
+                    },
+                )
+            elif provider_type == "anthropic":
+                url = "https://api.anthropic.com/v1/messages"
+                resp = await client.post(
+                    url,
+                    headers={
+                        "x-api-key": api_key,
+                        "anthropic-version": "2023-06-01",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": model_name,
+                        "system": system_prompt,
+                        "messages": [{"role": "user", "content": user_prompt}],
+                        "max_tokens": 4096,
+                        "temperature": 0.7,
+                    },
+                )
+            elif provider_type == "gemini":
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+                resp = await client.post(
+                    url,
+                    headers={"Content-Type": "application/json"},
+                    json={
+                        "contents": [
+                            {
+                                "role": "user",
+                                "parts": [{"text": system_prompt + "\n\n" + user_prompt}],
+                            },
+                        ],
+                    },
+                )
+            elif provider_type == "ollama":
+                url = (base_url or "http://localhost:11434") + "/api/generate"
+                resp = await client.post(
+                    url,
+                    headers={"Content-Type": "application/json"},
+                    json={
+                        "model": model_name,
+                        "prompt": system_prompt + "\n\n" + user_prompt,
+                        "stream": False,
+                    },
+                )
+            else:
+                raise HTTPException(
+                    status_code=400, detail=f"Unsupported provider type: {provider_type}"
+                )
+
+            if resp.status_code >= 400:
+                error_text = resp.text[:500]
+                raise HTTPException(
+                    status_code=502, detail=f"Model API error ({resp.status_code}): {error_text}"
+                )
+
+            data = resp.json()
+
+            output = ""
+            if provider_type in ("openai", "custom"):
+                output = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            elif provider_type == "anthropic":
+                content_blocks = data.get("content", [])
+                output = "".join(
+                    b.get("text", "") for b in content_blocks if b.get("type") == "text"
+                )
+            elif provider_type == "gemini":
+                candidates = data.get("candidates", [])
+                if candidates:
+                    parts = candidates[0].get("content", {}).get("parts", [])
+                    output = "".join(p.get("text", "") for p in parts)
+            elif provider_type == "ollama":
+                output = data.get("response", "")
+
+            return output
+
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"Connection error: {exc!s}") from exc
+
+
+def _parse_workflow_json(raw_output: str) -> dict[str, Any]:
+    """Parse LLM output into validated {nodes, edges} dict."""
+    text = raw_output.strip()
+    # Strip markdown code fences if present
+    if text.startswith("```"):
+        first_newline = text.index("\n")
+        text = text[first_newline + 1 :]
+    if text.endswith("```"):
+        text = text[:-3]
+    text = text.strip()
+
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Model returned invalid JSON: {exc!s}",
+        ) from exc
+
+    if not isinstance(parsed, dict):
+        raise HTTPException(status_code=502, detail="Expected JSON object with nodes and edges")
+
+    nodes = parsed.get("nodes", [])
+    edges = parsed.get("edges", [])
+
+    if not isinstance(nodes, list) or not isinstance(edges, list):
+        raise HTTPException(status_code=502, detail="nodes and edges must be arrays")
+
+    # Validate and enrich nodes
+    valid_nodes: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    for node in nodes:
+        if not isinstance(node, dict):
+            continue
+        node_id = node.get("id", "")
+        if not node_id or node_id in seen_ids:
+            continue
+        seen_ids.add(node_id)
+
+        data = node.get("data", {})
+        if not isinstance(data, dict):
+            continue
+        node_type = data.get("nodeType", "")
+        if node_type not in _VALID_NODE_TYPES:
+            continue
+
+        # Ensure type is "workflow" for canvas rendering
+        node["type"] = "workflow"
+        # Inject category color
+        data["categoryColor"] = _NODE_CATEGORY_COLORS.get(node_type, "#999")
+        node["data"] = data
+
+        # Ensure position exists
+        pos = node.get("position", {})
+        if not isinstance(pos, dict) or "x" not in pos or "y" not in pos:
+            node["position"] = {"x": 100, "y": 100}
+
+        valid_nodes.append(node)
+
+    # Validate edges — only keep edges referencing valid nodes
+    valid_edges: list[dict[str, Any]] = []
+    for edge in edges:
+        if not isinstance(edge, dict):
+            continue
+        src = edge.get("source", "")
+        tgt = edge.get("target", "")
+        if src not in seen_ids or tgt not in seen_ids:
+            continue
+        # Ensure required handle fields
+        if "sourceHandle" not in edge:
+            edge["sourceHandle"] = "output"
+        if "targetHandle" not in edge:
+            edge["targetHandle"] = "input"
+        if "id" not in edge:
+            edge["id"] = f"edge_{src}_{tgt}"
+        valid_edges.append(edge)
+
+    if not valid_nodes:
+        raise HTTPException(status_code=502, detail="Model generated no valid workflow nodes")
+
+    return {"nodes": valid_nodes, "edges": valid_edges}
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -91,7 +515,51 @@ async def _verify_ownership(db: Any, workflow_id: str, user_id: str) -> dict[str
 
 
 # ---------------------------------------------------------------------------
-# Endpoints
+# Endpoints — AI generation (before /{workflow_id} param routes)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/ai-generate", response_model=WorkflowAIResponse)
+async def ai_generate_workflow(
+    body: WorkflowAIGenerateRequest,
+    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+) -> dict[str, Any]:
+    """Generate a workflow from a natural language description."""
+    provider_id, model_name = await _resolve_provider(user["id"], body.model)
+
+    prompt = f"Generate a workflow for the following task:\n\n{sanitize_html(body.description)}"
+    raw_output = await _call_model_for_workflow(
+        provider_id, model_name, _WORKFLOW_SYSTEM_PROMPT, prompt, user["id"]
+    )
+    return _parse_workflow_json(raw_output)
+
+
+@router.post("/{workflow_id}/ai-refine", response_model=WorkflowAIResponse)
+async def ai_refine_workflow(
+    workflow_id: str,
+    body: WorkflowAIRefineRequest,
+    user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+) -> dict[str, Any]:
+    """Refine an existing workflow based on a natural language instruction."""
+    async with get_db() as db:
+        wf = await _verify_ownership(db, workflow_id, user["id"])
+
+    provider_id, model_name = await _resolve_provider(user["id"], body.model)
+
+    prompt = (
+        f"Here is the current workflow:\n\n"
+        f"Nodes:\n{wf['nodes_json']}\n\n"
+        f"Edges:\n{wf['edges_json']}\n\n"
+        f"Apply this modification:\n{sanitize_html(body.instruction)}"
+    )
+    raw_output = await _call_model_for_workflow(
+        provider_id, model_name, _REFINE_SYSTEM_PROMPT, prompt, user["id"]
+    )
+    return _parse_workflow_json(raw_output)
+
+
+# ---------------------------------------------------------------------------
+# Endpoints — CRUD
 # ---------------------------------------------------------------------------
 
 
@@ -162,7 +630,14 @@ async def create_workflow(
         # Auto-create initial config version
         cursor = await db.execute("SELECT * FROM workflows WHERE id = ?", (workflow_id,))
         row = await cursor.fetchone()
-        await create_config_version(db, "workflow", workflow_id, _snapshot_workflow(dict(row)), author=user["id"], summary="Initial version")
+        await create_config_version(
+            db,
+            "workflow",
+            workflow_id,
+            _snapshot_workflow(dict(row)),
+            author=user["id"],
+            summary="Initial version",
+        )
 
         await db.commit()
 
@@ -271,7 +746,9 @@ async def update_workflow(
         # Auto-create config version on every save
         cursor = await db.execute("SELECT * FROM workflows WHERE id = ?", (workflow_id,))
         row = await cursor.fetchone()
-        await create_config_version(db, "workflow", workflow_id, _snapshot_workflow(dict(row)), author=user["id"])
+        await create_config_version(
+            db, "workflow", workflow_id, _snapshot_workflow(dict(row)), author=user["id"]
+        )
 
         await db.commit()
 
