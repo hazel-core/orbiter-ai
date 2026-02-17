@@ -2056,3 +2056,19 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Ruff S608 (SQL injection) is not enabled in this project — no need for noqa comments on f-string SQL
   - Import sorting: `runs` goes alphabetically after `providers`, not after `projects`
 ---
+
+## 2026-02-17 - US-112
+- What was implemented: Runs list page at /monitoring/runs and run detail page at /monitoring/runs/[id] with step timeline, expandable steps, live WebSocket streaming for in-progress runs
+- Files changed:
+  - packages/orbiter-web/src/pages/monitoring/runs.astro (new — runs list with status filter, sort, pagination, auto-refresh, clickable rows)
+  - packages/orbiter-web/src/pages/monitoring/runs/[id].astro (new — run detail with summary header, step timeline, expandable input/output/error, nested tool calls, live streaming via WS)
+  - packages/orbiter-web/src/orbiter_web/routes/runs.py (updated — JOIN agents/workflows tables to include agent_name/workflow_name in list and detail responses)
+  - packages/orbiter-web/src/pages/monitoring.astro (updated — added "View all runs" link in dashboard header)
+- **Learnings for future iterations:**
+  - Runs API list endpoint now uses table-prefixed columns (r.user_id, r.agent_id) for JOINs — always prefix when adding JOINs to existing queries
+  - Monitoring sub-pages go in pages/monitoring/ directory (e.g., pages/monitoring/runs.astro, pages/monitoring/runs/[id].astro)
+  - `define:vars={{ id }}` passes Astro frontmatter vars to `is:inline` scripts — used for dynamic route params
+  - Steps in steps_json have structure: type (llm/tool/handoff), duration (ms), tokens, input, output, error, tool_calls[], model, name
+  - WebSocket reconnect pattern: connect on page load if run status is running/pending, reload full data on step events
+  - Client-side sort works for current page of API results — sort by cost/tokens/time-asc applied locally after fetch
+---
