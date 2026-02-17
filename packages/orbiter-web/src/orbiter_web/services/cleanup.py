@@ -1,4 +1,4 @@
-"""Background cleanup — removes expired sessions, stale tokens, and orphaned uploads."""
+"""Background cleanup — removes expired sessions, stale tokens, orphaned uploads, and enforces retention policies."""
 
 from __future__ import annotations
 
@@ -15,6 +15,110 @@ from orbiter_web.database import get_db
 _log = logging.getLogger(__name__)
 
 _cleanup_task: asyncio.Task[Any] | None = None
+
+_RETENTION_DEFAULTS = {
+    "retention_artifacts_days": 90,
+    "retention_runs_days": 30,
+    "retention_logs_days": 14,
+}
+
+
+async def _get_retention_days() -> dict[str, int]:
+    """Read retention settings from workspace_settings, falling back to defaults."""
+    result = dict(_RETENTION_DEFAULTS)
+    async with get_db() as db:
+        cursor = await db.execute(
+            "SELECT key, value FROM workspace_settings WHERE key IN (?, ?, ?)",
+            tuple(_RETENTION_DEFAULTS),
+        )
+        for row in await cursor.fetchall():
+            with contextlib.suppress(ValueError):
+                result[row["key"]] = int(row["value"])
+    return result
+
+
+async def _run_retention_cleanup() -> None:
+    """Delete artifacts, runs, and logs older than their retention period.
+
+    Order: artifacts first (since they reference runs), then runs, then logs.
+    Cascade: when deleting a run, first delete its artifacts and related logs.
+    """
+    retention = await _get_retention_days()
+    deleted_artifacts = 0
+    deleted_artifact_files = 0
+    deleted_runs = 0
+    deleted_logs = 0
+
+    async with get_db() as db:
+        # 1. Delete old artifacts (and their files on disk)
+        artifact_cutoff = f"-{retention['retention_artifacts_days']} days"
+        cursor = await db.execute(
+            "SELECT id, storage_path FROM artifacts WHERE created_at < datetime('now', ?)",
+            (artifact_cutoff,),
+        )
+        old_artifacts = await cursor.fetchall()
+        for row in old_artifacts:
+            # Remove file from disk
+            path = Path(row["storage_path"])
+            if path.is_file():
+                try:
+                    path.unlink()
+                    deleted_artifact_files += 1
+                except OSError:
+                    _log.warning("Failed to remove artifact file: %s", path)
+            # Delete artifact_versions (cascade via FK) and the artifact record
+            await db.execute(
+                "DELETE FROM artifact_versions WHERE artifact_id = ?", (row["id"],)
+            )
+            await db.execute("DELETE FROM artifacts WHERE id = ?", (row["id"],))
+            deleted_artifacts += 1
+
+        # 2. Delete old runs — first cascade-delete their artifacts and logs
+        run_cutoff = f"-{retention['retention_runs_days']} days"
+        cursor = await db.execute(
+            "SELECT id FROM runs WHERE created_at < datetime('now', ?)",
+            (run_cutoff,),
+        )
+        old_runs = await cursor.fetchall()
+        for row in old_runs:
+            run_id = row["id"]
+            # Cascade: delete artifacts belonging to this run
+            art_cursor = await db.execute(
+                "SELECT id, storage_path FROM artifacts WHERE run_id = ?", (run_id,)
+            )
+            for art in await art_cursor.fetchall():
+                path = Path(art["storage_path"])
+                if path.is_file():
+                    with contextlib.suppress(OSError):
+                        path.unlink()
+                await db.execute(
+                    "DELETE FROM artifact_versions WHERE artifact_id = ?", (art["id"],)
+                )
+                await db.execute("DELETE FROM artifacts WHERE id = ?", (art["id"],))
+            # Cascade: delete logs referencing this run (via agent_id is not direct,
+            # but runs and logs share no FK — logs are deleted by timestamp below)
+            # Delete the run itself
+            await db.execute("DELETE FROM runs WHERE id = ?", (run_id,))
+            deleted_runs += 1
+
+        # 3. Delete old logs
+        log_cutoff = f"-{retention['retention_logs_days']} days"
+        cursor = await db.execute(
+            "DELETE FROM logs WHERE timestamp < datetime('now', ?)",
+            (log_cutoff,),
+        )
+        deleted_logs = cursor.rowcount
+
+        await db.commit()
+
+    if deleted_artifacts or deleted_runs or deleted_logs:
+        _log.info(
+            "Retention cleanup: %d artifacts (%d files), %d runs, %d logs removed",
+            deleted_artifacts,
+            deleted_artifact_files,
+            deleted_runs,
+            deleted_logs,
+        )
 
 
 async def _run_cleanup() -> None:
@@ -67,6 +171,9 @@ async def _run_cleanup() -> None:
         stale_tokens,
         orphaned_files,
     )
+
+    # 4. Run retention-based cleanup
+    await _run_retention_cleanup()
 
 
 async def _cleanup_loop() -> None:

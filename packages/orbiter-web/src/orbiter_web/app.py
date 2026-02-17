@@ -47,6 +47,7 @@ from orbiter_web.routes.projects import router as projects_router
 from orbiter_web.routes.prompt_templates import router as prompt_templates_router
 from orbiter_web.routes.provider_keys import router as provider_keys_router
 from orbiter_web.routes.providers import router as providers_router
+from orbiter_web.routes.retention import router as retention_router
 from orbiter_web.routes.run_queue import router as run_queue_router
 from orbiter_web.routes.runs import router as runs_router
 from orbiter_web.routes.sandbox import router as sandbox_router
@@ -157,6 +158,7 @@ app.include_router(notifications_router)
 app.include_router(playground_router)
 app.include_router(plugins_router)
 app.include_router(projects_router)
+app.include_router(retention_router)
 app.include_router(run_queue_router)
 app.include_router(runs_router)
 app.include_router(sandbox_router)
