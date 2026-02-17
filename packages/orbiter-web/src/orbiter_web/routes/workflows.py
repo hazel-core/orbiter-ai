@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 from orbiter_web.database import get_db
 from orbiter_web.pagination import paginate
 from orbiter_web.routes.auth import get_current_user
+from orbiter_web.routes.config_versions import _snapshot_workflow, create_config_version
 from orbiter_web.sanitize import sanitize_html
 from orbiter_web.services.audit import audit_log
 
@@ -157,6 +158,12 @@ async def create_workflow(
                 now,
             ),
         )
+
+        # Auto-create initial config version
+        cursor = await db.execute("SELECT * FROM workflows WHERE id = ?", (workflow_id,))
+        row = await cursor.fetchone()
+        await create_config_version(db, "workflow", workflow_id, _snapshot_workflow(dict(row)), author=user["id"], summary="Initial version")
+
         await db.commit()
 
         await audit_log(
@@ -167,8 +174,6 @@ async def create_workflow(
             details={"name": sanitize_html(body.name)},
         )
 
-        cursor = await db.execute("SELECT * FROM workflows WHERE id = ?", (workflow_id,))
-        row = await cursor.fetchone()
         return _row_to_dict(row)
 
 
@@ -262,10 +267,14 @@ async def update_workflow(
             f"UPDATE workflows SET {set_clause} WHERE id = ?",
             values,
         )
-        await db.commit()
 
+        # Auto-create config version on every save
         cursor = await db.execute("SELECT * FROM workflows WHERE id = ?", (workflow_id,))
         row = await cursor.fetchone()
+        await create_config_version(db, "workflow", workflow_id, _snapshot_workflow(dict(row)), author=user["id"])
+
+        await db.commit()
+
         return _row_to_dict(row)
 
 

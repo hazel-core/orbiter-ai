@@ -22,6 +22,7 @@ from orbiter_web.middleware.versioning import APIVersionRedirectMiddleware
 from orbiter_web.routes.agent_templates import router as agent_templates_router
 from orbiter_web.routes.agents import router as agents_router
 from orbiter_web.routes.alerts import router as alerts_router
+from orbiter_web.routes.config_versions import router as config_versions_router
 from orbiter_web.routes.annotations import router as annotations_router
 from orbiter_web.routes.applications import router as applications_router
 from orbiter_web.routes.approvals import router as approvals_router
@@ -136,6 +137,7 @@ if settings.cors_origins:
 app.include_router(agent_templates_router)
 app.include_router(agents_router)
 app.include_router(alerts_router)
+app.include_router(config_versions_router)
 app.include_router(annotations_router)
 app.include_router(artifacts_router)
 app.include_router(audit_log_router)

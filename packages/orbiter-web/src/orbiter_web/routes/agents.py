@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from orbiter_web.database import get_db
 from orbiter_web.pagination import paginate
 from orbiter_web.routes.auth import get_current_user
+from orbiter_web.routes.config_versions import _snapshot_agent, create_config_version
 from orbiter_web.sanitize import sanitize_html
 from orbiter_web.services.audit import audit_log
 
@@ -663,12 +664,15 @@ async def create_agent(
                 now,
             ),
         )
+        # Auto-create initial config version
+        cursor = await db.execute("SELECT * FROM agents WHERE id = ?", (agent_id,))
+        row = await cursor.fetchone()
+        await create_config_version(db, "agent", agent_id, _snapshot_agent(dict(row)), author=user["id"], summary="Initial version")
+
         await db.commit()
 
         await audit_log(user["id"], "create_agent", "agent", agent_id, details={"name": name})
 
-        cursor = await db.execute("SELECT * FROM agents WHERE id = ?", (agent_id,))
-        row = await cursor.fetchone()
         return _row_to_dict(row)
 
 
@@ -722,10 +726,14 @@ async def update_agent(
             f"UPDATE agents SET {set_clause} WHERE id = ?",
             values,
         )
-        await db.commit()
 
+        # Auto-create config version on every save
         cursor = await db.execute("SELECT * FROM agents WHERE id = ?", (agent_id,))
         row = await cursor.fetchone()
+        await create_config_version(db, "agent", agent_id, _snapshot_agent(dict(row)), author=user["id"])
+
+        await db.commit()
+
         return _row_to_dict(row)
 
 
