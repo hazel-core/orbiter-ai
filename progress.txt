@@ -2314,3 +2314,17 @@ Started: Mon Feb 16 08:13:35 PM IST 2026
   - Thread messages are in `thread_messages` table (not `messages`); join via `thread_id` to `threads` for entity-level results
   - SQLite FTS5 rank is negative (more negative = better match); ORDER BY rank ascending gives best results first
 ---
+
+## 2026-02-17 - US-122
+- What was implemented: Annotation schema and REST API — full CRUD, FTS5 search, CSV import, similarity matching
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/migrations/043_create_annotations.sql (new — annotations table + FTS5 + triggers)
+  - packages/orbiter-web/src/orbiter_web/routes/annotations.py (new — 8 endpoints: list with search, create, get, update, delete, import CSV, match)
+  - packages/orbiter-web/src/orbiter_web/app.py (updated — registered annotations_router)
+- **Learnings for future iterations:**
+  - SequenceMatcher from difflib provides quick string similarity without external deps — suitable for annotation matching
+  - CSV import pattern: use handle_upload() for file validation, then read_text + csv.DictReader for parsing; cleanup_upload after reading
+  - Define static path endpoints (/import, /match) BEFORE parameterized /{id} routes to avoid FastAPI matching path as id
+  - Ruff doesn't have S608 (SQL injection) enabled in this project — don't add noqa: S608 comments
+  - Annotation FTS5 follows same pattern as migration 042: content table + content_rowid + insert/update/delete triggers
+---
