@@ -440,6 +440,9 @@ def _resolve_provider(agent: Any) -> Any:
     """Attempt to auto-resolve a provider from the agent's model config.
 
     Tries the model registry from ``orbiter.models`` if available.
+    For Swarms (which lack a ``.model`` attribute), resolves from the
+    first agent in the flow order.
+
     Returns ``None`` if auto-resolution fails (call_runner will then
     let Agent.run() raise its own error for missing provider).
     """
@@ -449,9 +452,19 @@ def _resolve_provider(agent: Any) -> Any:
     try:
         from orbiter.models.provider import get_provider  # pyright: ignore[reportMissingImports]
 
-        return get_provider(agent.model)
+        model = getattr(agent, "model", None)
+        if model is None and hasattr(agent, "agents"):
+            # Swarm: resolve from the first agent's model
+            first = next(iter(agent.agents.values()), None) if isinstance(
+                agent.agents, dict
+            ) else (agent.agents[0] if agent.agents else None)
+            if first is not None:
+                model = first.model
+        if model is None:
+            return None
+        return get_provider(model)
     except Exception as exc:
-        log.warning("Failed to auto-resolve provider for model '%s': %s", agent.model, exc)
+        log.warning("Failed to auto-resolve provider for model '%s': %s", getattr(agent, "model", "?"), exc)
         return None
 
 
