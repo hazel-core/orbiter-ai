@@ -19,6 +19,7 @@ members = [
     "packages/orbiter-cli",
     "packages/orbiter-server",
     "packages/orbiter-train",
+    "packages/orbiter-web",
     "packages/orbiter",
 ]
 
@@ -37,6 +38,7 @@ dev = [
     "orbiter-cli",
     "orbiter-server",
     "orbiter-train",
+    "orbiter-web",
     "orbiter-ai",
     "opentelemetry-api>=1.20",
     "opentelemetry-sdk>=1.20",
@@ -62,6 +64,7 @@ orbiter-a2a = { workspace = true }
 orbiter-cli = { workspace = true }
 orbiter-server = { workspace = true }
 orbiter-train = { workspace = true }
+orbiter-web = { workspace = true }
 orbiter-ai = { workspace = true }
 
 [tool.ruff]
@@ -73,7 +76,7 @@ select = ["E", "F", "I", "N", "W", "UP", "B", "SIM", "RUF"]
 ignore = ["E501"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["orbiter", "orbiter_cli", "orbiter_server"]
+known-first-party = ["orbiter", "orbiter_cli", "orbiter_server", "orbiter_web"]
 
 [tool.pyright]
 pythonVersion = "3.11"
