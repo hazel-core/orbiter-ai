@@ -134,3 +134,11 @@ examples/**/workspaces
 examples/**/data
 examples/**/*.bak
 =**
+
+# Ralph agent files (persist across branches, not tracked)
+prd.json
+progress.txt
+ralph.sh
+.last-branch
+CLAUDE.md
+archive/
