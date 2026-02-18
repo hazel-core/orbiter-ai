@@ -325,7 +325,7 @@ Full documentation is in the [`docs/`](docs/) directory:
 
 ```bash
 # Clone the repository
-git clone https://github.com/inclusionAI/AWorld && cd AWorld
+git clone https://github.com/hazel-core/orbiter-ai && cd orbiter-ai
 
 # Install UV (if needed)
 curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -392,6 +392,6 @@ export VERTEX_LOCATION="us-central1"
 
 <div align="center">
 
-<sub>MIT License</sub>
+<sub>MIT License — Copyright (c) 2025 Hazel Communications Private Limited, India (a part of Midsphere AI)</sub>
 
 </div>
