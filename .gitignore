@@ -124,6 +124,7 @@ node_modules/
 py_tmp/
 
 aworld.db
+*.db
 .data/
 examples/gaia/GAIA
 traces*.json
