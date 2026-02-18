@@ -1,104 +1,124 @@
-# Ralph Agent Instructions
+# CLAUDE.md
 
-You are an autonomous coding agent working on a software project.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Your Task
+## What is Orbiter
 
-1. Read the PRD at `prd.json` (in the same directory as this file)
-2. Read the progress log at `progress.txt` (check Codebase Patterns section first)
-3. Check you're on the correct branch from PRD `branchName`. If not, check it out or create from main.
-4. Pick the **highest priority** user story where `passes: false`
-5. Implement that single user story
-6. Run quality checks (e.g., typecheck, lint, test - use whatever your project requires)
-7. Update CLAUDE.md files if you discover reusable patterns (see below)
-8. If checks pass, commit ALL changes with message: `feat: [Story ID] - [Story Title]`
-9. Update the PRD to set `passes: true` for the completed story
-10. Append your progress to `progress.txt`
+Orbiter is a modular multi-agent framework for building LLM-powered applications in Python. It's a UV workspace monorepo with 15 packages. Requires Python 3.11+.
 
-## Progress Report Format
+## Common Commands
 
-APPEND to progress.txt (never replace, always append):
-```
-## [Date/Time] - [Story ID]
-- What was implemented
-- Files changed
-- **Learnings for future iterations:**
-  - Patterns discovered (e.g., "this codebase uses X for Y")
-  - Gotchas encountered (e.g., "don't forget to update Z when changing W")
-  - Useful context (e.g., "the evaluation panel is in component X")
----
-```
+```bash
+# Install all workspace packages (editable mode)
+uv sync
 
-The learnings section is critical - it helps future iterations avoid repeating mistakes and understand the codebase better.
+# Run all tests (~2,900 tests, asyncio_mode=auto)
+uv run pytest
 
-## Consolidate Patterns
+# Run tests for a single package
+uv run pytest packages/orbiter-core/tests/
 
-If you discover a **reusable pattern** that future iterations should know, add it to the `## Codebase Patterns` section at the TOP of progress.txt (create it if it doesn't exist). This section should consolidate the most important learnings:
+# Run a single test file
+uv run pytest packages/orbiter-core/tests/test_agent.py
 
-```
-## Codebase Patterns
-- Example: Use `sql<number>` template for aggregations
-- Example: Always use `IF NOT EXISTS` for migrations
-- Example: Export types from actions.ts for UI components
+# Run a single test
+uv run pytest packages/orbiter-core/tests/test_agent.py::test_function_name
+
+# Lint (with auto-fix)
+uv run ruff check packages/ --fix
+
+# Format check
+uv run ruff format --check packages/
+
+# Type-check a package
+uv run pyright packages/orbiter-core/
+
+# Verify installation
+uv run python -c "from orbiter import Agent, run, tool; print('OK')"
 ```
 
-Only add patterns that are **general and reusable**, not story-specific details.
+### orbiter-web (dual Node+Python package)
 
-## Update CLAUDE.md Files
+```bash
+cd packages/orbiter-web
 
-Before committing, check if any edited files have learnings worth preserving in nearby CLAUDE.md files:
+# Install frontend deps
+npm install
 
-1. **Identify directories with edited files** - Look at which directories you modified
-2. **Check for existing CLAUDE.md** - Look for CLAUDE.md in those directories or parent directories
-3. **Add valuable learnings** - If you discovered something future developers/agents should know:
-   - API patterns or conventions specific to that module
-   - Gotchas or non-obvious requirements
-   - Dependencies between files
-   - Testing approaches for that area
-   - Configuration or environment requirements
+# Dev server (runs Astro + FastAPI concurrently)
+npm run dev
 
-**Examples of good CLAUDE.md additions:**
-- "When modifying X, also update Y to keep them in sync"
-- "This module uses pattern Z for all API calls"
-- "Tests require the dev server running on PORT 3000"
-- "Field names must match the template exactly"
+# Astro typecheck
+npx astro check
 
-**Do NOT add:**
-- Story-specific implementation details
-- Temporary debugging notes
-- Information already in progress.txt
+# Run backend only
+uv run uvicorn orbiter_web.app:app --reload
+```
 
-Only update CLAUDE.md if you have **genuinely reusable knowledge** that would help future work in that directory.
+## Architecture
 
-## Quality Requirements
+UV workspace monorepo. Packages live in `packages/`. The dependency graph flows upward from `orbiter-core`:
 
-- ALL commits must pass your project's quality checks (typecheck, lint, test)
-- Do NOT commit broken code
-- Keep changes focused and minimal
-- Follow existing code patterns
+```
+orbiter-core (foundation, only depends on pydantic)
+    ↑
+orbiter-models (OpenAI, Anthropic, Gemini, Vertex AI providers)
+    ↑
+orbiter-context, orbiter-memory, orbiter-mcp, orbiter-sandbox, orbiter-observability
+    ↑
+orbiter-cli, orbiter-server, orbiter-eval, orbiter-a2a, orbiter-train, orbiter-web
+    ↑
+orbiter (meta-package, re-exports everything)
+```
 
-## Browser Testing (If Available)
+### Key Packages
 
-For any story that changes UI, verify it works in the browser if you have browser testing tools configured (e.g., via MCP):
+- **orbiter-core** (`packages/orbiter-core/src/orbiter/`): `Agent`, `Tool`, `@tool` decorator, `run`/`run.sync`/`run.stream`, `Swarm`, hooks, events, config, registry. The `_internal/` subpackage has message building, output parsing, call execution, state machine, and graph algorithms.
+- **orbiter-models** (`packages/orbiter-models/`): LLM provider implementations. Provider SDKs are isolated here — core has zero heavy deps.
+- **orbiter-web** (`packages/orbiter-web/`): Full platform UI. Hybrid package — Astro 5.x frontend (`src/pages/`, `src/islands/`) + FastAPI backend (`src/orbiter_web/`). Has its own `package.json` AND `pyproject.toml`.
 
-1. Navigate to the relevant page
-2. Verify the UI changes work as expected
-3. Take a screenshot if helpful for the progress log
+### orbiter-web Backend Structure
 
-If no browser tools are available, note in your progress report that manual browser verification is needed.
+- `app.py` — FastAPI app entry point, middleware, route registration
+- `config.py` — Settings dataclass (env vars: `ORBITER_DATABASE_URL`, `ORBITER_SECRET_KEY`, `ORBITER_DEBUG`)
+- `database.py` — `get_db()` async context manager, WAL mode, foreign keys
+- `engine.py` — Workflow execution engine (topological sort, node execution, retry)
+- `migrations/` — Sequential SQL files, run automatically on startup via lifespan
+- `routes/` — 30+ APIRouter modules, all under `/api/v1/` prefix
+- `services/` — Business logic layer (agent runtime, sandbox, scheduler, memory)
+- `middleware/` — CSRF, rate limiting, security headers, API version redirect
 
-## Stop Condition
+### orbiter-web Frontend Structure
 
-After completing a user story, check if ALL stories have `passes: true`.
+- Astro 5.x pages in `src/pages/`, layouts in `src/layouts/`
+- React islands in `src/islands/` (e.g., ReactFlow canvas)
+- Tailwind CSS v4 via `@tailwindcss/vite`
+- `cn()` utility at `src/utils/merge.ts` for class merging
 
-If ALL stories are complete and passing, reply with:
-<promise>COMPLETE</promise>
+## Code Conventions
 
-If there are still stories with `passes: false`, end your response normally (another iteration will pick up the next story).
+- **Ruff**: line-length 100, rules `E,F,I,N,W,UP,B,SIM,RUF`, ignore `E501`. Use `datetime.UTC` not `timezone.utc`.
+- **Pyright**: basic mode, Python 3.11 target.
+- **Async-first**: all core APIs are async. Tests use `asyncio_mode = "auto"` (no `@pytest.mark.asyncio` needed).
+- **Pydantic v2**: for all schemas and validation.
+- **Test file names must be unique** across all packages (pytest importlib mode).
+- **Tests use MockProvider** — never make real API calls.
+- **Model strings**: format `"provider:model"` (e.g., `"openai:gpt-4o-mini"`).
+- **FastAPI Depends()**: use `# noqa: B008` for ruff on function defaults.
+- **CSRF**: auto-injected via fetch monkey-patch in PageLayout — no manual header needed in frontend.
+- **API routes**: define static paths (`/search`) before param routes (`/{id}`) to prevent FastAPI mismatching.
 
-## Important
+## Adding a New Package to the Workspace
 
-- Work on ONE story per iteration
-- Commit frequently
-- Keep CI green
-- Read the Codebase Patterns section in progress.txt before starting
+1. Create `packages/<name>/` with `pyproject.toml` and `src/` layout
+2. Update root `pyproject.toml`: add to `[tool.uv.workspace].members`, `[dependency-groups].dev`, and `[tool.uv.sources]`
+3. Run `uv sync`
+
+## Important File Locations
+
+- Root config: `pyproject.toml` (workspace definition, ruff, pyright, pytest config)
+- Public API exports: `packages/orbiter-core/src/orbiter/__init__.py`
+- Provider resolution: `packages/orbiter-models/`
+- Web app entry: `packages/orbiter-web/src/orbiter_web/app.py`
+- DB migrations: `packages/orbiter-web/src/orbiter_web/migrations/`
+- Handle types (keep in sync): `packages/orbiter-web/src/islands/Canvas/handleTypes.ts` ↔ `routes/tools.py` (`_NODE_HANDLE_MAP`)
