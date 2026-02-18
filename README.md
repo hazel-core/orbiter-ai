@@ -3,15 +3,14 @@
 <br>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://img.shields.io/badge/%E2%9C%A6_ORBITER-Multi--Agent_Framework-8B5CF6?style=for-the-badge&labelColor=1a1a2e&color=8B5CF6">
-  <img alt="Orbiter" src="https://img.shields.io/badge/%E2%9C%A6_ORBITER-Multi--Agent_Framework-7C3AED?style=for-the-badge&labelColor=f0f0f0&color=7C3AED">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/logo-light.svg">
+  <img alt="Orbiter — Multi-Agent Framework" src="docs/assets/logo-light.svg" width="560">
 </picture>
 
 <br><br>
 
-<h3>A modern, modular multi-agent framework for Python</h3>
-
-<p>Build single agents, multi-agent swarms, and complex orchestration pipelines — with minimal boilerplate.</p>
+<p><strong>Build single agents, multi-agent swarms, and complex orchestration pipelines — with minimal boilerplate.</strong></p>
 
 <br>
 
