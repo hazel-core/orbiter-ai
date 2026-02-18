@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import base64
+import json
+import os
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -13,6 +16,7 @@ from orbiter.models.vertex import (  # pyright: ignore[reportMissingImports]
     VertexProvider,
     _build_config,
     _convert_tools,
+    _credentials_from_base64,
     _map_finish_reason,
     _parse_response,
     _parse_stream_chunk,
@@ -540,3 +544,146 @@ class TestVertexRegistration:
         provider = get_provider("vertex:gemini-2.0-flash")
         assert isinstance(provider, VertexProvider)
         assert provider.config.model_name == "gemini-2.0-flash"
+
+
+# ---------------------------------------------------------------------------
+# Service account credentials
+# ---------------------------------------------------------------------------
+
+_FAKE_SA_INFO = {
+    "type": "service_account",
+    "project_id": "test-project",
+    "private_key_id": "key123",
+    "private_key": "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA2a2rwplBQLF29amygykEMmYz0+Kcj3bKBp29DiGFiDEFhmm\nNguMjTmd9jETJFnNpHONGRqJmH3dTaFMnVR7MlDqIClUF8LgVgg6BN7gVFMBef9\nZ79kNjuerMOkYJFLWKn2eSMdLRF7q2FGqxyjRHwcJwmBR4PJMqBXHGfcbF+Gl1WB\nmrzbPFldVVeR0YCzrGJGbOafH9hy8qDdVEKLCIFB98fCD5lnSilJkMFfl50PKtt1\nKP6OQFm0g14KNsVMY0GPAFFeDKdfl1Js03WnRfAlKb1mB6bOOvKSmxNq1TxB3eyT\ncItHnEJMc8JCsJAqjF0eFebSMLB6UALRXJ8jUQIDAQABAoIBAA/jR0GH0bJarP8D\nnleQxnSVxKBhsBO+RaGCNyM0iRkS5nZk/BxMrn6pIYrmcHNMx5GzQWlFRQ+dQjdl\nHnN9JSRlMIKAd3AjKiVjMYRWRKua87li6u6IM7JGqhCpX6S7zY0HnWtHanHnM9XE\nNZWvNJuETz0/DOa1U00t+qLJy2C8h1dPz0NmR3M1Gj8wC7wdGFIGQIr6kNajryq\nnmPOL2b9ynFnnVJBpPb/H2TsS4FJB1PGa7kOXNJxbK8GrPNIvYvKT6pwJSQfcnk1\nmg5iXU8ePwnfHhZ1RRfC+q/cjgP3ElPW07HCB6PgOKIi85S5EleZ/J1q4/bMMpJA\naGS6goECgYEA7hYljAIxfMad8NvIl1JNFllWqccjk/G4D+Q6kD/1t1+VAt10c2E+\ni/KVxDkR7wJy3mLi4vyQLwS3pm2G3K4VUMwb3PE2Z7RjVF36eP2BjLj0PJUQ23tX\nwd/GKLedLi5YqyLtKK/jLrm+4DYimJYCgiT0j9kxasThb3JklNbW+IECgYEA6WRC\nG2f2FLMshV1dcsFn43OjWM9EIi6L0BD2fnKh0NTTfXhWMUaCVJWf5iP0e7DZPXY9\nk3+L4u/JCvL7EqKQvlHRCi4Bq05GI5XFVQ/06KTdSPUXjnOA3S63S/P5GiL98mY\nNpOBC6mcYnJIDFnBT2vUfjCbzzFd+GE1/SEJ0iECgYBaZDF3gPddJAu/8/Ib/QDI\nhVPJKUYN5K71/r/dYMZTEJSJLi1MnXmVXw/ki+5g/+U+k2S5fCm1RWMeWbDRUVv0\nwJRNpMKV6JCK3d6rfT6s3O40t9v5sCjSMCStE4D35qMxO0MABQMJ4mS67u2VfKEN\noJvYN+tDCkh/FJJo+g/gAQKBgFWZiCfOIXFEiJYA/1lJsm8s6xAEWWP0xfwdXNkb\nsEAdojKNJpD0IlONRnWGT3hELisSAKN5deNT6eGFKYqlIGqPNjtr38HNm7WPNjiG\njGLvFj6gPBxHQ01p1eYzL+U2f4hjT1LElpPuPH2cGH2M8d/dVGtukBi1io+dNdEn\nb3RhAoGBAM+sLGOVj36cGaLj0fRil1N9F1cv8RMKhHm8mlE3J3FPqO3+BhpZnkBe\n+H0r/2LaIMuP/CpjGo0FPbHKfsVFKb0F8ItERGOzS6NU0EXO6ILhFNxg9AJnVU+r\nhQqz7o+Z0vMp36PFdJz9jMjHghXn2YCxL8lFT/3hlJH6j1MJL+SN\n-----END RSA PRIVATE KEY-----\n",
+    "client_email": "test@test-project.iam.gserviceaccount.com",
+    "client_id": "123456789",
+    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+    "token_uri": "https://oauth2.googleapis.com/token",
+}
+
+
+class TestServiceAccountCredentials:
+    def test_credentials_from_base64_decodes_and_builds(self) -> None:
+        encoded = base64.b64encode(json.dumps(_FAKE_SA_INFO).encode()).decode()
+        mock_creds = MagicMock()
+        with patch(
+            "google.oauth2.service_account.Credentials.from_service_account_info",
+            return_value=mock_creds,
+        ) as mock_from_info:
+            result = _credentials_from_base64(encoded)
+            mock_from_info.assert_called_once()
+            call_args = mock_from_info.call_args
+            assert call_args[0][0]["project_id"] == "test-project"
+            assert call_args[1]["scopes"] == ["https://www.googleapis.com/auth/cloud-platform"]
+            assert result is mock_creds
+
+    @patch("orbiter.models.vertex.genai")
+    def test_init_uses_service_account_from_env(self, mock_genai: MagicMock) -> None:
+        encoded = base64.b64encode(json.dumps(_FAKE_SA_INFO).encode()).decode()
+        mock_creds = MagicMock()
+        with patch.dict(os.environ, {"GOOGLE_SERVICE_ACCOUNT_BASE64": encoded}):
+            with patch(
+                "orbiter.models.vertex._credentials_from_base64", return_value=mock_creds
+            ) as mock_fn:
+                config = _make_config()
+                VertexProvider(config)
+                mock_fn.assert_called_once_with(encoded)
+                call_kwargs = mock_genai.Client.call_args[1]
+                assert call_kwargs["credentials"] is mock_creds
+
+    @patch("orbiter.models.vertex.genai")
+    def test_init_no_credentials_when_nothing_set(self, mock_genai: MagicMock) -> None:
+        env = {k: v for k, v in os.environ.items() if k != "GOOGLE_SERVICE_ACCOUNT_BASE64"}
+        with patch.dict(os.environ, env, clear=True):
+            config = _make_config()
+            VertexProvider(config)
+            call_kwargs = mock_genai.Client.call_args[1]
+            assert call_kwargs["credentials"] is None
+
+
+# ---------------------------------------------------------------------------
+# Config-based provider parameters
+# ---------------------------------------------------------------------------
+
+
+class TestVertexConfigParams:
+    @patch("orbiter.models.vertex.genai")
+    def test_project_from_config(self, mock_genai: MagicMock) -> None:
+        config = _make_config(google_project="cfg-project")
+        VertexProvider(config)
+        call_kwargs = mock_genai.Client.call_args[1]
+        assert call_kwargs["project"] == "cfg-project"
+
+    @patch("orbiter.models.vertex.genai")
+    def test_location_from_config(self, mock_genai: MagicMock) -> None:
+        config = _make_config(google_location="europe-west1")
+        VertexProvider(config)
+        call_kwargs = mock_genai.Client.call_args[1]
+        assert call_kwargs["location"] == "europe-west1"
+
+    @patch("orbiter.models.vertex.genai")
+    def test_service_account_from_config(self, mock_genai: MagicMock) -> None:
+        encoded = base64.b64encode(json.dumps(_FAKE_SA_INFO).encode()).decode()
+        mock_creds = MagicMock()
+        env = {k: v for k, v in os.environ.items() if k != "GOOGLE_SERVICE_ACCOUNT_BASE64"}
+        with patch.dict(os.environ, env, clear=True):
+            with patch(
+                "orbiter.models.vertex._credentials_from_base64", return_value=mock_creds
+            ) as mock_fn:
+                config = _make_config(google_service_account_base64=encoded)
+                VertexProvider(config)
+                mock_fn.assert_called_once_with(encoded)
+                call_kwargs = mock_genai.Client.call_args[1]
+                assert call_kwargs["credentials"] is mock_creds
+
+    @patch("orbiter.models.vertex.genai")
+    def test_config_takes_precedence_over_env(self, mock_genai: MagicMock) -> None:
+        with patch.dict(
+            os.environ,
+            {"GOOGLE_CLOUD_PROJECT": "env-project", "GOOGLE_CLOUD_LOCATION": "env-location"},
+        ):
+            config = _make_config(google_project="cfg-project", google_location="cfg-location")
+            VertexProvider(config)
+            call_kwargs = mock_genai.Client.call_args[1]
+            assert call_kwargs["project"] == "cfg-project"
+            assert call_kwargs["location"] == "cfg-location"
+
+    @patch("orbiter.models.vertex.genai")
+    def test_falls_back_to_env_when_config_absent(self, mock_genai: MagicMock) -> None:
+        with patch.dict(
+            os.environ,
+            {"GOOGLE_CLOUD_PROJECT": "env-project", "GOOGLE_CLOUD_LOCATION": "env-location"},
+        ):
+            config = _make_config()
+            VertexProvider(config)
+            call_kwargs = mock_genai.Client.call_args[1]
+            assert call_kwargs["project"] == "env-project"
+            assert call_kwargs["location"] == "env-location"
+
+    @patch("orbiter.models.vertex.genai")
+    def test_defaults_when_nothing_set(self, mock_genai: MagicMock) -> None:
+        env = {
+            k: v
+            for k, v in os.environ.items()
+            if k not in ("GOOGLE_CLOUD_PROJECT", "GOOGLE_CLOUD_LOCATION")
+        }
+        with patch.dict(os.environ, env, clear=True):
+            config = _make_config()
+            VertexProvider(config)
+            call_kwargs = mock_genai.Client.call_args[1]
+            assert call_kwargs["project"] == ""
+            assert call_kwargs["location"] == "us-central1"
+
+    @patch("orbiter.models.vertex.genai")
+    def test_get_provider_forwards_extras(self, mock_genai: MagicMock) -> None:
+        from orbiter.models.provider import get_provider  # pyright: ignore[reportMissingImports]
+
+        provider = get_provider(
+            "vertex:gemini-2.0-flash",
+            google_project="my-project",
+            google_location="asia-east1",
+        )
+        assert isinstance(provider, VertexProvider)
+        call_kwargs = mock_genai.Client.call_args[1]
+        assert call_kwargs["project"] == "my-project"
+        assert call_kwargs["location"] == "asia-east1"

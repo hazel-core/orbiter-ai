@@ -446,7 +446,7 @@ def _resolve_provider(agent: Any) -> Any:
     try:
         from orbiter.models.provider import get_provider  # pyright: ignore[reportMissingImports]
 
-        return get_provider(agent.provider_name)
+        return get_provider(agent.model)
     except Exception:
         return None
 

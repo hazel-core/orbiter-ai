@@ -26,6 +26,10 @@ def parse_model_string(model: str) -> tuple[str, str]:
 class ModelConfig(BaseModel):
     """Configuration for an LLM provider connection.
 
+    The core fields cover the common case. Provider-specific options
+    (e.g. ``google_project``, ``google_service_account_base64``) can be
+    passed as extra keyword arguments and will be stored on the instance.
+
     Args:
         provider: Provider name, e.g. ``"openai"`` or ``"anthropic"``.
         model_name: Model identifier within the provider.
@@ -35,7 +39,7 @@ class ModelConfig(BaseModel):
         timeout: Request timeout in seconds.
     """
 
-    model_config = {"frozen": True}
+    model_config = {"frozen": True, "extra": "allow"}
 
     provider: str = "openai"
     model_name: str = "gpt-4o"

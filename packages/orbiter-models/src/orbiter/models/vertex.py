@@ -1,12 +1,18 @@
 """Google Vertex AI LLM provider implementation.
 
-Wraps the ``google-genai`` SDK with Vertex AI (GCP ADC) authentication
-to implement ``ModelProvider.complete()`` and ``ModelProvider.stream()``
-with normalized response types.
+Wraps the ``google-genai`` SDK with Vertex AI authentication to implement
+``ModelProvider.complete()`` and ``ModelProvider.stream()`` with normalized
+response types.
+
+Connection parameters (``google_project``, ``google_location``,
+``google_service_account_base64``) can be supplied as ``ModelConfig``
+extras — ideal for distributed workers — or via the corresponding
+environment variables as a fallback.
 """
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 from collections.abc import AsyncIterator
@@ -33,6 +39,28 @@ from .types import (
 )
 
 from google import genai
+
+_VERTEX_SCOPES = ["https://www.googleapis.com/auth/cloud-platform"]
+
+
+def _credentials_from_base64(encoded: str) -> Any:
+    """Decode a base64 service-account JSON and return scoped credentials.
+
+    Args:
+        encoded: Base64-encoded service-account JSON string.
+
+    Returns:
+        A ``google.oauth2.service_account.Credentials`` instance scoped for
+        Vertex AI.
+    """
+    from google.oauth2 import service_account
+
+    raw_json = base64.b64decode(encoded)
+    info = json.loads(raw_json)
+    return service_account.Credentials.from_service_account_info(
+        info, scopes=_VERTEX_SCOPES
+    )
+
 
 # ---------------------------------------------------------------------------
 # Finish reason mapping
@@ -283,9 +311,25 @@ def _parse_stream_chunk(chunk: Any) -> StreamChunk:
 class VertexProvider(ModelProvider):
     """Google Vertex AI LLM provider.
 
-    Wraps the ``google.genai.Client`` with Vertex AI (GCP ADC) authentication.
-    Uses ``GOOGLE_CLOUD_PROJECT`` and ``GOOGLE_CLOUD_LOCATION`` environment
-    variables for project/location configuration.
+    Wraps the ``google.genai.Client`` with Vertex AI authentication.
+
+    All connection parameters can be supplied directly via ``ModelConfig``
+    extras (preferred for distributed workers) **or** via environment
+    variables (fallback):
+
+    +-----------------------------------------+-------------------------------------+
+    | Config kwarg                            | Env-var fallback                    |
+    +=========================================+=====================================+
+    | ``google_project``                      | ``GOOGLE_CLOUD_PROJECT``            |
+    +-----------------------------------------+-------------------------------------+
+    | ``google_location``                     | ``GOOGLE_CLOUD_LOCATION``           |
+    +-----------------------------------------+-------------------------------------+
+    | ``google_service_account_base64``       | ``GOOGLE_SERVICE_ACCOUNT_BASE64``   |
+    +-----------------------------------------+-------------------------------------+
+
+    When a service-account base64 string is provided (via either path), it
+    is decoded and used to build explicit credentials.  Otherwise,
+    Application Default Credentials (ADC) are used.
 
     Args:
         config: Provider connection configuration.
@@ -293,10 +337,21 @@ class VertexProvider(ModelProvider):
 
     def __init__(self, config: ModelConfig) -> None:
         super().__init__(config)
+        project = getattr(config, "google_project", None) or os.environ.get(
+            "GOOGLE_CLOUD_PROJECT", ""
+        )
+        location = getattr(config, "google_location", None) or os.environ.get(
+            "GOOGLE_CLOUD_LOCATION", "us-central1"
+        )
+        sa_b64 = getattr(config, "google_service_account_base64", None) or os.environ.get(
+            "GOOGLE_SERVICE_ACCOUNT_BASE64"
+        )
+        credentials = _credentials_from_base64(sa_b64) if sa_b64 else None
         self._client = genai.Client(
             vertexai=True,
-            project=os.environ.get("GOOGLE_CLOUD_PROJECT", ""),
-            location=os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1"),
+            project=project,
+            location=location,
+            credentials=credentials,
         )
 
     async def complete(
