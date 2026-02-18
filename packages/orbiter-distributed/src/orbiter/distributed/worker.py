@@ -47,6 +47,44 @@ def _generate_worker_id() -> str:
     return f"{hostname}-{pid}-{suffix}"
 
 
+def _deserialize_messages(raw: list[dict[str, Any]]) -> list[Any]:
+    """Convert a list of message dicts to typed Message objects.
+
+    Dispatches on the ``role`` field to create the appropriate Pydantic model.
+
+    Args:
+        raw: List of message dicts, each with a ``role`` key.
+
+    Returns:
+        List of typed Message objects (UserMessage, AssistantMessage, etc.).
+
+    Raises:
+        ValueError: If a message has an unknown role.
+    """
+    from orbiter.types import (  # pyright: ignore[reportMissingImports]
+        AssistantMessage,
+        SystemMessage,
+        ToolResult,
+        UserMessage,
+    )
+
+    _role_map = {
+        "user": UserMessage,
+        "assistant": AssistantMessage,
+        "system": SystemMessage,
+        "tool": ToolResult,
+    }
+
+    messages: list[Any] = []
+    for msg in raw:
+        role = msg.get("role", "")
+        cls = _role_map.get(role)
+        if cls is None:
+            raise ValueError(f"Unknown message role: {role!r}")
+        messages.append(cls(**msg))
+    return messages
+
+
 class Worker:
     """Claims tasks from a Redis queue, executes agents, and publishes events.
 
@@ -364,12 +402,13 @@ class Worker:
         from orbiter.runner import run  # pyright: ignore[reportMissingImports]
         from orbiter.types import StatusEvent, TextEvent  # pyright: ignore[reportMissingImports]
 
+        messages = _deserialize_messages(task.messages) if task.messages else None
         text_parts: list[str] = []
 
         async for event in run.stream(
             agent,
             task.input,
-            messages=None,
+            messages=messages,
             detailed=task.detailed,
         ):
             # Check for cancellation between steps

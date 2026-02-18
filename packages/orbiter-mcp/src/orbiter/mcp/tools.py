@@ -166,7 +166,16 @@ class MCPToolWrapper(Tool):
         namespace: Namespace prefix for the tool name.
     """
 
-    __slots__ = ("_call_fn", "_original_name", "_server_name", "description", "name", "parameters")
+    __slots__ = (
+        "_call_fn",
+        "_connection",
+        "_original_name",
+        "_server_config",
+        "_server_name",
+        "description",
+        "name",
+        "parameters",
+    )
 
     def __init__(
         self,
@@ -175,10 +184,13 @@ class MCPToolWrapper(Tool):
         call_fn: Any,
         *,
         namespace: str = DEFAULT_NAMESPACE,
+        server_config: Any | None = None,
     ) -> None:
         self._original_name = mcp_tool.name
         self._server_name = server_name
         self._call_fn = call_fn
+        self._server_config = server_config
+        self._connection = None
         self.name = namespace_tool_name(mcp_tool.name, server_name, namespace=namespace)
         self.description = mcp_tool.description or f"MCP tool: {mcp_tool.name}"
         self.parameters = extract_schema(mcp_tool)
@@ -193,8 +205,59 @@ class MCPToolWrapper(Tool):
         """The MCP server providing this tool."""
         return self._server_name
 
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize the MCP tool wrapper to a dict for distributed execution.
+
+        Returns:
+            A JSON-serializable dict with an ``__mcp_tool__`` marker.
+        """
+        data: dict[str, Any] = {
+            "__mcp_tool__": True,
+            "name": self.name,
+            "description": self.description,
+            "parameters": self.parameters,
+            "original_name": self._original_name,
+            "server_name": self._server_name,
+        }
+        if self._server_config is not None:
+            data["server_config"] = self._server_config.to_dict()
+        return data
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> MCPToolWrapper:
+        """Reconstruct an MCPToolWrapper from a dict produced by ``to_dict()``.
+
+        Uses ``object.__new__()`` to bypass ``__init__`` (which requires an
+        ``MCPTool`` instance). The ``_call_fn`` is left as ``None`` — on first
+        ``execute()`` the wrapper will lazily reconnect using ``_server_config``.
+
+        Args:
+            data: Dict as produced by ``to_dict()``.
+
+        Returns:
+            A reconstructed ``MCPToolWrapper`` instance.
+        """
+        from orbiter.mcp.client import MCPServerConfig
+
+        wrapper = object.__new__(cls)
+        wrapper.name = data["name"]
+        wrapper.description = data["description"]
+        wrapper.parameters = data["parameters"]
+        wrapper._original_name = data["original_name"]
+        wrapper._server_name = data["server_name"]
+        wrapper._call_fn = None
+        wrapper._connection = None
+        if "server_config" in data:
+            wrapper._server_config = MCPServerConfig.from_dict(data["server_config"])
+        else:
+            wrapper._server_config = None
+        return wrapper
+
     async def execute(self, **kwargs: Any) -> str | dict[str, Any]:
         """Execute the MCP tool via the server connection.
+
+        If ``_call_fn`` is ``None`` (e.g. after deserialization), attempts to
+        lazily reconnect using ``_server_config``.
 
         Args:
             **kwargs: Tool arguments forwarded to the MCP server.
@@ -205,6 +268,20 @@ class MCPToolWrapper(Tool):
         Raises:
             MCPToolError: If execution fails or the result indicates an error.
         """
+        if self._call_fn is None:
+            if self._server_config is not None:
+                from orbiter.mcp.client import MCPServerConnection
+
+                conn = MCPServerConnection(self._server_config)
+                await conn.connect()
+                self._connection = conn
+                self._call_fn = conn.call_tool
+            else:
+                raise MCPToolError(
+                    f"MCP tool '{self._original_name}' has no call function and no server config "
+                    "for reconnection. Cannot execute."
+                )
+
         try:
             result: CallToolResult = await self._call_fn(self._original_name, kwargs or None)
         except Exception as exc:
@@ -217,6 +294,13 @@ class MCPToolWrapper(Tool):
             raise MCPToolError(f"MCP tool '{self._original_name}' returned error: {error_text}")
 
         return _format_call_result(result)
+
+    async def cleanup(self) -> None:
+        """Close any owned connection created by lazy reconnection."""
+        if self._connection is not None:
+            await self._connection.cleanup()
+            self._connection = None
+            self._call_fn = None
 
 
 # ---------------------------------------------------------------------------
@@ -231,6 +315,7 @@ def convert_mcp_tools(
     *,
     namespace: str = DEFAULT_NAMESPACE,
     tool_filter: MCPToolFilter | None = None,
+    server_config: Any | None = None,
 ) -> list[MCPToolWrapper]:
     """Convert a list of MCP tools to Orbiter MCPToolWrapper instances.
 
@@ -240,6 +325,7 @@ def convert_mcp_tools(
         call_fn: Async callable ``(tool_name, arguments) -> CallToolResult``.
         namespace: Namespace prefix for tool names.
         tool_filter: Optional filter for including/excluding tools.
+        server_config: Optional MCPServerConfig for serialization support.
 
     Returns:
         List of MCPToolWrapper instances.
@@ -247,7 +333,10 @@ def convert_mcp_tools(
     if tool_filter:
         mcp_tools = tool_filter.apply(mcp_tools)
 
-    return [MCPToolWrapper(t, server_name, call_fn, namespace=namespace) for t in mcp_tools]
+    return [
+        MCPToolWrapper(t, server_name, call_fn, namespace=namespace, server_config=server_config)
+        for t in mcp_tools
+    ]
 
 
 async def load_tools_from_connection(
@@ -275,12 +364,15 @@ async def load_tools_from_connection(
     except Exception as exc:
         raise MCPToolError(f"Failed to list tools from server '{connection.name}': {exc}") from exc
 
+    server_config = getattr(connection, "config", None)
+
     return convert_mcp_tools(
         mcp_tools,
         connection.name,
         connection.call_tool,
         namespace=namespace,
         tool_filter=tool_filter,
+        server_config=server_config,
     )
 
 

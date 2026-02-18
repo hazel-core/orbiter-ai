@@ -14,6 +14,7 @@ from orbiter.distributed.models import (  # pyright: ignore[reportMissingImports
 )
 from orbiter.distributed.worker import (  # pyright: ignore[reportMissingImports]
     Worker,
+    _deserialize_messages,
     _generate_worker_id,
 )
 
@@ -420,3 +421,164 @@ class TestWorkerStart:
         w._broker.disconnect.assert_called_once()
         w._store.disconnect.assert_called_once()
         w._publisher.disconnect.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# _deserialize_messages
+# ---------------------------------------------------------------------------
+
+
+class TestDeserializeMessages:
+    def test_user_message(self) -> None:
+        from orbiter.types import UserMessage  # pyright: ignore[reportMissingImports]
+
+        result = _deserialize_messages([{"role": "user", "content": "hello"}])
+        assert len(result) == 1
+        assert isinstance(result[0], UserMessage)
+        assert result[0].content == "hello"
+
+    def test_assistant_message(self) -> None:
+        from orbiter.types import AssistantMessage  # pyright: ignore[reportMissingImports]
+
+        result = _deserialize_messages([{"role": "assistant", "content": "hi there"}])
+        assert len(result) == 1
+        assert isinstance(result[0], AssistantMessage)
+        assert result[0].content == "hi there"
+
+    def test_system_message(self) -> None:
+        from orbiter.types import SystemMessage  # pyright: ignore[reportMissingImports]
+
+        result = _deserialize_messages([{"role": "system", "content": "Be helpful"}])
+        assert len(result) == 1
+        assert isinstance(result[0], SystemMessage)
+        assert result[0].content == "Be helpful"
+
+    def test_tool_result(self) -> None:
+        from orbiter.types import ToolResult  # pyright: ignore[reportMissingImports]
+
+        result = _deserialize_messages([{
+            "role": "tool",
+            "tool_call_id": "tc-1",
+            "tool_name": "search",
+            "content": "found it",
+        }])
+        assert len(result) == 1
+        assert isinstance(result[0], ToolResult)
+        assert result[0].tool_call_id == "tc-1"
+        assert result[0].content == "found it"
+
+    def test_mixed_messages(self) -> None:
+        from orbiter.types import (  # pyright: ignore[reportMissingImports]
+            AssistantMessage,
+            SystemMessage,
+            UserMessage,
+        )
+
+        raw = [
+            {"role": "system", "content": "You are helpful"},
+            {"role": "user", "content": "Hello"},
+            {"role": "assistant", "content": "Hi!"},
+        ]
+        result = _deserialize_messages(raw)
+        assert len(result) == 3
+        assert isinstance(result[0], SystemMessage)
+        assert isinstance(result[1], UserMessage)
+        assert isinstance(result[2], AssistantMessage)
+
+    def test_unknown_role_raises(self) -> None:
+        with pytest.raises(ValueError, match="Unknown message role"):
+            _deserialize_messages([{"role": "unknown", "content": "bad"}])
+
+    def test_empty_list(self) -> None:
+        result = _deserialize_messages([])
+        assert result == []
+
+
+# ---------------------------------------------------------------------------
+# Worker._run_agent passes messages
+# ---------------------------------------------------------------------------
+
+
+class TestWorkerRunAgentMessages:
+    @pytest.mark.asyncio
+    async def test_passes_deserialized_messages(self) -> None:
+        """_run_agent passes deserialized messages from task.messages to run.stream."""
+        w = Worker("redis://localhost", worker_id="w1")
+        w._publisher = AsyncMock()
+
+        task = TaskPayload(
+            task_id="task-msg",
+            agent_config={"name": "agent", "model": "openai:gpt-4o"},
+            input="hello",
+            messages=[
+                {"role": "system", "content": "Be helpful"},
+                {"role": "user", "content": "previous question"},
+                {"role": "assistant", "content": "previous answer"},
+            ],
+        )
+
+        from orbiter.types import TextEvent  # pyright: ignore[reportMissingImports]
+
+        events = [TextEvent(text="response", agent_name="agent")]
+        mock_agent = MagicMock()
+        mock_run = MagicMock()
+
+        captured_kwargs: dict = {}
+
+        async def _fake_stream_gen(*a: object, **kw: object) -> object:
+            captured_kwargs.update(kw)
+            for ev in events:
+                yield ev
+
+        mock_run.stream = _fake_stream_gen
+
+        from orbiter.distributed.cancel import (  # pyright: ignore[reportMissingImports]
+            CancellationToken,
+        )
+
+        token = CancellationToken()
+        with patch("orbiter.runner.run", mock_run):
+            result = await w._run_agent(mock_agent, task, token)
+
+        assert result == "response"
+        # Verify messages were passed (not None)
+        assert captured_kwargs["messages"] is not None
+        assert len(captured_kwargs["messages"]) == 3
+
+    @pytest.mark.asyncio
+    async def test_empty_messages_passes_none(self) -> None:
+        """_run_agent passes None when task.messages is empty."""
+        w = Worker("redis://localhost", worker_id="w1")
+        w._publisher = AsyncMock()
+
+        task = TaskPayload(
+            task_id="task-empty",
+            agent_config={"name": "agent", "model": "openai:gpt-4o"},
+            input="hello",
+            messages=[],
+        )
+
+        from orbiter.types import TextEvent  # pyright: ignore[reportMissingImports]
+
+        events = [TextEvent(text="ok", agent_name="agent")]
+        mock_agent = MagicMock()
+        mock_run = MagicMock()
+
+        captured_kwargs: dict = {}
+
+        async def _fake_stream_gen(*a: object, **kw: object) -> object:
+            captured_kwargs.update(kw)
+            for ev in events:
+                yield ev
+
+        mock_run.stream = _fake_stream_gen
+
+        from orbiter.distributed.cancel import (  # pyright: ignore[reportMissingImports]
+            CancellationToken,
+        )
+
+        token = CancellationToken()
+        with patch("orbiter.runner.run", mock_run):
+            await w._run_agent(mock_agent, task, token)
+
+        assert captured_kwargs["messages"] is None

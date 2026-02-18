@@ -101,6 +101,52 @@ class MCPServerConfig:
         elif self.transport in (MCPTransport.SSE, MCPTransport.STREAMABLE_HTTP) and not self.url:
             raise MCPClientError(f"Server '{self.name}': {self.transport} transport requires 'url'")
 
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize all config fields to a plain dict.
+
+        Returns:
+            A JSON-serializable dict suitable for reconstruction via ``from_dict()``.
+        """
+        return {
+            "name": self.name,
+            "transport": str(self.transport),
+            "command": self.command,
+            "args": self.args,
+            "env": self.env,
+            "cwd": self.cwd,
+            "url": self.url,
+            "headers": self.headers,
+            "timeout": self.timeout,
+            "sse_read_timeout": self.sse_read_timeout,
+            "cache_tools": self.cache_tools,
+            "session_timeout": self.session_timeout,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> MCPServerConfig:
+        """Reconstruct an MCPServerConfig from a dict produced by ``to_dict()``.
+
+        Args:
+            data: Dict as produced by ``to_dict()``.
+
+        Returns:
+            A reconstructed ``MCPServerConfig`` instance.
+        """
+        return cls(
+            name=data["name"],
+            transport=data.get("transport", MCPTransport.STDIO),
+            command=data.get("command"),
+            args=data.get("args"),
+            env=data.get("env"),
+            cwd=data.get("cwd"),
+            url=data.get("url"),
+            headers=data.get("headers"),
+            timeout=data.get("timeout", 30.0),
+            sse_read_timeout=data.get("sse_read_timeout", 300.0),
+            cache_tools=data.get("cache_tools", False),
+            session_timeout=data.get("session_timeout", 120.0),
+        )
+
     def __repr__(self) -> str:
         return f"MCPServerConfig(name={self.name!r}, transport={self.transport!r})"
 

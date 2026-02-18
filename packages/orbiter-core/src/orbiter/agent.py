@@ -447,15 +447,25 @@ def _is_context_length_error(exc: Exception) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def _serialize_tool(t: Tool) -> str:
-    """Serialize a tool to an importable dotted path.
+def _serialize_tool(t: Tool) -> str | dict[str, Any]:
+    """Serialize a tool to an importable dotted path or a dict.
 
+    For ``MCPToolWrapper``, returns a dict with an ``__mcp_tool__`` marker.
     For ``FunctionTool``, uses the wrapped function's module and qualname.
     For custom ``Tool`` subclasses, uses the class's module and qualname.
 
     Raises:
         ValueError: If the tool cannot be serialized (e.g., closures, lambdas).
     """
+    # MCPToolWrapper — serialize as a dict with server config
+    try:
+        from orbiter.mcp.tools import MCPToolWrapper  # pyright: ignore[reportMissingImports]
+
+        if isinstance(t, MCPToolWrapper):
+            return t.to_dict()
+    except ImportError:
+        pass
+
     from orbiter.tool import FunctionTool
 
     if isinstance(t, FunctionTool):
@@ -487,8 +497,11 @@ def _serialize_tool(t: Tool) -> str:
     return f"{module}.{qualname}"
 
 
-def _deserialize_tool(path: str) -> Tool:
-    """Deserialize a tool from an importable dotted path.
+def _deserialize_tool(path: str | dict[str, Any]) -> Tool:
+    """Deserialize a tool from an importable dotted path or a dict.
+
+    If ``path`` is a dict with an ``__mcp_tool__`` marker, reconstructs an
+    ``MCPToolWrapper`` via ``from_dict()``.
 
     If the imported object is a callable (function), wraps it as a FunctionTool.
     If it's already a Tool instance, returns it directly.
@@ -497,6 +510,15 @@ def _deserialize_tool(path: str) -> Tool:
     Raises:
         ValueError: If the path cannot be imported or doesn't resolve to a tool.
     """
+    if isinstance(path, dict):
+        if path.get("__mcp_tool__"):
+            from orbiter.mcp.tools import (  # pyright: ignore[reportMissingImports]
+                MCPToolWrapper,
+            )
+
+            return MCPToolWrapper.from_dict(path)
+        raise ValueError(f"Unknown tool dict format: {path!r}")
+
     from orbiter.tool import FunctionTool
 
     obj = _import_object(path)

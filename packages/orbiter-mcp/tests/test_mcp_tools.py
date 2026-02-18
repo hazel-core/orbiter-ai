@@ -446,3 +446,208 @@ class TestLoadToolsFromClient:
 
         tools = await load_tools_from_client(client)
         assert tools == []
+
+
+# ---------------------------------------------------------------------------
+# MCPServerConfig serialization tests
+# ---------------------------------------------------------------------------
+
+
+class TestMCPServerConfigSerialization:
+    def test_to_dict_round_trip(self) -> None:
+        """MCPServerConfig survives to_dict/from_dict round-trip."""
+        from orbiter.mcp.client import MCPServerConfig  # pyright: ignore[reportMissingImports]
+
+        original = MCPServerConfig(
+            name="my-server",
+            transport="stdio",
+            command="python",
+            args=["-m", "server"],
+            env={"KEY": "val"},
+            cwd="/tmp",
+            timeout=10.0,
+            cache_tools=True,
+            session_timeout=60.0,
+        )
+        data = original.to_dict()
+        restored = MCPServerConfig.from_dict(data)
+
+        assert restored.name == original.name
+        assert restored.transport == original.transport
+        assert restored.command == original.command
+        assert restored.args == original.args
+        assert restored.env == original.env
+        assert restored.cwd == original.cwd
+        assert restored.timeout == original.timeout
+        assert restored.cache_tools == original.cache_tools
+        assert restored.session_timeout == original.session_timeout
+
+    def test_to_dict_sse_round_trip(self) -> None:
+        """SSE transport config round-trips correctly."""
+        from orbiter.mcp.client import MCPServerConfig  # pyright: ignore[reportMissingImports]
+
+        original = MCPServerConfig(
+            name="sse-server",
+            transport="sse",
+            url="http://localhost:8080/sse",
+            headers={"Authorization": "Bearer token"},
+            sse_read_timeout=600.0,
+        )
+        data = original.to_dict()
+        restored = MCPServerConfig.from_dict(data)
+
+        assert restored.url == original.url
+        assert restored.headers == original.headers
+        assert restored.sse_read_timeout == original.sse_read_timeout
+
+    def test_to_dict_json_serializable(self) -> None:
+        """to_dict() output is JSON-serializable."""
+        import json
+
+        from orbiter.mcp.client import MCPServerConfig  # pyright: ignore[reportMissingImports]
+
+        config = MCPServerConfig(name="srv", transport="stdio", command="echo")
+        data = config.to_dict()
+        json_str = json.dumps(data)
+        assert isinstance(json_str, str)
+
+
+# ---------------------------------------------------------------------------
+# MCPToolWrapper serialization tests
+# ---------------------------------------------------------------------------
+
+
+class TestMCPToolWrapperSerialization:
+    def test_to_dict_basic(self) -> None:
+        """MCPToolWrapper.to_dict() includes __mcp_tool__ marker."""
+        mcp_tool = _make_mcp_tool("search", "Search the web")
+        call_fn = AsyncMock()
+        wrapper = MCPToolWrapper(mcp_tool, "srv", call_fn)
+        data = wrapper.to_dict()
+
+        assert data["__mcp_tool__"] is True
+        assert data["name"] == wrapper.name
+        assert data["description"] == "Search the web"
+        assert data["original_name"] == "search"
+        assert data["server_name"] == "srv"
+        assert "server_config" not in data
+
+    def test_to_dict_with_server_config(self) -> None:
+        """MCPToolWrapper.to_dict() includes server_config when present."""
+        from orbiter.mcp.client import MCPServerConfig  # pyright: ignore[reportMissingImports]
+
+        config = MCPServerConfig(name="srv", transport="sse", url="http://localhost:8080")
+        mcp_tool = _make_mcp_tool("read", "Read data")
+        wrapper = MCPToolWrapper(mcp_tool, "srv", AsyncMock(), server_config=config)
+        data = wrapper.to_dict()
+
+        assert "server_config" in data
+        assert data["server_config"]["name"] == "srv"
+        assert data["server_config"]["url"] == "http://localhost:8080"
+
+    def test_from_dict_round_trip(self) -> None:
+        """MCPToolWrapper survives to_dict/from_dict round-trip."""
+        mcp_tool = _make_mcp_tool("search", "Search the web")
+        original = MCPToolWrapper(mcp_tool, "my_server", AsyncMock())
+        data = original.to_dict()
+        restored = MCPToolWrapper.from_dict(data)
+
+        assert restored.name == original.name
+        assert restored.description == original.description
+        assert restored.parameters == original.parameters
+        assert restored.original_name == original.original_name
+        assert restored.server_name == original.server_name
+        assert restored._call_fn is None  # No call function after deserialization
+
+    def test_from_dict_with_server_config(self) -> None:
+        """from_dict() reconstructs server_config."""
+        from orbiter.mcp.client import MCPServerConfig  # pyright: ignore[reportMissingImports]
+
+        config = MCPServerConfig(name="srv", transport="sse", url="http://localhost:8080")
+        mcp_tool = _make_mcp_tool("query", "Run a query")
+        original = MCPToolWrapper(mcp_tool, "srv", AsyncMock(), server_config=config)
+        data = original.to_dict()
+        restored = MCPToolWrapper.from_dict(data)
+
+        assert restored._server_config is not None
+        assert restored._server_config.name == "srv"
+        assert restored._server_config.url == "http://localhost:8080"
+
+
+class TestMCPToolWrapperLazyReconnect:
+    async def test_execute_no_call_fn_no_config_raises(self) -> None:
+        """execute() raises MCPToolError when no call_fn and no server_config."""
+        mcp_tool = _make_mcp_tool("test", "Test tool")
+        original = MCPToolWrapper(mcp_tool, "srv", AsyncMock())
+        data = original.to_dict()
+        restored = MCPToolWrapper.from_dict(data)
+
+        with pytest.raises(MCPToolError, match="no call function and no server config"):
+            await restored.execute(query="hello")
+
+    async def test_execute_lazy_reconnect(self) -> None:
+        """execute() lazily reconnects using server_config when _call_fn is None."""
+        from unittest.mock import patch
+
+        from orbiter.mcp.client import MCPServerConfig  # pyright: ignore[reportMissingImports]
+
+        config = MCPServerConfig(name="srv", transport="sse", url="http://localhost:8080")
+        mcp_tool = _make_mcp_tool("search", "Search")
+        original = MCPToolWrapper(mcp_tool, "srv", AsyncMock(), server_config=config)
+        data = original.to_dict()
+        restored = MCPToolWrapper.from_dict(data)
+
+        # Mock MCPServerConnection
+        mock_conn = MagicMock()
+        mock_conn.connect = AsyncMock()
+        mock_conn.call_tool = AsyncMock(return_value=_make_call_result("reconnected"))
+        mock_conn.cleanup = AsyncMock()
+
+        with patch("orbiter.mcp.client.MCPServerConnection", return_value=mock_conn):
+            result = await restored.execute(query="test")
+
+        assert result == "reconnected"
+        mock_conn.connect.assert_awaited_once()
+        assert restored._connection is mock_conn
+
+    async def test_cleanup_closes_owned_connection(self) -> None:
+        """cleanup() closes the connection created by lazy reconnect."""
+        from unittest.mock import patch
+
+        from orbiter.mcp.client import MCPServerConfig  # pyright: ignore[reportMissingImports]
+
+        config = MCPServerConfig(name="srv", transport="sse", url="http://localhost:8080")
+        mcp_tool = _make_mcp_tool("search", "Search")
+        original = MCPToolWrapper(mcp_tool, "srv", AsyncMock(), server_config=config)
+        data = original.to_dict()
+        restored = MCPToolWrapper.from_dict(data)
+
+        mock_conn = MagicMock()
+        mock_conn.connect = AsyncMock()
+        mock_conn.call_tool = AsyncMock(return_value=_make_call_result("ok"))
+        mock_conn.cleanup = AsyncMock()
+
+        with patch("orbiter.mcp.client.MCPServerConnection", return_value=mock_conn):
+            await restored.execute(query="test")
+
+        await restored.cleanup()
+        mock_conn.cleanup.assert_awaited_once()
+        assert restored._connection is None
+        assert restored._call_fn is None
+
+
+class TestLoadToolsServerConfig:
+    async def test_load_tools_from_connection_passes_config(self) -> None:
+        """load_tools_from_connection passes connection.config as server_config."""
+        from orbiter.mcp.client import MCPServerConfig  # pyright: ignore[reportMissingImports]
+
+        config = MCPServerConfig(name="srv", transport="stdio", command="echo")
+        conn = MagicMock()
+        conn.name = "srv"
+        conn.config = config
+        conn.list_tools = AsyncMock(return_value=[_make_mcp_tool("search")])
+        conn.call_tool = AsyncMock()
+
+        tools = await load_tools_from_connection(conn)
+        assert len(tools) == 1
+        assert tools[0]._server_config is config

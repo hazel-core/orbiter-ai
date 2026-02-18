@@ -434,3 +434,142 @@ class TestSerializationHelpers:
         lam = FunctionTool(lambda x: x, name="lam")
         with pytest.raises(ValueError, match="closure or lambda"):
             _serialize_tool(lam)
+
+    def test_deserialize_unknown_dict_raises(self) -> None:
+        """Deserializing an unknown dict format raises ValueError."""
+        with pytest.raises(ValueError, match="Unknown tool dict format"):
+            _deserialize_tool({"unknown": True})
+
+
+# ---------------------------------------------------------------------------
+# MCPToolWrapper serialization tests
+# ---------------------------------------------------------------------------
+
+
+class TestMCPToolWrapperSerialization:
+    def test_serialize_mcp_tool_returns_dict(self) -> None:
+        """MCPToolWrapper serializes to a dict with __mcp_tool__ marker."""
+        from unittest.mock import AsyncMock
+
+        from mcp.types import Tool as MCPTool
+
+        from orbiter.mcp.tools import MCPToolWrapper
+
+        mcp_tool = MCPTool(
+            name="search",
+            description="Search the web",
+            inputSchema={"type": "object", "properties": {"q": {"type": "string"}}},
+        )
+        wrapper = MCPToolWrapper(mcp_tool, "my_server", AsyncMock())
+        result = _serialize_tool(wrapper)
+        assert isinstance(result, dict)
+        assert result["__mcp_tool__"] is True
+        assert result["original_name"] == "search"
+        assert result["server_name"] == "my_server"
+
+    def test_mcp_tool_round_trip(self) -> None:
+        """MCPToolWrapper survives _serialize_tool / _deserialize_tool round-trip."""
+        from unittest.mock import AsyncMock
+
+        from mcp.types import Tool as MCPTool
+
+        from orbiter.mcp.tools import MCPToolWrapper
+
+        mcp_tool = MCPTool(
+            name="read_file",
+            description="Read a file",
+            inputSchema={
+                "type": "object",
+                "properties": {"path": {"type": "string"}},
+                "required": ["path"],
+            },
+        )
+        original = MCPToolWrapper(mcp_tool, "fs_server", AsyncMock())
+        serialized = _serialize_tool(original)
+        restored = _deserialize_tool(serialized)
+
+        assert isinstance(restored, MCPToolWrapper)
+        assert restored.name == original.name
+        assert restored.description == original.description
+        assert restored.parameters == original.parameters
+        assert restored.original_name == original.original_name
+        assert restored.server_name == original.server_name
+
+    def test_mcp_tool_json_round_trip(self) -> None:
+        """MCPToolWrapper survives JSON serialization round-trip."""
+        from unittest.mock import AsyncMock
+
+        from mcp.types import Tool as MCPTool
+
+        from orbiter.mcp.client import MCPServerConfig
+        from orbiter.mcp.tools import MCPToolWrapper
+
+        config = MCPServerConfig(name="srv", transport="sse", url="http://localhost:8080")
+        mcp_tool = MCPTool(
+            name="query",
+            description="Run a query",
+            inputSchema={"type": "object", "properties": {}},
+        )
+        original = MCPToolWrapper(mcp_tool, "srv", AsyncMock(), server_config=config)
+        serialized = _serialize_tool(original)
+        json_str = json.dumps(serialized)
+        data = json.loads(json_str)
+        restored = _deserialize_tool(data)
+
+        assert isinstance(restored, MCPToolWrapper)
+        assert restored.name == original.name
+        assert restored._server_config is not None
+        assert restored._server_config.name == "srv"
+        assert restored._server_config.url == "http://localhost:8080"
+
+    def test_agent_with_mcp_tools_round_trip(self) -> None:
+        """Agent with MCPToolWrapper tools survives to_dict/from_dict."""
+        from unittest.mock import AsyncMock
+
+        from mcp.types import Tool as MCPTool
+
+        from orbiter.mcp.tools import MCPToolWrapper
+
+        mcp_tool = MCPTool(
+            name="search",
+            description="Search",
+            inputSchema={"type": "object", "properties": {}},
+        )
+        wrapper = MCPToolWrapper(mcp_tool, "srv", AsyncMock())
+        agent = Agent(name="mcp-agent", tools=[wrapper])
+        data = agent.to_dict()
+
+        # Verify the tool is serialized as a dict
+        assert isinstance(data["tools"][0], dict)
+        assert data["tools"][0]["__mcp_tool__"] is True
+
+        # Reconstruct
+        restored = Agent.from_dict(data)
+        assert len(restored.tools) == 1
+        tool_name = list(restored.tools.keys())[0]
+        assert "search" in tool_name
+
+    def test_agent_with_mixed_tools_round_trip(self) -> None:
+        """Agent with both regular and MCP tools round-trips correctly."""
+        from unittest.mock import AsyncMock
+
+        from mcp.types import Tool as MCPTool
+
+        from orbiter.mcp.tools import MCPToolWrapper
+
+        mcp_tool = MCPTool(
+            name="mcp_search",
+            description="MCP Search",
+            inputSchema={"type": "object", "properties": {}},
+        )
+        mcp_wrapper = MCPToolWrapper(mcp_tool, "srv", AsyncMock())
+        agent = Agent(name="mixed", tools=[search, mcp_wrapper])
+        data = agent.to_dict()
+
+        # One should be a string (FunctionTool), one a dict (MCPToolWrapper)
+        types = {type(t) for t in data["tools"]}
+        assert str in types
+        assert dict in types
+
+        restored = Agent.from_dict(data)
+        assert len(restored.tools) == 2
