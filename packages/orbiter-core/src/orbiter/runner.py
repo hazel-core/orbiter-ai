@@ -443,11 +443,15 @@ def _resolve_provider(agent: Any) -> Any:
     Returns ``None`` if auto-resolution fails (call_runner will then
     let Agent.run() raise its own error for missing provider).
     """
+    import logging
+
+    log = logging.getLogger(__name__)
     try:
         from orbiter.models.provider import get_provider  # pyright: ignore[reportMissingImports]
 
         return get_provider(agent.model)
-    except Exception:
+    except Exception as exc:
+        log.warning("Failed to auto-resolve provider for model '%s': %s", agent.model, exc)
         return None
 
 

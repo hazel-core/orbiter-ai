@@ -13,9 +13,11 @@ import orbiter.models as models  # pyright: ignore[reportMissingImports]
 import orbiter.models.types as model_types  # pyright: ignore[reportMissingImports]
 from orbiter.models import (  # pyright: ignore[reportMissingImports]
     AnthropicProvider,
+    GeminiProvider,
     ModelError,
     ModelProvider,
     OpenAIProvider,
+    VertexProvider,
     get_provider,
     model_registry,
 )
@@ -23,12 +25,14 @@ from orbiter.models import (  # pyright: ignore[reportMissingImports]
 EXPECTED_ALL = [
     "AnthropicProvider",
     "FinishReason",
+    "GeminiProvider",
     "ModelError",
     "ModelProvider",
     "ModelResponse",
     "OpenAIProvider",
     "StreamChunk",
     "ToolCallDelta",
+    "VertexProvider",
     "get_provider",
     "model_registry",
 ]
@@ -76,10 +80,20 @@ class TestAutoRegistration:
         assert "anthropic" in model_registry
         assert model_registry.get("anthropic") is AnthropicProvider
 
-    def test_registry_lists_both(self) -> None:
+    def test_gemini_registered(self) -> None:
+        assert "gemini" in model_registry
+        assert model_registry.get("gemini") is GeminiProvider
+
+    def test_vertex_registered(self) -> None:
+        assert "vertex" in model_registry
+        assert model_registry.get("vertex") is VertexProvider
+
+    def test_registry_lists_all(self) -> None:
         all_providers = model_registry.list_all()
         assert "openai" in all_providers
         assert "anthropic" in all_providers
+        assert "gemini" in all_providers
+        assert "vertex" in all_providers
 
 
 class TestGetProviderEndToEnd:
