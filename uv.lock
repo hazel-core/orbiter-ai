@@ -1063,6 +1063,32 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/83/1d/d6466de3a5249d35e832a52834115ca9d1d0de6abc22065f049707516d47/google_auth-2.48.0-py3-none-any.whl", hash = "sha256:2e2a537873d449434252a9632c28bfc268b0adb1e53f9fb62afc5333a975903f", size = 236499, upload-time = "2026-01-26T19:22:45.099Z" },
 ]
 
+[package.optional-dependencies]
+requests = [
+    { name = "requests" },
+]
+
+[[package]]
+name = "google-genai"
+version = "1.63.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "anyio" },
+    { name = "distro" },
+    { name = "google-auth", extra = ["requests"] },
+    { name = "httpx" },
+    { name = "pydantic" },
+    { name = "requests" },
+    { name = "sniffio" },
+    { name = "tenacity" },
+    { name = "typing-extensions" },
+    { name = "websockets" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/46/d7/07ec5dadd0741f09e89f3ff5f0ce051ce2aa3a76797699d661dc88def077/google_genai-1.63.0.tar.gz", hash = "sha256:dc76cab810932df33cbec6c7ef3ce1538db5bef27aaf78df62ac38666c476294", size = 491970, upload-time = "2026-02-11T23:46:28.472Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/82/c8/ba32159e553fab787708c612cf0c3a899dafe7aca81115d841766e3bfe69/google_genai-1.63.0-py3-none-any.whl", hash = "sha256:6206c13fc20f332703ca7375bea7c191c82f95d6781c29936c6982d86599b359", size = 724747, upload-time = "2026-02-11T23:46:26.697Z" },
+]
+
 [[package]]
 name = "googleapis-common-protos"
 version = "1.72.0"
@@ -2611,6 +2637,8 @@ version = "0.1.0"
 source = { editable = "packages/orbiter-models" }
 dependencies = [
     { name = "anthropic" },
+    { name = "google-auth" },
+    { name = "google-genai" },
     { name = "openai" },
     { name = "orbiter-core" },
 ]
@@ -2618,6 +2646,8 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "anthropic", specifier = ">=0.39" },
+    { name = "google-auth", specifier = ">=2.0" },
+    { name = "google-genai", specifier = ">=1.0" },
     { name = "openai", specifier = ">=1.0" },
     { name = "orbiter-core", editable = "packages/orbiter-core" },
 ]
@@ -2722,7 +2752,7 @@ dependencies = [
     { name = "httpx" },
     { name = "orbiter-core" },
     { name = "orbiter-models" },
-    { name = "uvicorn" },
+    { name = "uvicorn", extra = ["standard"] },
 ]
 
 [package.metadata]
@@ -2735,7 +2765,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.27" },
     { name = "orbiter-core", editable = "packages/orbiter-core" },
     { name = "orbiter-models", editable = "packages/orbiter-models" },
-    { name = "uvicorn", specifier = ">=0.30" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.30" },
 ]
 
 [[package]]

@@ -5,7 +5,7 @@ description = "Orbiter Web — AI agent platform UI and API server"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115",
-    "uvicorn>=0.30",
+    "uvicorn[standard]>=0.30",
     "aiosqlite>=0.20",
     "bcrypt>=4.0",
     "cryptography>=42.0",
