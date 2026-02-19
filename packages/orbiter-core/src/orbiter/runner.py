@@ -38,6 +38,7 @@ from orbiter.observability.semconv import (  # pyright: ignore[reportMissingImpo
 from orbiter.types import (
     AssistantMessage,
     ErrorEvent,
+    MCPProgressEvent,
     Message,
     RunResult,
     StatusEvent,
@@ -487,6 +488,32 @@ async def _stream(
             tool_exec_start = time.time()
             tool_results = await agent._execute_tools(actions)
             tool_exec_end = time.time()
+
+            # Drain MCP progress queues and yield MCPProgressEvent items.
+            # Progress notifications are captured by MCPToolWrapper.execute()
+            # into per-wrapper asyncio.Queue instances during _execute_tools().
+            # They are yielded here (after all tools complete) so the LLM
+            # never sees them — only the caller's async-for loop does.
+            for action in actions:
+                tool = agent.tools.get(action.tool_name)
+                if tool is not None and hasattr(tool, "progress_queue"):
+                    q = tool.progress_queue
+                    while not q.empty():
+                        try:
+                            progress_evt: MCPProgressEvent = q.get_nowait()
+                            # Stamp agent_name if not already set
+                            if not progress_evt.agent_name:
+                                progress_evt = MCPProgressEvent(
+                                    tool_name=progress_evt.tool_name,
+                                    progress=progress_evt.progress,
+                                    total=progress_evt.total,
+                                    message=progress_evt.message,
+                                    agent_name=agent.name,
+                                )
+                            if _passes_filter(progress_evt):
+                                yield progress_evt
+                        except Exception:
+                            break
 
             # Emit ToolResultEvent for each tool execution when detailed
             if detailed:

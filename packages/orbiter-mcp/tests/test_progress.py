@@ -1,8 +1,9 @@
-"""Tests for MCP progress notification capture (US-028)."""
+"""Tests for MCP progress notification capture (US-028) and stream wiring (US-029)."""
 
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -346,3 +347,322 @@ class TestMCPToolWrapperProgressQueue:
         assert result == "ok"
         # Callback should be None when import fails
         assert captured[0] is None
+
+
+# ---------------------------------------------------------------------------
+# US-029: agent.stream() yields MCPProgressEvent from tool progress queues
+# ---------------------------------------------------------------------------
+
+
+class _FakeStreamChunk:
+    """Minimal stream chunk for testing."""
+
+    def __init__(
+        self,
+        delta: str = "",
+        tool_call_deltas: list[Any] | None = None,
+        finish_reason: str | None = None,
+        usage: Any = None,
+    ) -> None:
+        self.delta = delta
+        self.tool_call_deltas = tool_call_deltas or []
+        self.finish_reason = finish_reason
+
+        class _U:
+            input_tokens = 0
+            output_tokens = 0
+            total_tokens = 0
+
+        self.usage = usage or _U()
+
+
+class _FakeToolCallDelta:
+    def __init__(
+        self,
+        index: int = 0,
+        id: str | None = None,
+        name: str | None = None,
+        arguments: str = "",
+    ) -> None:
+        self.index = index
+        self.id = id
+        self.name = name
+        self.arguments = arguments
+
+
+def _make_stream_provider(stream_rounds: list[list[_FakeStreamChunk]]) -> Any:
+    call_count = 0
+
+    async def stream(messages: Any, **kwargs: Any) -> AsyncIterator[Any]:
+        nonlocal call_count
+        chunks = stream_rounds[min(call_count, len(stream_rounds) - 1)]
+        call_count += 1
+        for c in chunks:
+            yield c
+
+    mock = AsyncMock()
+    mock.stream = stream
+    mock.complete = AsyncMock()
+    return mock
+
+
+class TestMCPProgressEventInStream:
+    """agent.stream() drains MCPToolWrapper progress queues and yields MCPProgressEvents."""
+
+    @pytest.mark.asyncio
+    async def test_stream_yields_progress_events_from_mcp_tool(self) -> None:
+        """MCPProgressEvent items appear in the stream after tool execution."""
+        from orbiter.agent import Agent
+        from orbiter.runner import run
+        from orbiter.types import MCPProgressEvent, TextEvent, ToolCallEvent
+
+        # Build an MCPToolWrapper whose call_fn fires progress notifications
+        mcp_tool = _make_mcp_tool(name="search")
+
+        async def mock_call_fn(
+            name: str, args: Any, *, progress_callback: Any = None
+        ) -> CallToolResult:
+            if progress_callback is not None:
+                await progress_callback(1.0, 2.0, "step 1")
+                await progress_callback(2.0, 2.0, "step 2")
+            return _make_call_result("search results")
+
+        wrapper = MCPToolWrapper(mcp_tool, "srv", mock_call_fn)
+        # wrapper.name is "mcp__srv__search"
+
+        agent = Agent(name="searcher", tools=[wrapper], memory=None, context=None)
+
+        # Round 1: LLM calls the mcp tool
+        tool_name = wrapper.name  # "mcp__srv__search"
+        round1 = [
+            _FakeStreamChunk(
+                tool_call_deltas=[
+                    _FakeToolCallDelta(index=0, id="tc1", name=tool_name),
+                ]
+            ),
+            _FakeStreamChunk(
+                tool_call_deltas=[
+                    _FakeToolCallDelta(index=0, arguments='{"q": "hello"}'),
+                ],
+                finish_reason="tool_calls",
+            ),
+        ]
+        # Round 2: text response after tool
+        round2 = [_FakeStreamChunk(delta="Done!")]
+        provider = _make_stream_provider([round1, round2])
+
+        events = [ev async for ev in run.stream(agent, "search for hello", provider=provider)]
+
+        progress_events = [e for e in events if isinstance(e, MCPProgressEvent)]
+        text_events = [e for e in events if isinstance(e, TextEvent)]
+        tool_call_events = [e for e in events if isinstance(e, ToolCallEvent)]
+
+        assert len(tool_call_events) == 1
+        assert tool_call_events[0].tool_name == tool_name
+
+        assert len(progress_events) == 2
+        assert progress_events[0].progress == 1
+        assert progress_events[0].total == 2
+        assert progress_events[0].message == "step 1"
+        assert progress_events[1].progress == 2
+        assert progress_events[1].total == 2
+        assert progress_events[1].message == "step 2"
+
+        assert len(text_events) == 1
+        assert text_events[0].text == "Done!"
+
+    @pytest.mark.asyncio
+    async def test_stream_progress_events_have_agent_name(self) -> None:
+        """MCPProgressEvent items yielded from stream carry the agent's name."""
+        from orbiter.agent import Agent
+        from orbiter.runner import run
+        from orbiter.types import MCPProgressEvent
+
+        mcp_tool = _make_mcp_tool(name="lookup")
+
+        async def mock_call_fn(
+            name: str, args: Any, *, progress_callback: Any = None
+        ) -> CallToolResult:
+            if progress_callback is not None:
+                await progress_callback(5.0, None, "processing")
+            return _make_call_result("data")
+
+        wrapper = MCPToolWrapper(mcp_tool, "srv", mock_call_fn)
+        agent = Agent(name="myagent", tools=[wrapper], memory=None, context=None)
+
+        tool_name = wrapper.name
+        round1 = [
+            _FakeStreamChunk(tool_call_deltas=[_FakeToolCallDelta(index=0, id="tc1", name=tool_name)]),
+            _FakeStreamChunk(tool_call_deltas=[_FakeToolCallDelta(index=0, arguments="{}")], finish_reason="tool_calls"),
+        ]
+        round2 = [_FakeStreamChunk(delta="ok")]
+        provider = _make_stream_provider([round1, round2])
+
+        events = [ev async for ev in run.stream(agent, "lookup", provider=provider)]
+
+        progress_events = [e for e in events if isinstance(e, MCPProgressEvent)]
+        assert len(progress_events) == 1
+        assert progress_events[0].agent_name == "myagent"
+
+    @pytest.mark.asyncio
+    async def test_stream_no_progress_when_tool_emits_none(self) -> None:
+        """When MCP tool emits no progress, stream has no MCPProgressEvent items."""
+        from orbiter.agent import Agent
+        from orbiter.runner import run
+        from orbiter.types import MCPProgressEvent, TextEvent
+
+        mcp_tool = _make_mcp_tool(name="search")
+        call_fn = AsyncMock(return_value=_make_call_result("result"))
+        wrapper = MCPToolWrapper(mcp_tool, "srv", call_fn)
+        agent = Agent(name="bot", tools=[wrapper], memory=None, context=None)
+
+        tool_name = wrapper.name
+        round1 = [
+            _FakeStreamChunk(tool_call_deltas=[_FakeToolCallDelta(index=0, id="tc1", name=tool_name)]),
+            _FakeStreamChunk(tool_call_deltas=[_FakeToolCallDelta(index=0, arguments='{"q":"x"}')], finish_reason="tool_calls"),
+        ]
+        round2 = [_FakeStreamChunk(delta="done")]
+        provider = _make_stream_provider([round1, round2])
+
+        events = [ev async for ev in run.stream(agent, "go", provider=provider)]
+
+        progress_events = [e for e in events if isinstance(e, MCPProgressEvent)]
+        assert len(progress_events) == 0
+        assert any(isinstance(e, TextEvent) for e in events)
+
+    @pytest.mark.asyncio
+    async def test_run_does_not_yield_progress_events(self) -> None:
+        """agent.run() (non-streaming) never surfaces MCPProgressEvent — no yield mechanism."""
+        from orbiter.agent import Agent
+        from orbiter.runner import run
+        from orbiter.types import AgentOutput, MCPProgressEvent, ToolCall, Usage
+
+        mcp_tool = _make_mcp_tool(name="search")
+
+        async def mock_call_fn(
+            name: str, args: Any, *, progress_callback: Any = None
+        ) -> CallToolResult:
+            if progress_callback is not None:
+                await progress_callback(1.0, 1.0, "done")
+            return _make_call_result("result")
+
+        wrapper = MCPToolWrapper(mcp_tool, "srv", mock_call_fn)
+        # run() returns RunResult (not a stream) so MCPProgressEvent cannot appear in it
+        agent = Agent(name="bot", tools=[wrapper], memory=None, context=None)
+
+        tool_name = wrapper.name
+        call_count = 0
+
+        async def complete(messages: Any, **kwargs: Any) -> Any:
+            nonlocal call_count
+
+            if call_count == 0:
+                call_count += 1
+                resp = AgentOutput(
+                    text="",
+                    tool_calls=[ToolCall(id="tc1", name=tool_name, arguments='{"q":"x"}')],
+                    usage=Usage(),
+                )
+            else:
+                resp = AgentOutput(text="done!", tool_calls=[], usage=Usage())
+
+            class FakeResponse:
+                content = resp.text
+                tool_calls = resp.tool_calls
+                usage = resp.usage
+
+            return FakeResponse()
+
+        mock_provider = AsyncMock()
+        mock_provider.complete = complete
+
+        result = await run(agent, "search something", provider=mock_provider)
+
+        # run() returns a RunResult, not a stream — MCPProgressEvent items are
+        # internal to the tool execution and never appear in the result
+        assert result.output == "done!"
+        # Progress items are accumulated in wrapper.progress_queue (not surfaced)
+        # They won't have been drained since we're in run(), not stream()
+        # The queue holds the event; it was captured but not yielded
+        assert isinstance(wrapper.progress_queue.get_nowait(), MCPProgressEvent)
+
+    @pytest.mark.asyncio
+    async def test_progress_events_come_before_final_text(self) -> None:
+        """MCPProgressEvent items appear before the final TextEvent in the stream."""
+        from orbiter.agent import Agent
+        from orbiter.runner import run
+        from orbiter.types import MCPProgressEvent, TextEvent
+
+        mcp_tool = _make_mcp_tool(name="search")
+
+        async def mock_call_fn(
+            name: str, args: Any, *, progress_callback: Any = None
+        ) -> CallToolResult:
+            if progress_callback is not None:
+                await progress_callback(1.0, 1.0, "searching")
+            return _make_call_result("done")
+
+        wrapper = MCPToolWrapper(mcp_tool, "srv", mock_call_fn)
+        agent = Agent(name="bot", tools=[wrapper], memory=None, context=None)
+
+        tool_name = wrapper.name
+        round1 = [
+            _FakeStreamChunk(tool_call_deltas=[_FakeToolCallDelta(index=0, id="tc1", name=tool_name)]),
+            _FakeStreamChunk(tool_call_deltas=[_FakeToolCallDelta(index=0, arguments='{"q":"y"}')], finish_reason="tool_calls"),
+        ]
+        round2 = [_FakeStreamChunk(delta="Final answer")]
+        provider = _make_stream_provider([round1, round2])
+
+        events = [ev async for ev in run.stream(agent, "search", provider=provider)]
+
+        # Find indices of progress and text events
+        progress_idx = [i for i, e in enumerate(events) if isinstance(e, MCPProgressEvent)]
+        text_idx = [i for i, e in enumerate(events) if isinstance(e, TextEvent)]
+
+        assert len(progress_idx) == 1
+        assert len(text_idx) == 1
+        # Progress event must appear before the text response
+        assert progress_idx[0] < text_idx[0]
+
+    @pytest.mark.asyncio
+    async def test_stream_progress_queue_drained_after_each_tool_call_round(self) -> None:
+        """After each tool-call round, the progress queue is fully drained."""
+        from orbiter.agent import Agent
+        from orbiter.runner import run
+        from orbiter.types import MCPProgressEvent
+
+        mcp_tool = _make_mcp_tool(name="search")
+        call_count = 0
+
+        async def mock_call_fn(
+            name: str, args: Any, *, progress_callback: Any = None
+        ) -> CallToolResult:
+            nonlocal call_count
+            call_count += 1
+            if progress_callback is not None:
+                await progress_callback(float(call_count), 2.0, f"call {call_count}")
+            return _make_call_result(f"result {call_count}")
+
+        wrapper = MCPToolWrapper(mcp_tool, "srv", mock_call_fn)
+        agent = Agent(name="bot", tools=[wrapper], memory=None, context=None)
+
+        tool_name = wrapper.name
+
+        def _tool_round(args: str) -> list[_FakeStreamChunk]:
+            return [
+                _FakeStreamChunk(tool_call_deltas=[_FakeToolCallDelta(index=0, id="tc1", name=tool_name)]),
+                _FakeStreamChunk(tool_call_deltas=[_FakeToolCallDelta(index=0, arguments=args)], finish_reason="tool_calls"),
+            ]
+
+        rounds = [_tool_round('{"q":"a"}'), _tool_round('{"q":"b"}'), [_FakeStreamChunk(delta="final")]]
+        provider = _make_stream_provider(rounds)
+
+        events = [ev async for ev in run.stream(agent, "go", provider=provider)]
+
+        progress_events = [e for e in events if isinstance(e, MCPProgressEvent)]
+        # Two tool rounds → two progress notifications
+        assert len(progress_events) == 2
+        assert progress_events[0].message == "call 1"
+        assert progress_events[1].message == "call 2"
+        # Queue should be fully drained
+        assert wrapper.progress_queue.empty()
