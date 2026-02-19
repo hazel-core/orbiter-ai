@@ -2,6 +2,28 @@
 Started: Thu Feb 19 11:52:28 PM IST 2026
 ---
 
+## 2026-02-20 - US-025
+- Added `allow_self_spawn: bool = False` and `max_spawn_depth: int = 3` parameters to `Agent.__init__`
+- Added `self._spawn_depth: int = 0` and `self._current_provider: Any = None` internal attributes to `Agent.__init__`
+- Added `def _make_spawn_self_tool(self) -> Tool` method to `Agent`: creates a `FunctionTool` closure capturing `parent = self`
+- `spawn_self(task: str)` closure: returns error string when `_spawn_depth >= max_spawn_depth`; returns error string when `_current_provider is None`; builds child tools (excludes `spawn_self`); creates fresh `AgentMemory(short_term=ShortTermMemory(), long_term=parent.memory.long_term)` sharing parent's long_term store; creates child `Agent` with `allow_self_spawn=False`, `_spawn_depth = parent._spawn_depth + 1`; awaits `child_agent.run(task, provider=provider)` and returns result text
+- In `Agent.__init__`: when `allow_self_spawn=True`, calls `self._register_tool(self._make_spawn_self_tool())` after tools/handoffs block
+- Refactored `Agent.run()` to extract body into `Agent._run_inner()`: `run()` sets `self._current_provider = provider`, calls `_run_inner()` in try/finally, clears `_current_provider = None` in finally block — ensures cleanup even on exceptions
+- Added `from orbiter.tool import FunctionTool` to top-level imports (needed by `_make_spawn_self_tool`)
+- Created `packages/orbiter-core/tests/test_self_spawn.py` with 21 tests across 4 classes: `TestSelfSpawnInit` (8), `TestSpawnSelfGuards` (4), `TestSpawnedAgentProperties` (6), `TestProviderLifecycle` (3)
+- All 894 orbiter-core tests pass; only pre-existing pyright error at agent.py (MCPToolWrapper.to_dict) unrelated to changes
+- Files changed:
+  - packages/orbiter-core/src/orbiter/agent.py (FunctionTool import; allow_self_spawn/max_spawn_depth params; _spawn_depth/_current_provider attrs; _make_spawn_self_tool(); register spawn_self in __init__; run()/\_run_inner() refactor)
+  - packages/orbiter-core/tests/test_self_spawn.py (new file)
+- **Learnings for future iterations:**
+  - `_current_provider` must be cleaned up in `try/finally` inside `run()` — the cleanest way is to extract the body into `_run_inner()` and wrap the delegation in try/finally (avoids duplicate cleanup at each return point)
+  - The `spawn_self` tool is a closure that captures `parent = self` — it accesses `parent._current_provider` at call time, not at creation time, so it always sees the current run's provider
+  - When building child tools, filter out `spawn_self` by name (`[t for name, t in parent.tools.items() if name != "spawn_self"]`) to prevent accidental re-registration in the child
+  - `parent.memory is None` vs `parent.memory is not _MEMORY_UNSET` — by the time spawn_self runs, `parent.memory` is always resolved (never `_MEMORY_UNSET`); the condition `parent.memory is None` correctly handles the disabled-memory case
+  - `_spawn_depth` is set as `child_agent._spawn_depth = parent._spawn_depth + 1` AFTER `Agent()` construction (since it's not a constructor parameter) — safe because no code runs between construction and spawning
+  - `FunctionTool` must be imported at agent.py module level (not lazily) since `_make_spawn_self_tool()` is called during `__init__` — lazy import inside the method would work too, but module-level is cleaner
+---
+
 ## 2026-02-20 - US-024
 - Added `self._tools_lock: asyncio.Lock = asyncio.Lock()` to `Agent.__init__` (between handoffs block and hooks block)
 - Added `async def add_tool(self, tool: Tool) -> None`: acquires `_tools_lock`, calls `_register_tool()` (raises on duplicate)
