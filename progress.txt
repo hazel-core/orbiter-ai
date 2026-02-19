@@ -175,6 +175,18 @@ Started: Fri Feb 20 03:26:33 AM IST 2026
   - No HandoffEvent or ToolCall is emitted for handoffs in Orbiter; only the routing output ("poet") appears as an AssistantMessage in messages
 ---
 
+## 2026-02-20 - US-INT-013
+- What was implemented: Dynamic tool loading integration tests — verifies add_tool() makes tool available immediately, remove_tool() makes it unavailable, and concurrent add_tool() calls are safe
+- Files changed:
+  - `tests/integration/test_dynamic_loading.py` (new)
+- **Learnings for future iterations:**
+  - `agent.add_tool(tool)` is async (acquires `_tools_lock`); `agent.remove_tool(name)` is sync (dict del is atomic in CPython asyncio)
+  - `FunctionTool(fn)` creates a tool from any callable; override name via `fn.__name__ = "tool_name"` before passing to FunctionTool
+  - `_register_tool` raises `AgentError` on duplicate names — no silent overwrite
+  - `test_concurrent_add_tool_no_race_condition` needs no LLM call; purely tests asyncio safety of `_tools_lock`
+  - `agent.tools` is a `dict[str, Tool]`; check presence with `"tool_name" in agent.tools`
+---
+
 ## 2026-02-20 - US-INT-012
 - What was implemented: Agent self-spawn integration tests — verifies parent agent spawns children and depth limit is enforced
 - Files changed:
