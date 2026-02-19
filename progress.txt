@@ -2,6 +2,22 @@
 Started: Thu Feb 19 11:52:28 PM IST 2026
 ---
 
+## 2026-02-20 - US-020
+- Verified PostgresMemoryStore already has complete implementations of `add()`, `get()`, `search()`, `clear()`, `count()`, `_row_to_item()`, `_extra_fields()` using asyncpg
+- Added `get_recent(n, *, metadata)` method to PostgresMemoryStore — returns N most recently created items (newest first), supports optional metadata filter (user_id, session_id, task_id, agent_id)
+- Added `TestGetRecent` class (4 tests) to `test_postgres.py`: returns items, metadata scoping, empty result, default n=10
+- Added `TestAgentIntegration` class (2 tests) to `test_postgres.py`: Agent with AgentMemory(long_term=PostgresMemoryStore) wiring test + add/search end-to-end with mocked asyncpg
+- Confirmed asyncpg already listed as optional dep in pyproject.toml (`postgres = ["asyncpg>=0.29"]`)
+- All 317 orbiter-memory tests pass (6 skipped); 0 pyright errors
+- Files changed:
+  - packages/orbiter-memory/src/orbiter/memory/backends/postgres.py (added get_recent())
+  - packages/orbiter-memory/tests/test_postgres.py (TestGetRecent + TestAgentIntegration)
+- **Learnings for future iterations:**
+  - `PostgresMemoryStore` constructor uses `dsn` parameter (not `url`) — AC uses `url=` which is wrong; use `PostgresMemoryStore("postgresql://...")` positionally or `dsn=`
+  - `get_recent()` shares the same metadata filter clauses as `search()` — reuse the `clauses/params/idx` pattern for consistency
+  - The `_mock_pool()` helper returns `(pool, conn)` where `conn.execute` is reused for both `CREATE TABLE` during init AND data mutations — asserting `conn.execute.assert_awaited()` is sufficient for testing INSERT
+---
+
 ## 2026-02-20 - US-019
 - Added `add_usage(agent_id, usage)` method to `TokenTracker` in `orbiter-context/token_tracker.py` — accepts any object with `input_tokens`/`output_tokens` attributes (duck typing; works with `orbiter.types.Usage`)
 - Added `_get_context_window_tokens(model_name)` helper to `agent.py` — looks up `MODEL_CONTEXT_WINDOWS` from orbiter-models (returns None if not installed/unknown)
