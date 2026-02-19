@@ -1,5 +1,10 @@
 ## Codebase Patterns
 - SQLiteMemoryStore: import from `orbiter.memory.backends.sqlite`, needs `await store.init()` before use
+- `agent.run()` returns `AgentOutput(text, tool_calls, usage)` — NO `output` field; for structured output, use `parse_structured_output(result.text, MyModel)` from `orbiter._internal.output_parser`
+- `output_type` on Agent is stored but NOT auto-applied; instruct LLM to return JSON in system prompt and parse manually
+- Agent memory persistence: pass `memory=SQLiteMemoryStore(db_path=...)` directly (not AgentMemory) for simple per-store persistence; agent_id and task_id are auto-set; user_id is NOT auto-set
+- For memory history reload: second agent MUST have same `name` as first agent AND same `conversation_id` for `load_history()` to find prior messages
+- `MemoryMetadata(user_id=...)` scoping works in SQLiteMemoryStore via `json_extract(metadata, '$.user_id')`
 - ChromaVectorMemoryStore: import from `orbiter.memory.backends.vector`, takes EmbeddingProvider, optional `path` for persistence
 - SentenceTransformerEmbeddingProvider: local embeddings, no API key needed, import from `orbiter.memory.backends.vector`
 - mcp_server decorator: import from `orbiter.mcp`, adds `run()` and `stop()` methods dynamically (type: ignore needed for pyright)
@@ -33,4 +38,16 @@ Started: Fri Feb 20 03:26:33 AM IST 2026
   - `contextlib.suppress(FileNotFoundError)` preferred over try/except/pass (ruff SIM105)
   - After running `uv lock`, need `uv sync --dev` to install packages in the venv
   - Package runs via `uv run` use Python 3.11 venv, not system Python 3.14
+---
+
+## 2026-02-20 - US-INT-002
+- What was implemented: Agent + memory persistence seam tests
+- Files changed:
+  - `tests/integration/test_agent_memory.py` (new)
+- **Learnings for future iterations:**
+  - `agent.run()` returns `AgentOutput` with `text`, `tool_calls`, `usage` — no `output` field for structured Pydantic models
+  - For structured output from LLM, instruct in system prompt to return JSON and parse with `parse_structured_output(result.text, Model)` from `orbiter._internal.output_parser`
+  - Two agents sharing a SQLiteMemoryStore with same `name` and `conversation_id` will load each other's history via `load_history()` in `MemoryPersistence`
+  - `MemoryMetadata(user_id=...)` scoping works correctly in SQLiteMemoryStore; querying by user_id only returns items with that user_id
+  - `test_memory_metadata_scoping` tests SQLiteMemoryStore metadata isolation directly (no LLM needed)
 ---
