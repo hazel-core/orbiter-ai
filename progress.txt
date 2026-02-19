@@ -2,6 +2,25 @@
 Started: Thu Feb 19 11:52:28 PM IST 2026
 ---
 
+## 2026-02-20 - US-015
+- Added `conversation_id: str | None = None` parameter to `Agent.run()` in `agent.py`
+- Added pre-run memory block in `Agent.run()`: auto-assigns UUID4 `conversation_id` on first run (only updates `self.conversation_id` when no per-call override), updates `_memory_persistence.metadata` with `MemoryMetadata(agent_id=self.name, task_id=active_conv)`, calls `load_history()` and prepends DB history before explicit `messages`, saves `HumanMemory` to store before LLM call
+- Added `conversation_id: str | None = None` parameter to `_stream()` in `runner.py`
+- Added same pre-run memory block in `_stream()` using `getattr(agent, "_memory_persistence", None)` pattern; same UUID assignment, metadata update, history load, and HumanMemory save
+- Added `TestAgentHistoryPersistence` class to `test_agent.py` with 5 tests: `test_second_run_picks_up_history` (main AC test), `test_conversation_id_auto_assigned_on_first_run`, `test_conversation_id_param_overrides_per_call_only`, `test_explicit_messages_merged_with_history`, `test_no_memory_no_history_loading`
+- Files changed:
+  - packages/orbiter-core/src/orbiter/agent.py (added `import uuid`, `conversation_id` param, pre-run memory block)
+  - packages/orbiter-core/src/orbiter/runner.py (added `conversation_id` param to `_stream()`, pre-run memory block)
+  - packages/orbiter-core/tests/test_agent.py (added `TestAgentHistoryPersistence` with 5 tests)
+- All 1135 orbiter-core + orbiter-memory tests pass (6 skipped); pre-existing pyright error at agent.py (MCPToolWrapper.to_dict) unrelated to changes
+- **Learnings for future iterations:**
+  - `MemoryPersistence.metadata` is a regular instance attribute (not frozen); safe to replace with `new_metadata = MemoryMetadata(...)` before each run
+  - Pattern for per-call conversation_id override: `active_conv = conversation_id or self.conversation_id`; only update `self.conversation_id` when `conversation_id is None` (no per-call override)
+  - `HumanMemory` must be saved to the store BEFORE the LLM call; POST_LLM_CALL hook saves AIMemory, POST_TOOL_CALL saves ToolMemory — user input (HumanMemory) is the caller's responsibility
+  - In `runner.py`'s `_stream()`, access memory via `getattr(agent, "_memory_persistence", None)` since runner.py doesn't import from agent.py directly
+  - `ShortTermMemory._filter_incomplete_pairs()` removes trailing AI messages with unmatched tool_calls — important for load_history() correctness; keep tool loop complete before ending a run
+---
+
 ## 2026-02-20 - US-014
 - Added `_MEMORY_UNSET` sentinel + `_make_default_memory()` helper in `agent.py` to auto-create `AgentMemory(short_term=ShortTermMemory(), long_term=SQLiteMemoryStore())` when `memory` param is not supplied
 - Changed `Agent.__init__` `memory` parameter from `Any = None` to `Any = _MEMORY_UNSET`; when sentinel, calls `_make_default_memory()`; when `None`, stores None (disables memory)
