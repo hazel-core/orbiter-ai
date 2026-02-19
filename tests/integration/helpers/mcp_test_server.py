@@ -1,13 +1,19 @@
 """Standalone MCP test server for integration tests.
 
-Exposes two tools:
+Exposes tools:
 - get_capital(country: str) -> str
 - get_population(city: str) -> str
+- get_large_dataset(topic: str) -> str
+- long_running_task(steps: int) -> str  (emits progress notifications)
 
 Run standalone: python mcp_test_server.py
 """
 
 from __future__ import annotations
+
+import asyncio
+
+from mcp.server.fastmcp import Context as FastMCPContext  # pyright: ignore[reportMissingImports]
 
 from orbiter.mcp import mcp_server  # pyright: ignore[reportMissingImports]
 
@@ -109,6 +115,22 @@ class TestServer:
         if len(encoded) > target_bytes:
             content = encoded[:target_bytes].decode("utf-8", errors="ignore")
         return content
+
+
+    async def long_running_task(self, steps: int, ctx: FastMCPContext) -> str:
+        """Perform a long-running task that emits progress notifications.
+
+        Args:
+            steps: Number of progress steps to emit before completing.
+            ctx: FastMCP context for progress reporting (injected by FastMCP).
+
+        Returns:
+            Completion message indicating how many steps were completed.
+        """
+        for i in range(steps):
+            await ctx.report_progress(i + 1, steps, f"Step {i + 1} of {steps}")
+            await asyncio.sleep(0.05)
+        return f"Task completed successfully after {steps} steps."
 
 
 if __name__ == "__main__":
