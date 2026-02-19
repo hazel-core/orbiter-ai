@@ -249,3 +249,16 @@ Started: Fri Feb 20 03:26:33 AM IST 2026
   - Use `timeout(60)` (not 30) for MCP progress stream tests — subprocess spawn + LLM + progress notifications overhead
   - Add `asyncio.sleep(0.05)` between progress notifications to ensure they're emitted reliably before tool returns
 ---
+
+## 2026-02-20 - US-INT-017
+- What was implemented: Handoff chain with memory persistence test — verifies a 3-agent A→B→C handoff chain persists messages from all 3 agents to a shared SQLiteMemoryStore, identifiable by agent_id metadata
+- Files changed:
+  - `tests/integration/test_handoff_memory.py` (new, 1 test)
+- **Learnings for future iterations:**
+  - In Swarm handoff mode, each agent in the chain is called via `call_runner(agent, input, messages=all_messages, provider=provider)` — no `conversation_id` is passed, so each agent creates its own UUID `conversation_id` on first run
+  - Each agent saves memory items with `agent_id=self.name` and `task_id=<its own conversation_id>` — so items from different agents in the chain have different `task_id` values
+  - To query a specific agent's contributions from a shared store: use `search(metadata=MemoryMetadata(agent_id="agent_name"))` — filters by agent_id regardless of task_id
+  - Passing the same `SQLiteMemoryStore` instance to multiple agents (via `memory=shared_store`) means all agents write to the same SQLite file, each tagged with their own `agent_id`
+  - Use `timeout(60)` for 3-agent chain tests — 3 sequential LLM calls need headroom
+  - Router agents still save HumanMemory (their input) + AIMemory (their routing output, e.g. "agent_b") to the store, so items_a and items_b are non-empty even for routing agents
+---
