@@ -277,3 +277,15 @@ Started: Fri Feb 20 03:26:33 AM IST 2026
   - `branch()` requires `agent.conversation_id` to be set (i.e., agent must have run at least once with memory configured)
   - `branch()` raises `AgentError` if memory not configured, no active conversation, or message ID not found
 ---
+
+## 2026-02-20 - US-INT-019
+- What was implemented: Context vector injection via KnowledgeNeuron test — verifies that 5 obscure fictional facts stored in ChromaVectorMemoryStore are injected into a new agent's system message via `_inject_long_term_knowledge()` and enable the agent to correctly answer a question it cannot know from training data
+- Files changed:
+  - `tests/integration/test_context_vector_injection.py` (new, 1 test)
+- **Learnings for future iterations:**
+  - `AgentMemory(long_term=ChromaVectorMemoryStore(...))` without `short_term` is valid; `_inject_long_term_knowledge()` only requires `memory.long_term` to be set
+  - Timeout of 30s (PRD spec) was increased to 60s to accommodate SentenceTransformer model loading + LLM call; if the model is already cached from a prior session test, 30s may be sufficient
+  - `output_type=CityResponse` pattern: define `class CityResponse(BaseModel): city: str`, instruct LLM via system prompt to return `{"city": "..."}` JSON only, then `parse_structured_output(result.text, CityResponse)` — same pattern as all other structured output tests
+  - 5 fictional facts about a fictional product (Orbiter framework) are robust test data — unlikely to appear in any model's training data; the founding city (Auckland) is verifiable because it appears in the first fact and the vector search query ("Orbiter framework founded city") will match it
+  - No `short_term` store is needed for this test; the agent doesn't need to persist history, only retrieve injected knowledge
+---
