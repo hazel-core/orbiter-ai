@@ -233,3 +233,19 @@ Started: Fri Feb 20 03:26:33 AM IST 2026
   - `DataSummary(contains_keyword: bool)` → parse via `parse_structured_output(result.text, DataSummary)` following established pattern
   - Ruff I001: import blocks inside functions must be alphabetically sorted (orbiter._internal.output_parser before orbiter.agent before orbiter.mcp before orbiter.models)
 ---
+
+## 2026-02-20 - US-INT-016
+- What was implemented: MCP progress events in stream test — verifies MCPProgressEvent items appear in stream before ToolResultEvent when a long_running_task tool emits progress notifications
+- Files changed:
+  - `tests/integration/helpers/mcp_test_server.py` (added `long_running_task(steps: int, ctx: FastMCPContext)` method to TestServer)
+  - `tests/integration/test_mcp_progress_stream.py` (new, 1 test)
+- **Learnings for future iterations:**
+  - FastMCP Context injection works through `@mcp_server` decorator's `functools.wraps` wrapper: `inspect.signature(wrapper)` follows `__wrapped__` (set by functools.wraps) and returns the original method's signature including `ctx: Context`; FastMCP injects `ctx` as a keyword arg, which passes through `**kwargs` to the bound method
+  - Server-side progress notifications: `async def long_running_task(self, steps: int, ctx: FastMCPContext)` + `await ctx.report_progress(progress, total, message)` in FastMCP tool
+  - Import: `from mcp.server.fastmcp import Context as FastMCPContext` — alias avoids name clash and is clearer
+  - MCPProgressEvent order in stream: BEFORE ToolResultEvent (queues drained after `_execute_tools()` completes but before ToolResultEvent is yielded)
+  - `detailed=True` is required in `run.stream()` for ToolResultEvent to appear; MCPProgressEvent is yielded regardless (subject to event_types filter)
+  - Tool registration order in mcp_test_server.py: `_register_methods` uses `inspect.getmembers()` which returns methods in alphabetical order; `long_running_task` appears between `get_population` and other methods alphabetically
+  - Use `timeout(60)` (not 30) for MCP progress stream tests — subprocess spawn + LLM + progress notifications overhead
+  - Add `asyncio.sleep(0.05)` between progress notifications to ensure they're emitted reliably before tool returns
+---
