@@ -13,6 +13,19 @@ Started: Thu Feb 19 11:52:28 PM IST 2026
 
 ---
 
+## 2026-02-20 - US-006
+- Updated all 3 call sites that resolve callable instructions to use `asyncio.iscoroutinefunction(raw_instr)` instead of calling and checking `asyncio.iscoroutine(result)`
+- Files changed:
+  - packages/orbiter-core/src/orbiter/agent.py (agent.run(): changed to iscoroutinefunction pattern; updated instructions type annotation from `Callable[..., str]` to `Callable[..., Any]`)
+  - packages/orbiter-core/src/orbiter/runner.py (stream() resolver: changed to iscoroutinefunction pattern)
+  - packages/orbiter-core/src/orbiter/_internal/call_runner.py (call_runner result messages resolver: changed to iscoroutinefunction pattern)
+  - packages/orbiter-core/tests/test_agent.py (added test_async_callable_instructions)
+- **Learnings for future iterations:**
+  - `asyncio.iscoroutinefunction(fn)` checks the function itself before calling it — cleaner than calling and checking `asyncio.iscoroutine(result)`; both work but the latter unnecessarily calls async functions in a fire-and-forget way
+  - Agent `instructions` type annotation must be `Callable[..., Any]` (not `Callable[..., str]`) to accept async callables returning `Coroutine[Any, Any, str]`
+  - There are 3 call sites for instruction resolution: agent.py `run()`, runner.py `stream()`, and _internal/call_runner.py result message building
+---
+
 ## 2026-02-19 - US-002
 - In `_validate_startup()` in `app.py`: added RuntimeError when `debug=False` and `secret_key == 'change-me-in-production'`; kept warning log when in debug mode
 - Added inline comment to `config.py` on the `secret_key` field: `# Override via ORBITER_SECRET_KEY — MUST change in production`

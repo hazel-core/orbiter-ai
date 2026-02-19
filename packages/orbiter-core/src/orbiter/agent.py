@@ -62,7 +62,7 @@ class Agent:
         *,
         name: str,
         model: str = "openai:gpt-4o",
-        instructions: str | Callable[..., str] = "",
+        instructions: str | Callable[..., Any] = "",
         tools: list[Tool] | None = None,
         handoffs: list[Agent] | None = None,
         hooks: list[tuple[HookPoint, Hook]] | None = None,
@@ -212,13 +212,14 @@ class Agent:
             raise AgentError(f"Agent '{self.name}' requires a provider for run()")
 
         # Resolve instructions (may be async callable)
-        instructions = self.instructions
-        if callable(instructions):
-            result = instructions(self.name)
-            if asyncio.iscoroutine(result):
-                instructions = await result
+        raw_instr = self.instructions
+        if callable(raw_instr):
+            if asyncio.iscoroutinefunction(raw_instr):
+                instructions = await raw_instr(self.name)
             else:
-                instructions = result
+                instructions = raw_instr(self.name)
+        else:
+            instructions = raw_instr
 
         # Build initial message list
         history: list[Message] = list(messages) if messages else []

@@ -364,6 +364,22 @@ class TestAgentRun:
         messages = call_args[0][0]
         assert messages[0].content == "You are bot."
 
+    async def test_async_callable_instructions(self) -> None:
+        """Async callable instructions are awaited and produce the correct system prompt."""
+        provider = _mock_provider()
+
+        async def make_prompt(name: str) -> str:
+            return f"You are {name}"
+
+        agent = Agent(name="bot", instructions=make_prompt)
+
+        await agent.run("Hi", provider=provider)
+
+        call_args = provider.complete.call_args
+        messages = call_args[0][0]
+        assert messages[0].role == "system"
+        assert messages[0].content == "You are bot"
+
     async def test_run_without_provider_raises(self) -> None:
         """run() without provider raises AgentError."""
         agent = Agent(name="bot")

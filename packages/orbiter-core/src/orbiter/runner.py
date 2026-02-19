@@ -250,11 +250,10 @@ async def _stream(
     instr: str = ""
     raw_instr = agent.instructions
     if callable(raw_instr):
-        result_instr = raw_instr(agent.name)
-        if asyncio.iscoroutine(result_instr):
-            instr = str(await result_instr)
+        if asyncio.iscoroutinefunction(raw_instr):
+            instr = str(await raw_instr(agent.name))
         else:
-            instr = str(result_instr)
+            instr = str(raw_instr(agent.name))
     elif raw_instr:
         instr = str(raw_instr)
 
