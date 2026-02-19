@@ -3,6 +3,9 @@
 - `agent.run()` returns `AgentOutput(text, tool_calls, usage)` — NO `output` field; for structured output, use `parse_structured_output(result.text, MyModel)` from `orbiter._internal.output_parser`
 - `output_type` on Agent is stored but NOT auto-applied; instruct LLM to return JSON in system prompt and parse manually
 - Agent memory persistence: pass `memory=SQLiteMemoryStore(db_path=...)` directly (not AgentMemory) for simple per-store persistence; agent_id and task_id are auto-set; user_id is NOT auto-set
+- ContextConfig: import from `orbiter.context.config`; use `ContextConfig(mode="copilot", history_rounds=N, summary_threshold=M, offload_threshold=P)` or `make_config("pilot")`; `summary_threshold <= offload_threshold` is required
+- Context windowing test: to test `history_rounds` limits, set `summary_threshold` high (e.g. 50) to prevent summarization injecting context via SystemMessage before windowing runs
+- `load_history(rounds=max_steps)` limits how many prior rounds memory loads; set `max_steps >= N_turns` so memory loads full history before context windowing trims it
 - For memory history reload: second agent MUST have same `name` as first agent AND same `conversation_id` for `load_history()` to find prior messages
 - `MemoryMetadata(user_id=...)` scoping works in SQLiteMemoryStore via `json_extract(metadata, '$.user_id')`
 - ChromaVectorMemoryStore: import from `orbiter.memory.backends.vector`, takes EmbeddingProvider, optional `path` for persistence
@@ -50,4 +53,16 @@ Started: Fri Feb 20 03:26:33 AM IST 2026
   - Two agents sharing a SQLiteMemoryStore with same `name` and `conversation_id` will load each other's history via `load_history()` in `MemoryPersistence`
   - `MemoryMetadata(user_id=...)` scoping works correctly in SQLiteMemoryStore; querying by user_id only returns items with that user_id
   - `test_memory_metadata_scoping` tests SQLiteMemoryStore metadata isolation directly (no LLM needed)
+---
+
+## 2026-02-20 - US-INT-003
+- What was implemented: Agent + context windowing seam tests
+- Files changed:
+  - `tests/integration/test_agent_context.py` (new)
+- **Learnings for future iterations:**
+  - `AgentOutput` (from `agent.run()`) has NO `messages` field; PRD's `len(result.messages)` check was adapted to behavioral testing
+  - Context windowing (`history_rounds`) trims non-system messages; summarization creates a SystemMessage that is NOT trimmed — so `summary_threshold` must be set high to prevent it from injecting old context
+  - `load_history(rounds=max_steps)` limits memory loads; use `max_steps >= N_turns` so context windowing (not memory) is the limiting factor in the test
+  - ContextConfig frozen=True — pass all params at creation; `make_config("pilot")` sets `history_rounds=100, summary_threshold=100, offload_threshold=100`
+  - Behavioral test pattern: plant unique token in turn 1, pad with N turns, ask about token — windowed agent says "I don't know", pilot agent recalls it
 ---
