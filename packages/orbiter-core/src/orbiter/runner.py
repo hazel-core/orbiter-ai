@@ -295,6 +295,13 @@ async def _stream(
     history.append(UserMessage(content=input))
     msg_list = build_messages(instr, history)
 
+    # ---- Context: apply windowing and summarization ----
+    _agent_context = getattr(agent, "context", None)
+    if _agent_context is not None:
+        from orbiter.agent import _apply_context_windowing  # pyright: ignore[reportMissingImports]
+        msg_list = await _apply_context_windowing(msg_list, _agent_context, resolved)
+    # ---- end Context ----
+
     tool_schemas = agent.get_tool_schemas() or None
 
     model_name = getattr(agent, "model", "") or ""

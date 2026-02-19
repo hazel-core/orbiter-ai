@@ -21,6 +21,7 @@ from orbiter.types import (
     AssistantMessage,
     Message,
     OrbiterError,
+    SystemMessage,
     ToolResult,
     UserMessage,
 )
@@ -65,6 +66,123 @@ def _make_context_from_mode(mode: Any) -> Any:
         return make_config(mode)
     except ImportError:
         return None
+
+
+class _ProviderSummarizer:
+    """Wraps a model provider for use with orbiter-memory's generate_summary()."""
+
+    def __init__(self, provider: Any) -> None:
+        self._provider = provider
+
+    async def summarize(self, prompt: str) -> str:
+        """Call provider.complete() to generate a summary string."""
+        try:
+            response = await self._provider.complete(
+                [UserMessage(content=prompt)],
+                tools=None,
+                temperature=0.3,
+                max_tokens=512,
+            )
+            return str(response.content or "")
+        except Exception as exc:
+            _log.warning("Context summarization provider call failed: %s", exc)
+            return ""
+
+
+async def _apply_context_windowing(
+    msg_list: list[Message],
+    context: Any,
+    provider: Any,
+) -> list[Message]:
+    """Apply ContextConfig windowing and optional summarization to msg_list.
+
+    Called before the LLM call when context is set. Applies (in order):
+
+    1. Offload threshold: when exceeded, aggressively trims to summary_threshold
+    2. Summary threshold: when exceeded, attempts LLM summarization via orbiter-memory
+    3. History windowing: always applied last, keeps last history_rounds messages
+
+    Falls back gracefully when orbiter-memory is not installed.
+    """
+    history_rounds: int = getattr(context, "history_rounds", 20)
+    summary_threshold: int = getattr(context, "summary_threshold", 10)
+    offload_threshold: int = getattr(context, "offload_threshold", 50)
+
+    # Separate system messages from conversation history
+    system_msgs: list[Message] = [m for m in msg_list if isinstance(m, SystemMessage)]
+    non_system: list[Message] = [m for m in msg_list if not isinstance(m, SystemMessage)]
+    msg_count = len(non_system)
+
+    # 1. Offload threshold: aggressive trim when far over limit
+    if msg_count > offload_threshold:
+        _log.debug(
+            "context offload: %d messages > offload_threshold=%d, trimming to %d",
+            msg_count, offload_threshold, summary_threshold,
+        )
+        non_system = non_system[-summary_threshold:]
+        msg_count = len(non_system)
+
+    # 2. Summary threshold: attempt summarization via orbiter-memory
+    elif msg_count >= summary_threshold:
+        try:
+            from orbiter.memory.base import (  # pyright: ignore[reportMissingImports]
+                AIMemory,
+                HumanMemory,
+                MemoryItem,
+                ToolMemory,
+            )
+            from orbiter.memory.summary import (  # pyright: ignore[reportMissingImports]
+                SummaryConfig,
+                check_trigger,
+                generate_summary,
+            )
+
+            # Convert messages to MemoryItems for trigger check
+            items: list[MemoryItem] = []
+            for msg in non_system:
+                content = str(getattr(msg, "content", "") or "")
+                if isinstance(msg, UserMessage):
+                    items.append(HumanMemory(content=content))
+                elif isinstance(msg, AssistantMessage):
+                    items.append(AIMemory(content=content))
+                else:
+                    items.append(ToolMemory(content=content))
+
+            keep_recent = max(2, summary_threshold // 2)
+            summary_cfg = SummaryConfig(
+                message_threshold=summary_threshold,
+                keep_recent=keep_recent,
+            )
+            trigger = check_trigger(items, summary_cfg)
+
+            if trigger.triggered and provider is not None:
+                summarizer = _ProviderSummarizer(provider)
+                result = await generate_summary(items, summary_cfg, summarizer)
+                if result.summaries:
+                    summary_text = "\n\n".join(result.summaries.values())
+                    keep_count = len(result.compressed_items)
+                    recent_msgs = non_system[-keep_count:] if keep_count > 0 else []
+                    summary_msg = SystemMessage(
+                        content=f"[Conversation Summary]\n{summary_text}"
+                    )
+                    non_system = [summary_msg] + recent_msgs
+                    msg_count = len(non_system)
+                    _log.debug(
+                        "context summarization applied: %d -> %d messages (summary + %d recent)",
+                        len(items), msg_count, keep_count,
+                    )
+        except ImportError:
+            pass
+
+    # 3. History windowing: keep last history_rounds messages
+    if msg_count > history_rounds:
+        _log.debug(
+            "context windowing: trimming %d -> %d messages (history_rounds=%d)",
+            msg_count, history_rounds, history_rounds,
+        )
+        non_system = non_system[-history_rounds:]
+
+    return system_msgs + non_system
 
 
 class AgentError(OrbiterError):
@@ -323,6 +441,11 @@ class Agent:
         # Build initial message list
         history.append(UserMessage(content=input))
         msg_list = build_messages(instructions, history)
+
+        # ---- Context: apply windowing and summarization ----
+        if self.context is not None:
+            msg_list = await _apply_context_windowing(msg_list, self.context, provider)
+        # ---- end Context ----
 
         # Tool schemas
         tool_schemas = self.get_tool_schemas() or None
