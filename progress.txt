@@ -10,7 +10,22 @@ Started: Thu Feb 19 11:52:28 PM IST 2026
 - Route handlers that do `from module import func` inside the function body: patch at the source module (e.g., `orbiter_web.engine.execute_workflow`), not at the router module
 - Use `starlette.testclient.TestClient` with a minimal FastAPI app for synchronous HTTP-level route tests; no pytest-asyncio marks needed
 - `_make_get_db(*rows)` pattern: create an `@asynccontextmanager` that yields a mock db and returns rows sequentially for each `db.execute()` call
+- orbiter-observability env-var config: expose `_configure_from_env()` as a callable so tests can use `monkeypatch.setenv()` + `reset_logging()` + `_configure_from_env()` to test env-var behavior without reimporting the module
 
+---
+
+## 2026-02-20 - US-007
+- Added `import os` and `_ENV_FORMAT = '%(asctime)s %(levelname)-8s %(name)s  %(message)s'` to `logging.py`
+- Added `_configure_from_env()` function that reads `ORBITER_DEBUG` and `ORBITER_LOG_LEVEL` env vars, sets root `orbiter` logger level, and adds a handler with the standard format when env vars are present
+- Called `_configure_from_env()` at module import time so env vars take effect before any explicit `configure_logging()` call
+- Added 12 new tests in `TestConfigureFromEnv` covering: DEBUG level, INFO/ERROR level, ORBITER_DEBUG precedence, invalid level fallback, no-env-vars case, handler format, idempotency, child logger inheritance, case-insensitive level
+- Files changed:
+  - packages/orbiter-observability/src/orbiter/observability/logging.py (added os import, _ENV_FORMAT, _VALID_ENV_LEVELS, _configure_from_env(), module-level call)
+  - packages/orbiter-observability/tests/test_obs_logging.py (added _ENV_FORMAT and _configure_from_env imports, added TestConfigureFromEnv class)
+- **Learnings for future iterations:**
+  - To test env-var-driven module-level behavior without reimporting: expose the apply function as `_configure_from_env()`, call it after `reset_logging()` + `monkeypatch.setenv()` in tests
+  - `_configured` global flag prevents double-handler-addition; `reset_logging()` clears it, so tests can re-trigger `_configure_from_env()` for each test case
+  - `logger.getEffectiveLevel()` on a child logger returns the inherited level from the root (correct for testing propagation)
 ---
 
 ## 2026-02-20 - US-006
