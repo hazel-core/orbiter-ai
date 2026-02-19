@@ -2,6 +2,28 @@
 Started: Thu Feb 19 11:52:28 PM IST 2026
 ---
 
+## 2026-02-20 - US-022
+- Added `_make_default_long_term()` helper to `agent.py`: tries `ChromaVectorMemoryStore(OpenAIEmbeddingProvider())` when chromadb is importable; falls back to `SQLiteMemoryStore()` with `logger.warning("chromadb not installed; falling back to keyword search. Install with: pip install chromadb")` when not importable
+- Updated `_make_default_memory()` to call `_make_default_long_term()` for the `long_term` field instead of hardcoding `SQLiteMemoryStore()`
+- Added `_inject_long_term_knowledge(agent_memory, user_input, msg_list, limit=5)` async helper to `agent.py`: searches `agent_memory.long_term` with user input as query, formats results as KnowledgeNeuron `<knowledge>...</knowledge>` block, appends to existing SystemMessage (or inserts new one); gracefully handles empty results and search exceptions
+- Wired `_inject_long_term_knowledge()` into `Agent.run()` after `_apply_context_windowing()` (before tool loop) — fires when `self.memory is not None`
+- Wired same injection into `runner.py _stream()` via lazy `from orbiter.agent import _inject_long_term_knowledge` after context windowing
+- Updated `test_default_memory_has_short_and_long_term` in `test_agent.py` to accept both `SQLiteMemoryStore` and `ChromaVectorMemoryStore` (uses `hasattr(long_term, "search")` check instead of `isinstance`)
+- Added `TestLongTermKnowledgeInjection` class (6 tests) to `test_agent.py`: vector store results injected into system message, empty results unchanged, search exception graceful fallback, no system message creates new one, None memory unchanged, sqlite keyword store works correctly with correct query passthrough
+- Added `TestDefaultLongTermCreation` class (1 test) to `test_agent.py`: verifies chromadb warning emitted and SQLiteMemoryStore returned when chromadb blocked in sys.modules
+- All 1195 orbiter-core + orbiter-memory tests pass (6 skipped); pre-existing pyright error at agent.py:911 (MCPToolWrapper.to_dict) unrelated to changes
+- Files changed:
+  - packages/orbiter-core/src/orbiter/agent.py (added _make_default_long_term, _inject_long_term_knowledge, updated _make_default_memory, wired injection in Agent.run())
+  - packages/orbiter-core/src/orbiter/runner.py (wired _inject_long_term_knowledge in _stream())
+  - packages/orbiter-core/tests/test_agent.py (updated test_default_memory_has_short_and_long_term, added TestLongTermKnowledgeInjection + TestDefaultLongTermCreation)
+- **Learnings for future iterations:**
+  - `_make_default_long_term()` must handle the case where chromadb IS installed but OpenAIEmbeddingProvider construction fails — it does NOT fail at construction time (api_key can be None), only at embed-time
+  - Setting `sys.modules["chromadb"] = None` (via monkeypatch.setitem) effectively blocks `import chromadb` inside function bodies — use this pattern to test ImportError fallback paths without removing packages
+  - `_inject_long_term_knowledge()` is placed in `agent.py` and lazy-imported in `runner.py` inside the memory injection block — same pattern as `_apply_context_windowing`
+  - The injection timing (after context windowing, before token loop) ensures knowledge items survive windowing since they're appended to the SystemMessage which windowing always preserves
+  - KnowledgeNeuron format: `<knowledge>\n  [long_term_memory]: {content}\n</knowledge>` — injected as suffix to existing SystemMessage.content separated by double newline
+---
+
 ## 2026-02-20 - US-021
 - Added `EmbeddingProvider` as a `@runtime_checkable Protocol` with `async def embed(self, text: str) -> list[float]` to `orbiter-memory/src/orbiter/memory/backends/vector.py`
 - Added `OpenAIEmbeddingProvider` class: reads `OPENAI_API_KEY` from env (or explicit kwarg), uses `text-embedding-3-small`, runs sync openai call in `asyncio.to_thread()`

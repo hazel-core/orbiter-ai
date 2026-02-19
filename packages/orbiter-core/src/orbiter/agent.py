@@ -33,16 +33,91 @@ _MEMORY_UNSET: Any = object()
 _CONTEXT_UNSET: Any = object()
 
 
+def _make_default_long_term() -> Any:
+    """Create the default long-term memory store.
+
+    Tries ChromaVectorMemoryStore (semantic search) when chromadb is importable.
+    Falls back to SQLiteMemoryStore with a warning when chromadb is not installed.
+    """
+    try:
+        import chromadb as _chromadb  # noqa: F401  # pyright: ignore[reportMissingImports]
+        from orbiter.memory.backends.vector import (  # pyright: ignore[reportMissingImports]
+            ChromaVectorMemoryStore,
+            OpenAIEmbeddingProvider,
+        )
+
+        return ChromaVectorMemoryStore(OpenAIEmbeddingProvider())
+    except ImportError:
+        _log.warning(
+            "chromadb not installed; falling back to keyword search. "
+            "Install with: pip install chromadb"
+        )
+        from orbiter.memory.backends.sqlite import SQLiteMemoryStore  # pyright: ignore[reportMissingImports]
+
+        return SQLiteMemoryStore()
+
+
 def _make_default_memory() -> Any:
     """Try to create a default AgentMemory. Returns None if orbiter-memory is not installed."""
     try:
-        from orbiter.memory.backends.sqlite import SQLiteMemoryStore  # pyright: ignore[reportMissingImports]
         from orbiter.memory.base import AgentMemory  # pyright: ignore[reportMissingImports]
         from orbiter.memory.short_term import ShortTermMemory  # pyright: ignore[reportMissingImports]
 
-        return AgentMemory(short_term=ShortTermMemory(), long_term=SQLiteMemoryStore())
+        return AgentMemory(short_term=ShortTermMemory(), long_term=_make_default_long_term())
     except ImportError:
         return None
+
+
+async def _inject_long_term_knowledge(
+    agent_memory: Any,
+    user_input: str,
+    msg_list: list[Message],
+    limit: int = 5,
+) -> list[Message]:
+    """Search long-term memory and inject relevant results into the system message.
+
+    When long_term is a VectorMemoryStore or ChromaVectorMemoryStore, uses
+    vector/semantic search. When it's SQLiteMemoryStore or LongTermMemory,
+    uses keyword search. Results are injected in KnowledgeNeuron <knowledge> format.
+    """
+    long_term = getattr(agent_memory, "long_term", None)
+    if long_term is None:
+        return msg_list
+
+    try:
+        items = await long_term.search(query=user_input, limit=limit)
+    except Exception as exc:
+        _log.debug("long-term search failed: %s", exc)
+        return msg_list
+
+    if not items:
+        return msg_list
+
+    # Format as KnowledgeNeuron <knowledge> block
+    lines = ["<knowledge>"]
+    for item in items:
+        lines.append(f"  [long_term_memory]: {item.content}")
+    lines.append("</knowledge>")
+    knowledge_block = "\n".join(lines)
+
+    # Inject into system message (append) or insert new SystemMessage at front
+    new_msg_list = list(msg_list)
+    sys_idx = next(
+        (i for i, m in enumerate(new_msg_list) if isinstance(m, SystemMessage)), None
+    )
+    if sys_idx is not None:
+        existing = new_msg_list[sys_idx]
+        new_content = (
+            (existing.content + "\n\n" + knowledge_block)
+            if existing.content
+            else knowledge_block
+        )
+        new_msg_list[sys_idx] = SystemMessage(content=new_content)
+    else:
+        new_msg_list.insert(0, SystemMessage(content=knowledge_block))
+
+    _log.debug("injected %d long-term memory items into system message", len(items))
+    return new_msg_list
 
 
 def _make_default_context() -> Any:
@@ -516,6 +591,11 @@ class Agent:
         if self.context is not None:
             msg_list = await _apply_context_windowing(msg_list, self.context, provider)
         # ---- end Context ----
+
+        # ---- Long-term memory: inject relevant knowledge into system message ----
+        if self.memory is not None:
+            msg_list = await _inject_long_term_knowledge(self.memory, input, msg_list)
+        # ---- end Long-term memory ----
 
         # Tool schemas
         tool_schemas = self.get_tool_schemas() or None

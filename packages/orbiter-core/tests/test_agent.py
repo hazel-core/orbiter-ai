@@ -986,9 +986,8 @@ class TestAgentMemoryDefaults:
         assert isinstance(agent.memory, AgentMemory)
 
     def test_default_memory_has_short_and_long_term(self) -> None:
-        """Auto-created AgentMemory contains ShortTermMemory and SQLiteMemoryStore."""
+        """Auto-created AgentMemory contains ShortTermMemory and a MemoryStore for long_term."""
         try:
-            from orbiter.memory.backends.sqlite import SQLiteMemoryStore  # pyright: ignore[reportMissingImports]
             from orbiter.memory.base import AgentMemory  # pyright: ignore[reportMissingImports]
             from orbiter.memory.short_term import ShortTermMemory  # pyright: ignore[reportMissingImports]
         except ImportError:
@@ -997,7 +996,9 @@ class TestAgentMemoryDefaults:
         agent = Agent(name="bot")
         assert isinstance(agent.memory, AgentMemory)
         assert isinstance(agent.memory.short_term, ShortTermMemory)
-        assert isinstance(agent.memory.long_term, SQLiteMemoryStore)
+        # long_term is SQLiteMemoryStore (no chromadb) or ChromaVectorMemoryStore (chromadb installed)
+        assert agent.memory.long_term is not None
+        assert hasattr(agent.memory.long_term, "search")
 
     def test_explicit_none_disables_memory(self) -> None:
         """Agent(memory=None) fully disables memory — no persistence."""
@@ -1042,6 +1043,179 @@ class TestAgentMemoryDefaults:
         """Agent(memory=None) still has conversation_id=None."""
         agent = Agent(name="bot", memory=None)
         assert agent.conversation_id is None
+
+
+# ---------------------------------------------------------------------------
+# Long-term knowledge injection (US-022)
+# ---------------------------------------------------------------------------
+
+
+class TestLongTermKnowledgeInjection:
+    """Tests for _inject_long_term_knowledge() helper and its wiring into Agent.run()."""
+
+    async def test_vector_store_results_injected_into_system_message(self) -> None:
+        """When long_term returns results, they appear in the system message."""
+        from unittest.mock import AsyncMock
+
+        from orbiter.agent import _inject_long_term_knowledge  # pyright: ignore[reportMissingImports]
+
+        try:
+            from orbiter.memory.base import AgentMemory, HumanMemory  # pyright: ignore[reportMissingImports]
+            from orbiter.memory.short_term import ShortTermMemory  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-memory not installed")
+
+        from orbiter.types import SystemMessage, UserMessage
+
+        # Mock long_term store that returns a hit
+        mock_lt = AsyncMock()
+        mock_lt.search = AsyncMock(return_value=[HumanMemory(content="Paris is the capital of France")])
+        mem = AgentMemory(short_term=ShortTermMemory(), long_term=mock_lt)
+
+        msg_list = [SystemMessage(content="You are a helpful assistant."), UserMessage(content="hello")]
+        result = await _inject_long_term_knowledge(mem, "What is the capital of France?", msg_list)
+
+        # System message should now contain the knowledge block
+        sys_msgs = [m for m in result if isinstance(m, SystemMessage)]
+        assert sys_msgs, "No SystemMessage in result"
+        assert "<knowledge>" in sys_msgs[0].content
+        assert "Paris is the capital of France" in sys_msgs[0].content
+        assert "[long_term_memory]" in sys_msgs[0].content
+
+    async def test_empty_results_no_injection(self) -> None:
+        """When long_term returns no results, msg_list is unchanged."""
+        from unittest.mock import AsyncMock
+
+        from orbiter.agent import _inject_long_term_knowledge  # pyright: ignore[reportMissingImports]
+
+        try:
+            from orbiter.memory.base import AgentMemory  # pyright: ignore[reportMissingImports]
+            from orbiter.memory.short_term import ShortTermMemory  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-memory not installed")
+
+        from orbiter.types import SystemMessage, UserMessage
+
+        mock_lt = AsyncMock()
+        mock_lt.search = AsyncMock(return_value=[])
+        mem = AgentMemory(short_term=ShortTermMemory(), long_term=mock_lt)
+
+        msg_list = [SystemMessage(content="You are a bot."), UserMessage(content="hello")]
+        result = await _inject_long_term_knowledge(mem, "query", msg_list)
+        assert result == msg_list
+
+    async def test_search_exception_returns_unchanged_msg_list(self) -> None:
+        """When long_term.search() raises, msg_list is returned unchanged."""
+        from unittest.mock import AsyncMock
+
+        from orbiter.agent import _inject_long_term_knowledge  # pyright: ignore[reportMissingImports]
+
+        try:
+            from orbiter.memory.base import AgentMemory  # pyright: ignore[reportMissingImports]
+            from orbiter.memory.short_term import ShortTermMemory  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-memory not installed")
+
+        from orbiter.types import UserMessage
+
+        mock_lt = AsyncMock()
+        mock_lt.search = AsyncMock(side_effect=RuntimeError("embedding failed"))
+        mem = AgentMemory(short_term=ShortTermMemory(), long_term=mock_lt)
+
+        msg_list = [UserMessage(content="hello")]
+        result = await _inject_long_term_knowledge(mem, "query", msg_list)
+        assert result == msg_list
+
+    async def test_no_system_message_creates_new_one(self) -> None:
+        """When no SystemMessage exists, a new one is inserted with the knowledge block."""
+        from unittest.mock import AsyncMock
+
+        from orbiter.agent import _inject_long_term_knowledge  # pyright: ignore[reportMissingImports]
+
+        try:
+            from orbiter.memory.base import AgentMemory, HumanMemory  # pyright: ignore[reportMissingImports]
+            from orbiter.memory.short_term import ShortTermMemory  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-memory not installed")
+
+        from orbiter.types import SystemMessage, UserMessage
+
+        mock_lt = AsyncMock()
+        mock_lt.search = AsyncMock(return_value=[HumanMemory(content="Some fact")])
+        mem = AgentMemory(short_term=ShortTermMemory(), long_term=mock_lt)
+
+        msg_list = [UserMessage(content="hello")]
+        result = await _inject_long_term_knowledge(mem, "query", msg_list)
+
+        sys_msgs = [m for m in result if isinstance(m, SystemMessage)]
+        assert sys_msgs, "No SystemMessage created"
+        assert "<knowledge>" in sys_msgs[0].content
+        assert "Some fact" in sys_msgs[0].content
+
+    async def test_none_memory_returns_unchanged(self) -> None:
+        """When agent.memory is None, msg_list is unchanged."""
+        from orbiter.agent import _inject_long_term_knowledge  # pyright: ignore[reportMissingImports]
+
+        from orbiter.types import UserMessage
+
+        msg_list = [UserMessage(content="hello")]
+        result = await _inject_long_term_knowledge(None, "query", msg_list)
+        assert result == msg_list
+
+    async def test_keyword_search_used_for_sqlite_store(self) -> None:
+        """SQLiteMemoryStore (keyword search) works correctly as long_term backend."""
+        from unittest.mock import AsyncMock
+
+        from orbiter.agent import _inject_long_term_knowledge  # pyright: ignore[reportMissingImports]
+
+        try:
+            from orbiter.memory.base import AgentMemory, AIMemory  # pyright: ignore[reportMissingImports]
+            from orbiter.memory.short_term import ShortTermMemory  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-memory not installed")
+
+        from orbiter.types import SystemMessage, UserMessage
+
+        mock_sqlite = AsyncMock()
+        mock_sqlite.search = AsyncMock(return_value=[AIMemory(content="The sky is blue")])
+        mem = AgentMemory(short_term=ShortTermMemory(), long_term=mock_sqlite)
+
+        msg_list = [SystemMessage(content="You are a bot."), UserMessage(content="hi")]
+        result = await _inject_long_term_knowledge(mem, "sky color", msg_list)
+
+        sys_msgs = [m for m in result if isinstance(m, SystemMessage)]
+        assert "<knowledge>" in sys_msgs[0].content
+        assert "The sky is blue" in sys_msgs[0].content
+        # Verify search was called with the user input as query
+        mock_sqlite.search.assert_called_once_with(query="sky color", limit=5)
+
+
+class TestDefaultLongTermCreation:
+    """Tests for _make_default_long_term() chromadb auto-selection and warning."""
+
+    def test_chromadb_warning_when_not_installed(self, monkeypatch: Any, caplog: Any) -> None:
+        """When chromadb is not importable, warn and fall back to SQLiteMemoryStore."""
+        import logging
+        import sys
+
+        try:
+            from orbiter.memory.backends.sqlite import SQLiteMemoryStore  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-memory not installed")
+
+        from orbiter.agent import _make_default_long_term  # pyright: ignore[reportMissingImports]
+
+        # Block chromadb import so the function falls back to SQLiteMemoryStore
+        monkeypatch.setitem(sys.modules, "chromadb", None)  # type: ignore[arg-type]
+
+        with caplog.at_level(logging.WARNING, logger="orbiter.agent"):
+            store = _make_default_long_term()
+
+        assert isinstance(store, SQLiteMemoryStore)
+        assert any(
+            "chromadb not installed" in rec.message
+            for rec in caplog.records
+        ), f"Expected chromadb warning, got: {[r.message for r in caplog.records]}"
 
 
 # ---------------------------------------------------------------------------

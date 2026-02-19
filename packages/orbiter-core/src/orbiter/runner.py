@@ -302,6 +302,16 @@ async def _stream(
         msg_list = await _apply_context_windowing(msg_list, _agent_context, resolved)
     # ---- end Context ----
 
+    # ---- Long-term memory: inject relevant knowledge into system message ----
+    _agent_memory_lt = getattr(agent, "memory", None)
+    if _agent_memory_lt is not None:
+        try:
+            from orbiter.agent import _inject_long_term_knowledge  # pyright: ignore[reportMissingImports]
+            msg_list = await _inject_long_term_knowledge(_agent_memory_lt, input, msg_list)
+        except ImportError:
+            pass
+    # ---- end Long-term memory ----
+
     tool_schemas = agent.get_tool_schemas() or None
 
     model_name = getattr(agent, "model", "") or ""
