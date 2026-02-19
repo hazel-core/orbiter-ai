@@ -76,6 +76,41 @@ class TestServer:
         return _POPULATIONS.get(key, f"Population of {city} is not in the test database.")
 
 
+    def get_large_dataset(self, topic: str) -> str:
+        """Return a large dataset about the given topic (>10 KB for workspace offload testing).
+
+        Args:
+            topic: The topic to generate data about.
+
+        Returns:
+            A large dataset string containing data about the topic.
+            Always includes ORBITER_DATASET_KEYWORD_2024 for test verification.
+        """
+        keyword = "ORBITER_DATASET_KEYWORD_2024"
+        header = (
+            f"=== LARGE DATASET: {topic.upper()} ===\n"
+            f"IDENTIFICATION_KEYWORD: {keyword}\n"
+            f"This dataset contains comprehensive information about {topic}.\n"
+            "It is intentionally large to test workspace offloading in the Orbiter framework.\n\n"
+        )
+        # Pad to exactly 15 KB (15360 bytes) with data entries
+        target_bytes = 15 * 1024
+        content = header
+        entry_num = 0
+        while len(content.encode("utf-8")) < target_bytes:
+            content += (
+                f"DATA_ENTRY[{entry_num}]: Detailed information about {topic} "
+                f"— entry {entry_num} contains extensive measurements, "
+                "observations, and related scientific data. " + "x" * 40 + "\n"
+            )
+            entry_num += 1
+        # Trim to at most target_bytes, preserving UTF-8 boundaries
+        encoded = content.encode("utf-8")
+        if len(encoded) > target_bytes:
+            content = encoded[:target_bytes].decode("utf-8", errors="ignore")
+        return content
+
+
 if __name__ == "__main__":
     server = TestServer()
     server.run(transport="stdio")  # type: ignore[attr-defined]
