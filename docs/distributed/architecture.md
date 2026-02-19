@@ -100,12 +100,19 @@ stateDiagram-v2
 2. Sets task status to `RUNNING` in `TaskStore`
 3. Starts a cancel listener (Pub/Sub subscription on `orbiter:cancel:{task_id}`)
 4. Reconstructs `Agent` or `Swarm` from `agent_config` via `from_dict()`
-5. Calls `run.stream(agent, input, detailed=task.detailed)`
-6. Publishes each `StreamEvent` via `EventPublisher`
-7. On completion: sets status to `COMPLETED`, acknowledges the task
-8. On failure: sets status to `FAILED`, nacks if retries remain
-9. On cancellation: sets status to `CANCELLED`, emits `StatusEvent(status='cancelled')`
-10. Records metrics (duration, wait time, success/failure)
+5. **Memory hydration** (if `task.metadata["memory"]` is present):
+   - Creates a `MemoryStore` from the config (short-term, SQLite, or Postgres)
+   - Attaches `MemoryPersistence` hooks for auto-saving AI/tool responses
+   - Saves user input as `HumanMemory`
+6. **Provider resolution**: uses `provider_factory(model)` if configured, otherwise auto-resolves
+7. **Conversation history**: loads prior turns from the memory store (if present) and prepends to messages
+8. Calls `run.stream(agent, input, detailed=task.detailed, provider=provider, messages=messages)`
+9. Publishes each `StreamEvent` via `EventPublisher`
+10. On completion: sets status to `COMPLETED`, acknowledges the task
+11. On failure: sets status to `FAILED`, nacks if retries remain
+12. On cancellation: sets status to `CANCELLED`, emits `StatusEvent(status='cancelled')`
+13. Records metrics (duration, wait time, success/failure)
+14. **Finally**: detaches memory persistence, tears down memory store, calls `on_task_done()`
 
 **Concurrency:** The `concurrency` parameter spawns multiple `_claim_loop` coroutines, allowing a single worker process to execute multiple tasks in parallel.
 

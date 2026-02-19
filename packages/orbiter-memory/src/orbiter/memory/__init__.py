@@ -30,6 +30,9 @@ from orbiter.memory.long_term import (  # pyright: ignore[reportMissingImports]
     OrchestratorConfig,
     TaskStatus,
 )
+from orbiter.memory.persistence import (  # pyright: ignore[reportMissingImports]
+    MemoryPersistence,
+)
 from orbiter.memory.short_term import (  # pyright: ignore[reportMissingImports]
     ShortTermMemory,
 )
@@ -60,6 +63,7 @@ __all__ = [
     "MemoryItem",
     "MemoryMetadata",
     "MemoryOrchestrator",
+    "MemoryPersistence",
     "MemoryStatus",
     "MemoryStore",
     "OrchestratorConfig",

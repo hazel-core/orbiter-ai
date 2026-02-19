@@ -136,7 +136,9 @@ await run_hooks(manager, HookPoint.PRE_LLM_CALL, agent=agent, messages=msg_list)
 
 ## Hook Lifecycle During Agent Execution
 
-During a single agent `run()`, hooks fire in this order:
+Hooks fire identically whether you use `run()`, `run.sync()`, or `run.stream()`. All three entry points fire the same `PRE_LLM_CALL`, `POST_LLM_CALL`, `PRE_TOOL_CALL`, and `POST_TOOL_CALL` hooks at the same points, so hook-based features (logging, token budgets, memory persistence, etc.) work consistently across all execution modes.
+
+During a single agent execution, hooks fire in this order:
 
 ```
 1. PRE_LLM_CALL  (before LLM API call)
@@ -148,6 +150,8 @@ During a single agent `run()`, hooks fire in this order:
 6.   POST_LLM_CALL  (after next LLM call)
    ... repeat until no tool calls or max_steps reached
 ```
+
+> **Note:** In streaming mode, `POST_LLM_CALL` receives a synthesized response object (a `SimpleNamespace`) with the same `.content`, `.tool_calls`, `.usage`, and `.finish_reason` attributes as the standard `complete()` response. Hooks can treat both response types identically.
 
 ## Practical Examples
 

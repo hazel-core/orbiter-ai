@@ -23,6 +23,7 @@ The `orbiter-memory` package provides a memory system for agents with:
 - **ShortTermMemory** -- in-memory conversation store with scope filtering and windowing
 - **LongTermMemory** -- persistent knowledge with deduplication and LLM-powered extraction
 - **Summary system** -- configurable triggers and multi-template summarization
+- **Auto-persistence** -- `MemoryPersistence` attaches hooks to auto-save LLM and tool results
 - **Event integration** -- `MemoryEventEmitter` wraps any store with EventBus events
 - **Backend implementations** -- SQLite, Postgres, and Vector (embedding-based) stores
 
@@ -53,6 +54,7 @@ The `orbiter-memory` package provides a memory system for agents with:
 | `SummaryTemplate` | StrEnum | Built-in summary templates |
 | `check_trigger` | Function | Check if summary should be generated |
 | `generate_summary` | Function | Generate summaries from items |
+| `MemoryPersistence` | Class | Hook-based auto-persistence for agent memory |
 | `MemoryEventEmitter` | Class | EventBus-integrated store wrapper |
 | `MEMORY_ADDED` | `str` | Event constant: `"memory:added"` |
 | `MEMORY_SEARCHED` | `str` | Event constant: `"memory:searched"` |
@@ -73,6 +75,9 @@ from orbiter.memory import (
     SummaryConfig, SummaryTemplate, SummaryResult,
     Summarizer, check_trigger, generate_summary,
 )
+
+# Auto-persistence
+from orbiter.memory import MemoryPersistence
 
 # Backends (import directly from submodules)
 from orbiter.memory.backends.sqlite import SQLiteMemoryStore
@@ -109,5 +114,6 @@ asyncio.run(main())
 - [short-term](short-term.md) -- ShortTermMemory
 - [long-term](long-term.md) -- LongTermMemory and orchestrator
 - [summary](summary.md) -- Summary system
+- [persistence](persistence.md) -- MemoryPersistence (hook-based auto-save)
 - [events](events.md) -- MemoryEventEmitter
 - [backends](backends.md) -- SQLite, Postgres, Vector stores

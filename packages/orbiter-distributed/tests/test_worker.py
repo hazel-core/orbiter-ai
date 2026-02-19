@@ -118,9 +118,7 @@ class TestWorkerExecuteTask:
             detailed=False,
         )
 
-        async def _fake_run_agent(
-            agent: object, t: TaskPayload, token: CancellationToken
-        ) -> str:
+        async def _fake_run_agent(agent: object, t: TaskPayload, token: CancellationToken) -> str:
             return "Hello!"
 
         # Mock the agent reconstruction and streaming
@@ -220,9 +218,7 @@ class TestWorkerExecuteTask:
 
         captured_task_id: str | None = None
 
-        async def capture_run(
-            agent: object, t: TaskPayload, token: CancellationToken
-        ) -> str:
+        async def capture_run(agent: object, t: TaskPayload, token: CancellationToken) -> str:
             nonlocal captured_task_id
             captured_task_id = w._current_task_id
             return "done"
@@ -456,12 +452,16 @@ class TestDeserializeMessages:
     def test_tool_result(self) -> None:
         from orbiter.types import ToolResult  # pyright: ignore[reportMissingImports]
 
-        result = _deserialize_messages([{
-            "role": "tool",
-            "tool_call_id": "tc-1",
-            "tool_name": "search",
-            "content": "found it",
-        }])
+        result = _deserialize_messages(
+            [
+                {
+                    "role": "tool",
+                    "tool_call_id": "tc-1",
+                    "tool_name": "search",
+                    "content": "found it",
+                }
+            ]
+        )
         assert len(result) == 1
         assert isinstance(result[0], ToolResult)
         assert result[0].tool_call_id == "tc-1"
@@ -582,3 +582,541 @@ class TestWorkerRunAgentMessages:
             await w._run_agent(mock_agent, task, token)
 
         assert captured_kwargs["messages"] is None
+
+
+# ---------------------------------------------------------------------------
+# Feature 3: on_task_done
+# ---------------------------------------------------------------------------
+
+
+class TestOnTaskDone:
+    @pytest.mark.asyncio
+    async def test_completed_status(self) -> None:
+        """on_task_done receives COMPLETED status on success."""
+        captured: list[tuple[str, TaskStatus, str | None, str | None]] = []
+
+        class MyWorker(Worker):
+            async def on_task_done(
+                self,
+                task: TaskPayload,
+                status: TaskStatus,
+                result: str | None,
+                error: str | None,
+            ) -> None:
+                captured.append((task.task_id, status, result, error))
+
+        w = MyWorker("redis://localhost", worker_id="w1")
+        w._broker = AsyncMock()
+        w._store = AsyncMock()
+        w._publisher = AsyncMock()
+
+        task = TaskPayload(
+            task_id="task-done-1",
+            agent_config={"name": "agent", "model": "openai:gpt-4o"},
+            input="hello",
+        )
+
+        async def _fake_run(agent: object, t: TaskPayload, token: object) -> str:
+            return "result!"
+
+        with (
+            patch.object(w, "_reconstruct_agent", return_value=MagicMock()),
+            patch.object(w, "_run_agent", side_effect=_fake_run),
+            patch.object(w, "_listen_for_cancel", new_callable=AsyncMock),
+        ):
+            await w._execute_task(task)
+
+        assert len(captured) == 1
+        assert captured[0] == ("task-done-1", TaskStatus.COMPLETED, "result!", None)
+
+    @pytest.mark.asyncio
+    async def test_failed_status(self) -> None:
+        """on_task_done receives FAILED status on error."""
+        captured: list[tuple[str, TaskStatus, str | None, str | None]] = []
+
+        class MyWorker(Worker):
+            async def on_task_done(
+                self,
+                task: TaskPayload,
+                status: TaskStatus,
+                result: str | None,
+                error: str | None,
+            ) -> None:
+                captured.append((task.task_id, status, result, error))
+
+        w = MyWorker("redis://localhost", worker_id="w1")
+        w._broker = AsyncMock()
+        w._broker.max_retries = 0
+        w._store = AsyncMock()
+        w._store.get_status.return_value = TaskResult(
+            task_id="task-done-2", status=TaskStatus.RUNNING, retries=0
+        )
+        w._publisher = AsyncMock()
+
+        task = TaskPayload(
+            task_id="task-done-2",
+            agent_config={"name": "agent", "model": "openai:gpt-4o"},
+            input="fail",
+        )
+
+        with (
+            patch.object(w, "_reconstruct_agent", side_effect=ValueError("boom")),
+            patch.object(w, "_listen_for_cancel", new_callable=AsyncMock),
+        ):
+            await w._execute_task(task)
+
+        assert len(captured) == 1
+        assert captured[0][0] == "task-done-2"
+        assert captured[0][1] == TaskStatus.FAILED
+        assert captured[0][2] is None
+        assert "boom" in captured[0][3]
+
+    @pytest.mark.asyncio
+    async def test_exception_in_on_task_done_doesnt_crash(self) -> None:
+        """Exception in on_task_done is logged, not raised."""
+
+        class MyWorker(Worker):
+            async def on_task_done(self, *args: object, **kwargs: object) -> None:
+                raise RuntimeError("callback exploded")
+
+        w = MyWorker("redis://localhost", worker_id="w1")
+        w._broker = AsyncMock()
+        w._store = AsyncMock()
+        w._publisher = AsyncMock()
+
+        task = TaskPayload(
+            task_id="task-done-3",
+            agent_config={"name": "agent", "model": "openai:gpt-4o"},
+            input="hello",
+        )
+
+        async def _fake_run(agent: object, t: TaskPayload, token: object) -> str:
+            return "ok"
+
+        with (
+            patch.object(w, "_reconstruct_agent", return_value=MagicMock()),
+            patch.object(w, "_run_agent", side_effect=_fake_run),
+            patch.object(w, "_listen_for_cancel", new_callable=AsyncMock),
+        ):
+            # Should not raise
+            await w._execute_task(task)
+
+        assert w.tasks_processed == 1
+
+    @pytest.mark.asyncio
+    async def test_default_is_noop(self) -> None:
+        """Default on_task_done does nothing."""
+        w = Worker("redis://localhost")
+        task = TaskPayload(task_id="x", input="y")
+        # Should not raise
+        await w.on_task_done(task, TaskStatus.COMPLETED, "ok", None)
+
+
+# ---------------------------------------------------------------------------
+# Feature 5: Worker Provider Factory
+# ---------------------------------------------------------------------------
+
+
+class TestWorkerProviderFactory:
+    def test_init_stores_factory(self) -> None:
+        def my_factory(model: str) -> str:
+            return f"provider-for-{model}"
+
+        w = Worker("redis://localhost", provider_factory=my_factory)
+        assert w._provider_factory is my_factory
+
+    def test_init_none_by_default(self) -> None:
+        w = Worker("redis://localhost")
+        assert w._provider_factory is None
+
+    @pytest.mark.asyncio
+    async def test_factory_called_with_model(self) -> None:
+        """Provider factory is called with the model string and passed to run.stream."""
+        factory_calls: list[str] = []
+        mock_provider = MagicMock()
+
+        def my_factory(model: str) -> MagicMock:
+            factory_calls.append(model)
+            return mock_provider
+
+        w = Worker("redis://localhost", worker_id="w1", provider_factory=my_factory)
+        w._publisher = AsyncMock()
+
+        task = TaskPayload(
+            task_id="task-pf-1",
+            agent_config={"name": "agent", "model": "openai:gpt-4o"},
+            input="hello",
+        )
+
+        from orbiter.types import TextEvent  # pyright: ignore[reportMissingImports]
+
+        events = [TextEvent(text="ok", agent_name="agent")]
+        mock_agent = MagicMock()
+        mock_agent.model = "openai:gpt-4o"
+        mock_agent.memory = None
+
+        mock_run = MagicMock()
+        captured_kwargs: dict = {}
+
+        async def _fake_stream_gen(*a: object, **kw: object) -> object:
+            captured_kwargs.update(kw)
+            for ev in events:
+                yield ev
+
+        mock_run.stream = _fake_stream_gen
+
+        token = CancellationToken()
+        with patch("orbiter.runner.run", mock_run):
+            await w._run_agent(mock_agent, task, token)
+
+        assert factory_calls == ["openai:gpt-4o"]
+        assert captured_kwargs["provider"] is mock_provider
+
+    @pytest.mark.asyncio
+    async def test_none_factory_passes_none_provider(self) -> None:
+        """When no factory is set, provider=None is passed."""
+        w = Worker("redis://localhost", worker_id="w1")
+        w._publisher = AsyncMock()
+
+        task = TaskPayload(
+            task_id="task-pf-2",
+            agent_config={"name": "agent", "model": "openai:gpt-4o"},
+            input="hello",
+        )
+
+        from orbiter.types import TextEvent  # pyright: ignore[reportMissingImports]
+
+        events = [TextEvent(text="ok", agent_name="agent")]
+        mock_agent = MagicMock()
+        mock_agent.model = "openai:gpt-4o"
+        mock_agent.memory = None
+
+        mock_run = MagicMock()
+        captured_kwargs: dict = {}
+
+        async def _fake_stream_gen(*a: object, **kw: object) -> object:
+            captured_kwargs.update(kw)
+            for ev in events:
+                yield ev
+
+        mock_run.stream = _fake_stream_gen
+
+        token = CancellationToken()
+        with patch("orbiter.runner.run", mock_run):
+            await w._run_agent(mock_agent, task, token)
+
+        assert captured_kwargs["provider"] is None
+
+
+# ---------------------------------------------------------------------------
+# Feature 4: Memory Hydration
+# ---------------------------------------------------------------------------
+
+
+class TestWorkerMemoryHydration:
+    @pytest.mark.asyncio
+    async def test_no_memory_config_no_store(self) -> None:
+        """Without memory config, no store is created."""
+        w = Worker("redis://localhost", worker_id="w1")
+        w._broker = AsyncMock()
+        w._store = AsyncMock()
+        w._publisher = AsyncMock()
+
+        task = TaskPayload(
+            task_id="task-mem-1",
+            agent_config={"name": "agent", "model": "openai:gpt-4o"},
+            input="hello",
+            metadata={},
+        )
+
+        mock_agent = MagicMock()
+        # Verify memory is not set
+        mock_agent.memory = None
+
+        async def _fake_run(agent: object, t: TaskPayload, token: object) -> str:
+            return "ok"
+
+        with (
+            patch.object(w, "_reconstruct_agent", return_value=mock_agent),
+            patch.object(w, "_run_agent", side_effect=_fake_run),
+            patch.object(w, "_listen_for_cancel", new_callable=AsyncMock),
+        ):
+            await w._execute_task(task)
+
+        # agent.memory should not have been set
+        assert mock_agent.memory is None
+
+    @pytest.mark.asyncio
+    async def test_short_term_store_created(self) -> None:
+        """Memory config with short_term backend creates a ShortTermMemory."""
+        w = Worker("redis://localhost", worker_id="w1")
+        w._broker = AsyncMock()
+        w._store = AsyncMock()
+        w._publisher = AsyncMock()
+
+        task = TaskPayload(
+            task_id="task-mem-2",
+            agent_config={"name": "agent", "model": "openai:gpt-4o"},
+            input="hello",
+            metadata={
+                "memory": {
+                    "backend": "short_term",
+                    "scope": {"user_id": "u1", "session_id": "s1"},
+                }
+            },
+        )
+
+        captured_agent: list = []
+
+        async def _fake_run(agent: object, t: TaskPayload, token: object) -> str:
+            captured_agent.append(agent)
+            return "ok"
+
+        mock_agent = MagicMock()
+
+        with (
+            patch.object(w, "_reconstruct_agent", return_value=mock_agent),
+            patch.object(w, "_run_agent", side_effect=_fake_run),
+            patch.object(w, "_listen_for_cancel", new_callable=AsyncMock),
+        ):
+            await w._execute_task(task)
+
+        from orbiter.memory.short_term import ShortTermMemory  # pyright: ignore[reportMissingImports]
+
+        assert isinstance(mock_agent.memory, ShortTermMemory)
+
+    @pytest.mark.asyncio
+    async def test_user_input_saved_as_human_memory(self) -> None:
+        """The task input is saved as HumanMemory in the store."""
+        w = Worker("redis://localhost", worker_id="w1")
+        w._broker = AsyncMock()
+        w._store = AsyncMock()
+        w._publisher = AsyncMock()
+
+        task = TaskPayload(
+            task_id="task-mem-3",
+            agent_config={"name": "agent", "model": "openai:gpt-4o"},
+            input="What is 2+2?",
+            metadata={
+                "memory": {
+                    "backend": "short_term",
+                    "scope": {"user_id": "u1"},
+                }
+            },
+        )
+
+        async def _fake_run(agent: object, t: TaskPayload, token: object) -> str:
+            return "4"
+
+        mock_agent = MagicMock()
+
+        with (
+            patch.object(w, "_reconstruct_agent", return_value=mock_agent),
+            patch.object(w, "_run_agent", side_effect=_fake_run),
+            patch.object(w, "_listen_for_cancel", new_callable=AsyncMock),
+        ):
+            await w._execute_task(task)
+
+        # Check the store has a HumanMemory item
+        store = mock_agent.memory
+        items = store._items
+        human_items = [i for i in items if i.memory_type == "human"]
+        assert len(human_items) == 1
+        assert human_items[0].content == "What is 2+2?"
+
+
+# ---------------------------------------------------------------------------
+# Feature 6: Conversation History (memory_items_to_messages)
+# ---------------------------------------------------------------------------
+
+
+class TestMemoryItemsToMessages:
+    def test_human_to_user_message(self) -> None:
+        from orbiter.distributed.memory import memory_items_to_messages
+        from orbiter.memory.base import HumanMemory
+        from orbiter.types import UserMessage  # pyright: ignore[reportMissingImports]
+
+        items = [HumanMemory(content="Hello")]
+        result = memory_items_to_messages(items)
+        assert len(result) == 1
+        assert isinstance(result[0], UserMessage)
+        assert result[0].content == "Hello"
+
+    def test_ai_to_assistant_message(self) -> None:
+        from orbiter.distributed.memory import memory_items_to_messages
+        from orbiter.memory.base import AIMemory
+        from orbiter.types import AssistantMessage  # pyright: ignore[reportMissingImports]
+
+        items = [AIMemory(content="Hi there")]
+        result = memory_items_to_messages(items)
+        assert len(result) == 1
+        assert isinstance(result[0], AssistantMessage)
+        assert result[0].content == "Hi there"
+
+    def test_ai_with_tool_calls(self) -> None:
+        from orbiter.distributed.memory import memory_items_to_messages
+        from orbiter.memory.base import AIMemory
+        from orbiter.types import AssistantMessage  # pyright: ignore[reportMissingImports]
+
+        items = [
+            AIMemory(
+                content="Calling tool",
+                tool_calls=[{"id": "tc-1", "name": "search", "arguments": '{"q":"test"}'}],
+            )
+        ]
+        result = memory_items_to_messages(items)
+        assert len(result) == 1
+        assert isinstance(result[0], AssistantMessage)
+        assert len(result[0].tool_calls) == 1
+        assert result[0].tool_calls[0].name == "search"
+
+    def test_tool_to_tool_result(self) -> None:
+        from orbiter.distributed.memory import memory_items_to_messages
+        from orbiter.memory.base import ToolMemory
+        from orbiter.types import ToolResult  # pyright: ignore[reportMissingImports]
+
+        items = [
+            ToolMemory(
+                content="found it",
+                tool_call_id="tc-1",
+                tool_name="search",
+            )
+        ]
+        result = memory_items_to_messages(items)
+        assert len(result) == 1
+        assert isinstance(result[0], ToolResult)
+        assert result[0].content == "found it"
+        assert result[0].tool_call_id == "tc-1"
+
+    def test_system_to_system_message(self) -> None:
+        from orbiter.distributed.memory import memory_items_to_messages
+        from orbiter.memory.base import SystemMemory
+        from orbiter.types import SystemMessage  # pyright: ignore[reportMissingImports]
+
+        items = [SystemMemory(content="Be helpful")]
+        result = memory_items_to_messages(items)
+        assert len(result) == 1
+        assert isinstance(result[0], SystemMessage)
+        assert result[0].content == "Be helpful"
+
+    def test_mixed_items(self) -> None:
+        from orbiter.distributed.memory import memory_items_to_messages
+        from orbiter.memory.base import AIMemory, HumanMemory
+        from orbiter.types import (  # pyright: ignore[reportMissingImports]
+            AssistantMessage,
+            UserMessage,
+        )
+
+        items = [
+            HumanMemory(content="Hello"),
+            AIMemory(content="Hi!"),
+        ]
+        result = memory_items_to_messages(items)
+        assert len(result) == 2
+        assert isinstance(result[0], UserMessage)
+        assert isinstance(result[1], AssistantMessage)
+
+    def test_empty_list(self) -> None:
+        from orbiter.distributed.memory import memory_items_to_messages
+
+        assert memory_items_to_messages([]) == []
+
+    def test_error_tool_memory(self) -> None:
+        from orbiter.distributed.memory import memory_items_to_messages
+        from orbiter.memory.base import ToolMemory
+        from orbiter.types import ToolResult  # pyright: ignore[reportMissingImports]
+
+        items = [
+            ToolMemory(
+                content="timeout",
+                tool_call_id="tc-1",
+                tool_name="fetch",
+                is_error=True,
+            )
+        ]
+        result = memory_items_to_messages(items)
+        assert isinstance(result[0], ToolResult)
+        assert result[0].error == "timeout"
+
+
+# ---------------------------------------------------------------------------
+# Feature 6: Conversation history loading in _run_agent
+# ---------------------------------------------------------------------------
+
+
+class TestConversationHistoryLoading:
+    @pytest.mark.asyncio
+    async def test_no_memory_no_history(self) -> None:
+        """When agent has no memory, no history is loaded."""
+        w = Worker("redis://localhost", worker_id="w1")
+        w._publisher = AsyncMock()
+
+        task = TaskPayload(
+            task_id="task-hist-1",
+            agent_config={"name": "agent", "model": "openai:gpt-4o"},
+            input="hello",
+        )
+
+        from orbiter.types import TextEvent  # pyright: ignore[reportMissingImports]
+
+        events = [TextEvent(text="ok", agent_name="agent")]
+        mock_agent = MagicMock()
+        mock_agent.memory = None
+        mock_agent.model = "openai:gpt-4o"
+
+        mock_run = MagicMock()
+        captured_kwargs: dict = {}
+
+        async def _fake_stream_gen(*a: object, **kw: object) -> object:
+            captured_kwargs.update(kw)
+            for ev in events:
+                yield ev
+
+        mock_run.stream = _fake_stream_gen
+
+        token = CancellationToken()
+        with patch("orbiter.runner.run", mock_run):
+            await w._run_agent(mock_agent, task, token)
+
+        assert captured_kwargs["messages"] is None
+
+    @pytest.mark.asyncio
+    async def test_memory_search_failure_graceful(self) -> None:
+        """When memory search raises, execution continues with a warning."""
+        w = Worker("redis://localhost", worker_id="w1")
+        w._publisher = AsyncMock()
+
+        task = TaskPayload(
+            task_id="task-hist-2",
+            agent_config={"name": "agent", "model": "openai:gpt-4o"},
+            input="hello",
+            metadata={"memory": {"scope": {"user_id": "u1"}}},
+        )
+
+        from orbiter.types import TextEvent  # pyright: ignore[reportMissingImports]
+
+        events = [TextEvent(text="ok", agent_name="agent")]
+        mock_agent = MagicMock()
+        mock_agent.model = "openai:gpt-4o"
+
+        # Memory that fails on search
+        mock_memory = AsyncMock()
+        mock_memory.search = AsyncMock(side_effect=RuntimeError("db down"))
+        mock_agent.memory = mock_memory
+
+        mock_run = MagicMock()
+        captured_kwargs: dict = {}
+
+        async def _fake_stream_gen(*a: object, **kw: object) -> object:
+            captured_kwargs.update(kw)
+            for ev in events:
+                yield ev
+
+        mock_run.stream = _fake_stream_gen
+
+        token = CancellationToken()
+        with patch("orbiter.runner.run", mock_run):
+            result = await w._run_agent(mock_agent, task, token)
+
+        # Should still complete despite search failure
+        assert result == "ok"

@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 import os
 import random
 import signal
 import socket
 import time
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Literal
 
 import redis.asyncio as aioredis
@@ -32,6 +34,8 @@ from orbiter.observability.propagation import (  # pyright: ignore[reportMissing
     DictCarrier,
 )
 from orbiter.observability.tracing import aspan  # pyright: ignore[reportMissingImports]
+
+_log = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from orbiter.distributed.temporal import (  # pyright: ignore[reportMissingImports]
@@ -115,6 +119,7 @@ class Worker:
         queue_name: str = "orbiter:tasks",
         heartbeat_ttl: int = 30,
         executor: Literal["local", "temporal"] = "local",
+        provider_factory: Callable[[str], Any] | None = None,
     ) -> None:
         self._redis_url = redis_url
         self._worker_id = worker_id or _generate_worker_id()
@@ -122,6 +127,7 @@ class Worker:
         self._queue_name = queue_name
         self._heartbeat_ttl = heartbeat_ttl
         self._executor_type = executor
+        self._provider_factory = provider_factory
 
         self._broker = TaskBroker(redis_url, queue_name=queue_name)
         self._store = TaskStore(redis_url)
@@ -184,10 +190,7 @@ class Worker:
             heartbeat_task = asyncio.create_task(self._heartbeat_loop())
 
             # Run claim-execute workers
-            workers = [
-                asyncio.create_task(self._claim_loop())
-                for _ in range(self._concurrency)
-            ]
+            workers = [asyncio.create_task(self._claim_loop()) for _ in range(self._concurrency)]
             await asyncio.gather(*workers)
             heartbeat_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -209,9 +212,7 @@ class Worker:
 
     async def _heartbeat_loop(self) -> None:
         """Publish a heartbeat to Redis periodically."""
-        r: aioredis.Redis = aioredis.from_url(
-            self._redis_url, decode_responses=True
-        )
+        r: aioredis.Redis = aioredis.from_url(self._redis_url, decode_responses=True)
         key = f"orbiter:workers:{self._worker_id}"
         try:
             while not self._shutdown_event.is_set():
@@ -252,12 +253,20 @@ class Worker:
             propagator.extract(carrier)
 
         # Start listening for cancel signals on orbiter:cancel:{task_id}
-        cancel_task = asyncio.create_task(
-            self._listen_for_cancel(task.task_id, token)
-        )
+        cancel_task = asyncio.create_task(self._listen_for_cancel(task.task_id, token))
 
         started_at = time.time()
         wait_time = started_at - task.created_at if task.created_at > 0 else 0.0
+
+        # Track final outcome for on_task_done
+        final_status: TaskStatus = TaskStatus.FAILED
+        final_result: str | None = None
+        final_error: str | None = None
+
+        # Memory hydration state
+        persistence: Any = None
+        mem_result: tuple[Any, Any] | None = None
+        agent: Any = None
 
         async with aspan(
             "orbiter.distributed.execute",
@@ -287,6 +296,31 @@ class Worker:
                 else:
                     # Local execution: reconstruct agent and stream directly
                     agent = self._reconstruct_agent(task.agent_config)
+
+                    # Memory hydration (Feature 4)
+                    mem_config = task.metadata.get("memory")
+                    if mem_config:
+                        from orbiter.distributed.memory import (  # pyright: ignore[reportMissingImports]
+                            create_memory_store,
+                        )
+
+                        store, mem_metadata = await create_memory_store(mem_config, task.task_id)
+                        agent.memory = store
+
+                        from orbiter.memory.persistence import (  # pyright: ignore[reportMissingImports]
+                            MemoryPersistence,
+                        )
+
+                        persistence = MemoryPersistence(store, metadata=mem_metadata)
+                        persistence.attach(agent)
+
+                        from orbiter.memory.base import (  # pyright: ignore[reportMissingImports]
+                            HumanMemory,
+                        )
+
+                        await store.add(HumanMemory(content=task.input, metadata=mem_metadata))
+                        mem_result = (store, mem_metadata)
+
                     result_text = await self._run_agent(agent, task, token)
 
                 duration = time.time() - started_at
@@ -303,6 +337,7 @@ class Worker:
                         task_id=task.task_id,
                         worker_id=self._worker_id,
                     )
+                    final_status = TaskStatus.CANCELLED
                 else:
                     # Mark as COMPLETED
                     await self._store.set_status(
@@ -319,11 +354,14 @@ class Worker:
                         duration=duration,
                         wait_time=wait_time,
                     )
+                    final_status = TaskStatus.COMPLETED
+                    final_result = result_text
 
             except Exception as exc:
                 s.record_exception(exc)
                 self._tasks_failed += 1
                 duration = time.time() - started_at
+                final_error = str(exc)
                 await self._store.set_status(
                     task.task_id,
                     TaskStatus.FAILED,
@@ -350,26 +388,36 @@ class Worker:
                     await self._broker.ack(task.task_id)
 
             finally:
+                # Tear down memory persistence
+                if persistence is not None and agent is not None:
+                    persistence.detach(agent)
+                if mem_result is not None:
+                    from orbiter.distributed.memory import (  # pyright: ignore[reportMissingImports]
+                        teardown_memory_store,
+                    )
+
+                    with contextlib.suppress(Exception):
+                        await teardown_memory_store(mem_result[0])
+
                 self._current_task_id = None
                 cancel_task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
                     await cancel_task
 
-    async def _listen_for_cancel(
-        self, task_id: str, token: CancellationToken
-    ) -> None:
+                try:
+                    await self.on_task_done(task, final_status, final_result, final_error)
+                except Exception:
+                    _log.exception("on_task_done failed for task %s", task.task_id)
+
+    async def _listen_for_cancel(self, task_id: str, token: CancellationToken) -> None:
         """Subscribe to ``orbiter:cancel:{task_id}`` and set the token on signal."""
-        r: aioredis.Redis = aioredis.from_url(
-            self._redis_url, decode_responses=True
-        )
+        r: aioredis.Redis = aioredis.from_url(self._redis_url, decode_responses=True)
         channel_name = f"orbiter:cancel:{task_id}"
         pubsub = r.pubsub()
         try:
             await pubsub.subscribe(channel_name)  # type: ignore[misc]
             while True:
-                msg = await pubsub.get_message(
-                    ignore_subscribe_messages=True, timeout=1.0
-                )
+                msg = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
                 if msg is not None and msg["type"] == "message":
                     token.cancel()
                     return
@@ -391,9 +439,16 @@ class Worker:
 
             return Agent.from_dict(agent_config)
 
-    async def _run_agent(
-        self, agent: Any, task: TaskPayload, token: CancellationToken
-    ) -> str:
+    async def on_task_done(
+        self,
+        task: TaskPayload,
+        status: TaskStatus,
+        result: str | None,
+        error: str | None,
+    ) -> None:
+        """Override in subclasses for post-task cleanup. Default is a no-op."""
+
+    async def _run_agent(self, agent: Any, task: TaskPayload, token: CancellationToken) -> str:
         """Stream agent execution, publishing events and collecting output.
 
         Checks *token* between steps for cooperative cancellation.  When
@@ -403,12 +458,61 @@ class Worker:
         from orbiter.types import StatusEvent, TextEvent  # pyright: ignore[reportMissingImports]
 
         messages = _deserialize_messages(task.messages) if task.messages else None
+
+        # Feature 6: Load conversation history from memory
+        if hasattr(agent, "memory") and agent.memory is not None:
+            mem_config = task.metadata.get("memory", {})
+            scope = mem_config.get("scope", {})
+            try:
+                from orbiter.distributed.memory import (  # pyright: ignore[reportMissingImports]
+                    memory_items_to_messages,
+                )
+                from orbiter.memory.base import (  # pyright: ignore[reportMissingImports]
+                    MemoryMetadata,
+                )
+
+                search_meta = MemoryMetadata(
+                    user_id=scope.get("user_id"),
+                    session_id=scope.get("session_id"),
+                    agent_id=scope.get("agent_id"),
+                )
+                prior_items = await agent.memory.search(metadata=search_meta, limit=100)
+                # Persistent backends return newest-first; ensure chronological
+                if len(prior_items) > 1 and prior_items[0].created_at > prior_items[-1].created_at:
+                    prior_items.reverse()
+                # Exclude the current user input (saved by hydration)
+                prior_items = [
+                    it
+                    for it in prior_items
+                    if not (
+                        it.memory_type == "human"
+                        and it.content == task.input
+                        and it is prior_items[-1]
+                    )
+                ]
+                if prior_items:
+                    history = memory_items_to_messages(prior_items)
+                    messages = history + (messages or [])
+            except Exception:
+                _log.warning(
+                    "Failed to load conversation history for task %s",
+                    task.task_id,
+                )
+
+        # Feature 5: Provider factory
+        provider = None
+        if self._provider_factory is not None:
+            model = getattr(agent, "model", None) or task.model
+            if model:
+                provider = self._provider_factory(model)
+
         text_parts: list[str] = []
 
         async for event in run.stream(
             agent,
             task.input,
             messages=messages,
+            provider=provider,
             detailed=task.detailed,
         ):
             # Check for cancellation between steps

@@ -21,6 +21,7 @@ Requires Python 3.11+ and `orbiter-core`.
 - **ShortTermMemory** -- conversation-scoped memory with scope-based filtering and round limiting.
 - **LongTermMemory** -- persistent memory with LLM-based extraction via `MemoryOrchestrator`.
 - **Summary** -- configurable trigger + multi-template summary generation.
+- **MemoryPersistence** -- hook-based auto-persistence. Attach to an agent to automatically save LLM responses (`AIMemory`) and tool results (`ToolMemory`) during `run()` or `run.stream()`.
 - **Backends** -- in-memory (default), SQLite, PostgreSQL, and ChromaDB vector storage.
 
 ## Quick Example

@@ -628,10 +628,7 @@ class TestRunStreamDetailedFalse:
         provider = _make_stream_provider([round1, round2])
 
         events = [
-            ev
-            async for ev in run.stream(
-                agent, "Greet Alice", provider=provider, detailed=False
-            )
+            ev async for ev in run.stream(agent, "Greet Alice", provider=provider, detailed=False)
         ]
 
         for ev in events:
@@ -686,9 +683,7 @@ class TestRunStreamDetailedText:
         assert usage_events[0].agent_name == "bot"
 
         # StepEvent(status='completed') near the end
-        step_completed = [
-            e for e in events if isinstance(e, StepEvent) and e.status == "completed"
-        ]
+        step_completed = [e for e in events if isinstance(e, StepEvent) and e.status == "completed"]
         assert len(step_completed) == 1
         assert step_completed[0].completed_at is not None
         assert step_completed[0].usage is not None
@@ -704,9 +699,7 @@ class TestRunStreamDetailedText:
         chunks = [_FakeStreamChunk(delta="ok")]
         provider = _make_stream_provider([chunks])
 
-        events = [
-            ev async for ev in run.stream(agent, "Hi", provider=provider, detailed=True)
-        ]
+        events = [ev async for ev in run.stream(agent, "Hi", provider=provider, detailed=True)]
 
         type_names = [type(e).__name__ for e in events]
         assert type_names == [
@@ -749,10 +742,7 @@ class TestRunStreamDetailedToolCalls:
         provider = _make_stream_provider([round1, round2])
 
         events = [
-            ev
-            async for ev in run.stream(
-                agent, "Greet Alice", provider=provider, detailed=True
-            )
+            ev async for ev in run.stream(agent, "Greet Alice", provider=provider, detailed=True)
         ]
 
         tool_result_events = [e for e in events if isinstance(e, ToolResultEvent)]
@@ -792,10 +782,7 @@ class TestRunStreamDetailedToolCalls:
         round2 = [_FakeStreamChunk(delta="Result: 42")]
         provider = _make_stream_provider([round1, round2])
 
-        events = [
-            ev
-            async for ev in run.stream(agent, "calc", provider=provider, detailed=True)
-        ]
+        events = [ev async for ev in run.stream(agent, "calc", provider=provider, detailed=True)]
 
         type_names = [type(e).__name__ for e in events]
         # Step 1: tool call
@@ -839,10 +826,7 @@ class TestRunStreamDetailedToolCalls:
         round2 = [_FakeStreamChunk(delta="Tool failed.")]
         provider = _make_stream_provider([round1, round2])
 
-        events = [
-            ev
-            async for ev in run.stream(agent, "try", provider=provider, detailed=True)
-        ]
+        events = [ev async for ev in run.stream(agent, "try", provider=provider, detailed=True)]
 
         tool_result_events = [e for e in events if isinstance(e, ToolResultEvent)]
         assert len(tool_result_events) == 1
@@ -884,12 +868,7 @@ class TestRunStreamDetailedToolCalls:
         round2 = [_FakeStreamChunk(delta="Done.")]
         provider = _make_stream_provider([round1, round2])
 
-        events = [
-            ev
-            async for ev in run.stream(
-                agent, "compute", provider=provider, detailed=True
-            )
-        ]
+        events = [ev async for ev in run.stream(agent, "compute", provider=provider, detailed=True)]
 
         tool_result_events = [e for e in events if isinstance(e, ToolResultEvent)]
         assert len(tool_result_events) == 2
@@ -922,9 +901,7 @@ class TestRunStreamDetailedUsage:
         ]
         provider = _make_stream_provider([chunks])
 
-        events = [
-            ev async for ev in run.stream(agent, "Hi", provider=provider, detailed=True)
-        ]
+        events = [ev async for ev in run.stream(agent, "Hi", provider=provider, detailed=True)]
 
         usage_events = [e for e in events if isinstance(e, UsageEvent)]
         assert len(usage_events) == 1
@@ -940,9 +917,7 @@ class TestRunStreamDetailedUsage:
         chunks = [_FakeStreamChunk(delta="ok")]
         provider = _make_stream_provider([chunks])
 
-        events = [
-            ev async for ev in run.stream(agent, "Hi", provider=provider, detailed=True)
-        ]
+        events = [ev async for ev in run.stream(agent, "Hi", provider=provider, detailed=True)]
 
         usage_events = [e for e in events if isinstance(e, UsageEvent)]
         assert len(usage_events) == 1
@@ -1012,11 +987,7 @@ class TestRunStreamDetailedErrors:
             async for ev in run.stream(agent, "Hi", provider=mock, detailed=True):
                 events.append(ev)
 
-        status_events = [
-            e
-            for e in events
-            if isinstance(e, StatusEvent) and e.status == "error"
-        ]
+        status_events = [e for e in events if isinstance(e, StatusEvent) and e.status == "error"]
         assert len(status_events) == 1
         assert status_events[0].message == "bad input"
 
@@ -1049,10 +1020,7 @@ class TestRunStreamDetailedStepNumbers:
         text_round = [_FakeStreamChunk(delta="Final answer")]
         provider = _make_stream_provider([tool_round, text_round])
 
-        events = [
-            ev
-            async for ev in run.stream(agent, "go", provider=provider, detailed=True)
-        ]
+        events = [ev async for ev in run.stream(agent, "go", provider=provider, detailed=True)]
 
         step_events = [e for e in events if isinstance(e, StepEvent)]
         # Step 1 started + completed, Step 2 started + completed
@@ -1225,10 +1193,7 @@ class TestRunStreamEventFiltering:
         # Filter to only text — should get TextEvents (same as no filter, since
         # detailed=False only emits TextEvent/ToolCallEvent anyway)
         events = [
-            ev
-            async for ev in run.stream(
-                agent, "Hi", provider=provider, event_types={"text"}
-            )
+            ev async for ev in run.stream(agent, "Hi", provider=provider, event_types={"text"})
         ]
 
         assert len(events) == 2
@@ -1348,10 +1313,216 @@ class TestRunStreamEventMetrics:
         ]
         provider = _make_stream_provider([chunks])
 
-        events = [
-            ev async for ev in run.stream(agent, "Hi", provider=provider, detailed=True)
-        ]
+        events = [ev async for ev in run.stream(agent, "Hi", provider=provider, detailed=True)]
 
         # Should have text, status, step, usage events
         snap = get_metrics_snapshot()
         assert snap["counters"]["stream_events_emitted"] == len(events)
+
+
+# ---------------------------------------------------------------------------
+# run.stream() hook parity — PRE_LLM_CALL / POST_LLM_CALL
+# ---------------------------------------------------------------------------
+
+
+class TestRunStreamHookParity:
+    """Verify that _stream() fires PRE_LLM_CALL and POST_LLM_CALL hooks."""
+
+    async def test_stream_fires_pre_llm_call(self) -> None:
+        """PRE_LLM_CALL hook fires with messages kwarg."""
+        from orbiter.hooks import HookPoint
+
+        captured: list[dict[str, Any]] = []
+
+        async def on_pre(*, agent: Any, messages: Any, **_: Any) -> None:
+            captured.append({"agent": agent, "messages": messages})
+
+        agent = Agent(name="bot", hooks=[(HookPoint.PRE_LLM_CALL, on_pre)])
+        chunks = [_FakeStreamChunk(delta="hi")]
+        provider = _make_stream_provider([chunks])
+
+        _ = [ev async for ev in run.stream(agent, "test", provider=provider)]
+
+        assert len(captured) == 1
+        assert captured[0]["agent"] is agent
+        assert len(captured[0]["messages"]) > 0
+
+    async def test_stream_fires_post_llm_call(self) -> None:
+        """POST_LLM_CALL hook fires with response containing streamed text."""
+        from orbiter.hooks import HookPoint
+
+        captured: list[Any] = []
+
+        async def on_post(*, agent: Any, response: Any, **_: Any) -> None:
+            captured.append(response)
+
+        agent = Agent(name="bot", hooks=[(HookPoint.POST_LLM_CALL, on_post)])
+        chunks = [
+            _FakeStreamChunk(delta="Hello"),
+            _FakeStreamChunk(delta=" world"),
+        ]
+        provider = _make_stream_provider([chunks])
+
+        _ = [ev async for ev in run.stream(agent, "test", provider=provider)]
+
+        assert len(captured) == 1
+        assert captured[0].content == "Hello world"
+
+    async def test_stream_hook_order(self) -> None:
+        """Hooks fire in order: pre_llm then post_llm."""
+        from orbiter.hooks import HookPoint
+
+        events_log: list[str] = []
+
+        async def on_pre(**_: Any) -> None:
+            events_log.append("pre_llm")
+
+        async def on_post(**_: Any) -> None:
+            events_log.append("post_llm")
+
+        agent = Agent(
+            name="bot",
+            hooks=[
+                (HookPoint.PRE_LLM_CALL, on_pre),
+                (HookPoint.POST_LLM_CALL, on_post),
+            ],
+        )
+        chunks = [_FakeStreamChunk(delta="ok")]
+        provider = _make_stream_provider([chunks])
+
+        _ = [ev async for ev in run.stream(agent, "test", provider=provider)]
+
+        assert events_log == ["pre_llm", "post_llm"]
+
+    async def test_stream_hooks_fire_per_step(self) -> None:
+        """Hooks fire once per LLM step (2-step tool run fires hooks twice each)."""
+        from orbiter.hooks import HookPoint
+
+        events_log: list[str] = []
+
+        async def on_pre(**_: Any) -> None:
+            events_log.append("pre")
+
+        async def on_post(**_: Any) -> None:
+            events_log.append("post")
+
+        @tool
+        def echo() -> str:
+            """Echo."""
+            return "echoed"
+
+        agent = Agent(
+            name="bot",
+            tools=[echo],
+            hooks=[
+                (HookPoint.PRE_LLM_CALL, on_pre),
+                (HookPoint.POST_LLM_CALL, on_post),
+            ],
+        )
+
+        round1 = [
+            _FakeStreamChunk(
+                tool_call_deltas=[
+                    _FakeToolCallDelta(index=0, id="tc1", name="echo"),
+                ]
+            ),
+            _FakeStreamChunk(
+                tool_call_deltas=[
+                    _FakeToolCallDelta(index=0, arguments="{}"),
+                ],
+                finish_reason="tool_calls",
+            ),
+        ]
+        round2 = [_FakeStreamChunk(delta="Done")]
+        provider = _make_stream_provider([round1, round2])
+
+        _ = [ev async for ev in run.stream(agent, "go", provider=provider)]
+
+        assert events_log == ["pre", "post", "pre", "post"]
+
+    async def test_stream_post_llm_includes_tool_calls(self) -> None:
+        """POST_LLM_CALL response has non-empty tool_calls when tools are called."""
+        from orbiter.hooks import HookPoint
+
+        captured: list[Any] = []
+
+        async def on_post(*, agent: Any, response: Any, **_: Any) -> None:
+            captured.append(response)
+
+        @tool
+        def greet(name: str) -> str:
+            """Greet someone."""
+            return f"Hi {name}!"
+
+        agent = Agent(
+            name="bot",
+            tools=[greet],
+            hooks=[(HookPoint.POST_LLM_CALL, on_post)],
+        )
+
+        round1 = [
+            _FakeStreamChunk(
+                tool_call_deltas=[
+                    _FakeToolCallDelta(index=0, id="tc1", name="greet"),
+                ]
+            ),
+            _FakeStreamChunk(
+                tool_call_deltas=[
+                    _FakeToolCallDelta(index=0, arguments='{"name":"Alice"}'),
+                ],
+                finish_reason="tool_calls",
+            ),
+        ]
+        round2 = [_FakeStreamChunk(delta="Done")]
+        provider = _make_stream_provider([round1, round2])
+
+        _ = [ev async for ev in run.stream(agent, "go", provider=provider)]
+
+        # First POST_LLM_CALL should have tool_calls
+        assert len(captured) == 2
+        assert len(captured[0].tool_calls) == 1
+        assert captured[0].tool_calls[0].name == "greet"
+        assert captured[0].finish_reason == "tool_calls"
+        # Second POST_LLM_CALL should have no tool_calls (text response)
+        assert len(captured[1].tool_calls) == 0
+        assert captured[1].finish_reason == "stop"
+
+    async def test_stream_pre_llm_error_emits_error_event(self) -> None:
+        """PRE_LLM_CALL hook error is caught and yields ErrorEvent."""
+        from orbiter.hooks import HookPoint
+
+        async def bad_hook(**_: Any) -> None:
+            raise RuntimeError("hook exploded")
+
+        agent = Agent(name="bot", hooks=[(HookPoint.PRE_LLM_CALL, bad_hook)])
+        chunks = [_FakeStreamChunk(delta="hi")]
+        provider = _make_stream_provider([chunks])
+
+        events: list[StreamEvent] = []
+        with pytest.raises(RuntimeError, match="hook exploded"):
+            async for ev in run.stream(agent, "test", provider=provider):
+                events.append(ev)
+
+        error_events = [e for e in events if isinstance(e, ErrorEvent)]
+        assert len(error_events) == 1
+        assert "hook exploded" in error_events[0].error
+
+    async def test_stream_post_llm_error_emits_error_event(self) -> None:
+        """POST_LLM_CALL hook error is caught and yields ErrorEvent."""
+        from orbiter.hooks import HookPoint
+
+        async def bad_hook(**_: Any) -> None:
+            raise RuntimeError("post hook boom")
+
+        agent = Agent(name="bot", hooks=[(HookPoint.POST_LLM_CALL, bad_hook)])
+        chunks = [_FakeStreamChunk(delta="hi")]
+        provider = _make_stream_provider([chunks])
+
+        events: list[StreamEvent] = []
+        with pytest.raises(RuntimeError, match="post hook boom"):
+            async for ev in run.stream(agent, "test", provider=provider):
+                events.append(ev)
+
+        error_events = [e for e in events if isinstance(e, ErrorEvent)]
+        assert len(error_events) == 1
+        assert "post hook boom" in error_events[0].error

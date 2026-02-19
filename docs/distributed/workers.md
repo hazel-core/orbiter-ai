@@ -54,6 +54,79 @@ asyncio.run(worker.start())
 | `queue_name` | `str` | `"orbiter:tasks"` | Redis Streams queue name |
 | `heartbeat_ttl` | `int` | `30` | Heartbeat key TTL in seconds |
 | `executor` | `Literal["local", "temporal"]` | `"local"` | Execution backend |
+| `provider_factory` | `Callable[[str], Any] \| None` | `None` | Custom provider factory (receives model string, returns provider) |
+
+## Provider Factory
+
+By default, the worker auto-resolves an LLM provider from the agent's model string using the model registry. For scenarios requiring token refresh, custom endpoints, or per-request credentials, pass a `provider_factory` callable:
+
+```python
+worker = Worker(
+    "redis://localhost:6379",
+    provider_factory=lambda model: create_provider(model, api_key=get_fresh_token()),
+)
+```
+
+The factory receives the model string (e.g., `"openai:gpt-4o"`) and must return a provider with an async `stream()` method. When `provider_factory` is `None`, standard auto-resolution is used.
+
+## Post-Task Callback (on_task_done)
+
+Override `on_task_done()` in a `Worker` subclass to run cleanup logic after every task:
+
+```python
+from orbiter.distributed.worker import Worker
+from orbiter.distributed.models import TaskPayload, TaskStatus
+
+class MyWorker(Worker):
+    async def on_task_done(self, task, status, result, error):
+        """Called after every task, regardless of outcome."""
+        await record_billing(task.task_id, status)
+```
+
+**Signature:**
+
+```python
+async def on_task_done(
+    self,
+    task: TaskPayload,
+    status: TaskStatus,    # COMPLETED, FAILED, or CANCELLED
+    result: str | None,    # final output text (on success)
+    error: str | None,     # error message (on failure)
+) -> None: ...
+```
+
+The callback fires in the `finally` block of task execution, so it runs on every outcome. Exceptions in `on_task_done` are logged but never crash the worker.
+
+## Memory Hydration
+
+Workers can automatically create a memory store, persist conversation data, and load prior history for multi-turn sessions. Enable this by including a `memory` key in the task metadata:
+
+```python
+handle = await distributed(
+    agent,
+    "Continue our conversation",
+    metadata={
+        "memory": {
+            "backend": "short_term",     # "short_term", "sqlite", or "postgres"
+            "dsn": "sqlite:///memory.db", # only for sqlite/postgres backends
+            "scope": {
+                "user_id": "u-1",
+                "session_id": "s-1",
+            },
+        },
+    },
+)
+```
+
+**What the worker does when a memory config is present:**
+
+1. Creates a `MemoryStore` from the backend config (short-term, SQLite, or Postgres)
+2. Attaches `MemoryPersistence` hooks to auto-save `AIMemory` and `ToolMemory` during execution
+3. Saves the user input as `HumanMemory`
+4. Loads prior conversation history from the store and prepends it to the message list
+5. Tears down the store in the `finally` block (even on failure)
+
+This requires the `orbiter-memory` package: `pip install orbiter-distributed[memory]`.
 
 ## Environment Variables
 

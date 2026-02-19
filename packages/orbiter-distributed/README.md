@@ -217,3 +217,72 @@ Client ──distributed()──> Redis Stream (orbiter:tasks)
 - **EventPublisher/Subscriber**: Dual-channel event delivery (Pub/Sub + Streams)
 - **TaskStore**: Redis hash-backed task state with TTL auto-cleanup
 - **TaskHandle**: Client-side handle for result retrieval, streaming, and cancellation
+
+## Worker Features
+
+### Provider Factory
+
+By default, the worker auto-resolves an LLM provider from the agent's model string. For custom provider logic (token refresh, custom endpoints, per-request credentials), pass a `provider_factory`:
+
+```python
+from orbiter.distributed.worker import Worker
+
+def my_factory(model: str):
+    """Return a provider for the given model string."""
+    from orbiter.models.openai import OpenAIProvider
+    return OpenAIProvider(api_key=get_fresh_token(), model=model)
+
+worker = Worker(
+    "redis://localhost:6379",
+    provider_factory=my_factory,
+)
+```
+
+The factory receives the model string (e.g., `"openai:gpt-4o"`) and returns a provider instance. When `None`, the standard auto-resolution is used.
+
+### Post-Task Callback (on_task_done)
+
+Subclass `Worker` and override `on_task_done()` for post-task cleanup, billing, or notifications:
+
+```python
+from orbiter.distributed.worker import Worker
+from orbiter.distributed.models import TaskPayload, TaskStatus
+
+class BillingWorker(Worker):
+    async def on_task_done(self, task, status, result, error):
+        if status == TaskStatus.COMPLETED:
+            await bill_user(task.metadata.get("user_id"), result)
+        elif status == TaskStatus.FAILED:
+            await alert_ops(task.task_id, error)
+```
+
+The callback fires in a `finally` block, so it runs on success, failure, and cancellation. Exceptions in `on_task_done` are logged but never crash the worker.
+
+### Memory Hydration
+
+Workers can automatically set up memory for tasks. Pass a `memory` config in the task metadata:
+
+```python
+handle = await distributed(
+    agent,
+    "Continue our conversation",
+    metadata={
+        "memory": {
+            "backend": "short_term",  # or "sqlite", "postgres"
+            "scope": {
+                "user_id": "u-1",
+                "session_id": "s-1",
+            },
+        },
+    },
+)
+```
+
+When a memory config is present, the worker:
+1. Creates a memory store from the config
+2. Attaches `MemoryPersistence` to auto-save LLM and tool results
+3. Saves the user input as `HumanMemory`
+4. Loads prior conversation history from the store (for multi-turn sessions)
+5. Tears down the store in the `finally` block
+
+This requires `orbiter-memory` to be installed (`pip install orbiter-distributed[memory]`).

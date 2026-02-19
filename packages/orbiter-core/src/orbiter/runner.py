@@ -24,6 +24,7 @@ from typing import Any
 from orbiter._internal.call_runner import call_runner
 from orbiter._internal.message_builder import build_messages
 from orbiter._internal.output_parser import parse_tool_arguments
+from orbiter.hooks import HookPoint
 from orbiter.observability.metrics import (  # pyright: ignore[reportMissingImports]
     HAS_OTEL,
     _collector,
@@ -281,6 +282,8 @@ async def _stream(
             tc_acc: dict[int, dict[str, str]] = {}
             step_usage = Usage()
 
+            await agent.hook_manager.run(HookPoint.PRE_LLM_CALL, agent=agent, messages=msg_list)
+
             async for chunk in resolved.stream(
                 msg_list,
                 tools=tool_schemas,
@@ -334,6 +337,17 @@ async def _stream(
                 if data["id"]
             ]
 
+            full_text = "".join(text_parts)
+            from types import SimpleNamespace
+
+            _synth = SimpleNamespace(
+                content=full_text,
+                tool_calls=tool_calls,
+                usage=step_usage,
+                finish_reason="tool_calls" if tool_calls else "stop",
+            )
+            await agent.hook_manager.run(HookPoint.POST_LLM_CALL, agent=agent, response=_synth)
+
             # No tool calls — done streaming
             if not tool_calls:
                 if detailed:
@@ -368,7 +382,6 @@ async def _stream(
                     yield _ev
 
             # Execute tools and feed results back
-            full_text = "".join(text_parts)
             actions = parse_tool_arguments(tool_calls)
             tool_exec_start = time.time()
             tool_results = await agent._execute_tools(actions)
@@ -378,9 +391,7 @@ async def _stream(
             if detailed:
                 total_tool_duration_ms = (tool_exec_end - tool_exec_start) * 1000
                 per_tool_duration_ms = (
-                    total_tool_duration_ms / len(tool_results)
-                    if tool_results
-                    else 0.0
+                    total_tool_duration_ms / len(tool_results) if tool_results else 0.0
                 )
                 for action, tr in zip(actions, tool_results):
                     _ev = ToolResultEvent(
@@ -409,9 +420,7 @@ async def _stream(
                     yield _ev
 
             # Append assistant message + tool results to conversation
-            msg_list.append(
-                AssistantMessage(content=full_text, tool_calls=tool_calls)
-            )
+            msg_list.append(AssistantMessage(content=full_text, tool_calls=tool_calls))
             msg_list.extend(tool_results)
 
         except Exception as exc:
@@ -455,16 +464,20 @@ def _resolve_provider(agent: Any) -> Any:
         model = getattr(agent, "model", None)
         if model is None and hasattr(agent, "agents"):
             # Swarm: resolve from the first agent's model
-            first = next(iter(agent.agents.values()), None) if isinstance(
-                agent.agents, dict
-            ) else (agent.agents[0] if agent.agents else None)
+            first = (
+                next(iter(agent.agents.values()), None)
+                if isinstance(agent.agents, dict)
+                else (agent.agents[0] if agent.agents else None)
+            )
             if first is not None:
                 model = first.model
         if model is None:
             return None
         return get_provider(model)
     except Exception as exc:
-        log.warning("Failed to auto-resolve provider for model '%s': %s", getattr(agent, "model", "?"), exc)
+        log.warning(
+            "Failed to auto-resolve provider for model '%s': %s", getattr(agent, "model", "?"), exc
+        )
         return None
 
 

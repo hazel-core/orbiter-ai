@@ -125,6 +125,30 @@ class ToolCallEvent(BaseModel):
 
 When tool calls are detected during streaming, tools are executed and the LLM is re-streamed with the results. This loops until a text-only response or `max_steps` is reached.
 
+### Hooks in Streaming Mode
+
+`run.stream()` fires the same lifecycle hooks as `run()` and `run.sync()`. On each LLM round-trip within the stream, `PRE_LLM_CALL` fires before the provider's `stream()` call and `POST_LLM_CALL` fires after all chunks have been consumed. Tool hooks (`PRE_TOOL_CALL` / `POST_TOOL_CALL`) fire during tool execution, exactly as they do in non-streaming mode.
+
+This means hook-based features -- token budgets, logging, [memory auto-persistence](memory.md#auto-persistence) -- work identically regardless of which execution method you use.
+
+```python
+from orbiter.hooks import HookPoint
+
+async def log_step(**data):
+    response = data.get("response")
+    if response:
+        print(f"Step completed: {len(response.content)} chars")
+
+agent = Agent(
+    name="streamed",
+    hooks=[(HookPoint.POST_LLM_CALL, log_step)],
+)
+
+# Hooks fire during streaming, just like run()
+async for event in run.stream(agent, "Hello"):
+    pass
+```
+
 ## RunResult
 
 The return type of `run()` and `run.sync()`:

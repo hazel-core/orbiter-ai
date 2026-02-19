@@ -208,6 +208,46 @@ Summary templates:
 | `FACTS` | Extract factual assertions |
 | `PROFILES` | Summarize user/agent profiles |
 
+## Auto-Persistence
+
+`MemoryPersistence` automatically saves LLM responses and tool results to a memory store using hooks. Instead of manually adding memory items after each call, attach a `MemoryPersistence` instance to your agent and it handles persistence for both `run()` and `run.stream()`.
+
+```python
+from orbiter.agent import Agent
+from orbiter.memory import ShortTermMemory, MemoryPersistence, MemoryMetadata, HumanMemory
+from orbiter.runner import run
+
+agent = Agent(name="assistant", model="openai:gpt-4o")
+
+store = ShortTermMemory(scope="session")
+meta = MemoryMetadata(user_id="u-1", session_id="s-1")
+
+persistence = MemoryPersistence(store, metadata=meta)
+persistence.attach(agent)
+
+# Save the user input manually (MemoryPersistence handles AI + tool memories)
+await store.add(HumanMemory(content="Hello!", metadata=meta))
+
+# Run the agent -- AI responses and tool results are auto-saved
+result = await run(agent, "Hello!")
+
+# The store now contains: HumanMemory, AIMemory, (and ToolMemory for each tool call)
+items = await store.search(metadata=meta, limit=100)
+
+# Detach when done
+persistence.detach(agent)
+```
+
+**How it works:**
+
+- `attach()` registers `POST_LLM_CALL` and `POST_TOOL_CALL` hooks on the agent
+- Each LLM response is saved as an `AIMemory` (including any `tool_calls`)
+- Each tool result is saved as a `ToolMemory` (with `tool_call_id`, `tool_name`, and `is_error`)
+- `detach()` removes the hooks cleanly
+- The caller is responsible for saving `HumanMemory` (user input) before calling `run()`
+
+This is the same mechanism used internally by the [distributed worker](../distributed/workers.md#memory-hydration) for automatic memory hydration.
+
 ## Event Integration
 
 Wrap any `MemoryStore` with `MemoryEventEmitter` to emit events on memory operations:
@@ -253,4 +293,5 @@ See [Memory Backends](memory-backends.md) for storage backend configuration (SQL
 | `SummaryTemplate` | `orbiter.memory` | Enum: `CONVERSATION`, `FACTS`, `PROFILES` |
 | `check_trigger` | `orbiter.memory` | Check if summarization should trigger |
 | `generate_summary` | `orbiter.memory` | Generate a summary from messages |
+| `MemoryPersistence` | `orbiter.memory` | Hook-based auto-persistence for LLM responses and tool results |
 | `MemoryEventEmitter` | `orbiter.memory` | Event-emitting wrapper for any `MemoryStore` |

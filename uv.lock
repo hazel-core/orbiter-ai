@@ -2556,6 +2556,9 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+memory = [
+    { name = "orbiter-memory" },
+]
 temporal = [
     { name = "temporalio" },
 ]
@@ -2569,13 +2572,14 @@ test = [
 requires-dist = [
     { name = "fakeredis", extras = ["lua"], marker = "extra == 'test'" },
     { name = "orbiter-core", editable = "packages/orbiter-core" },
+    { name = "orbiter-memory", marker = "extra == 'memory'", editable = "packages/orbiter-memory" },
     { name = "orbiter-observability", editable = "packages/orbiter-observability" },
     { name = "pytest", marker = "extra == 'test'" },
     { name = "pytest-asyncio", marker = "extra == 'test'" },
     { name = "redis", extras = ["hiredis"], specifier = ">=5.0" },
     { name = "temporalio", marker = "extra == 'temporal'", specifier = ">=1.7" },
 ]
-provides-extras = ["temporal", "test"]
+provides-extras = ["memory", "temporal", "test"]
 
 [[package]]
 name = "orbiter-eval"
