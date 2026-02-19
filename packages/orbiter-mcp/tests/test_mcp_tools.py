@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import ANY, AsyncMock, MagicMock
 
 import pytest
 from mcp.types import CallToolResult, TextContent  # pyright: ignore[reportMissingImports]
@@ -251,7 +251,7 @@ class TestMCPToolWrapperExecute:
 
         result = await wrapper.execute(query="test")
         assert result == "found it"
-        call_fn.assert_awaited_once_with("search", {"query": "test"})
+        call_fn.assert_awaited_once_with("search", {"query": "test"}, progress_callback=ANY)
 
     async def test_empty_args(self) -> None:
         call_fn = AsyncMock(return_value=_make_call_result("done"))
@@ -260,7 +260,7 @@ class TestMCPToolWrapperExecute:
 
         result = await wrapper.execute()
         assert result == "done"
-        call_fn.assert_awaited_once_with("ping", None)
+        call_fn.assert_awaited_once_with("ping", None, progress_callback=ANY)
 
     async def test_error_result(self) -> None:
         call_fn = AsyncMock(return_value=_make_call_result("bad input", is_error=True))
@@ -383,7 +383,7 @@ class TestLoadToolsFromConnection:
         tools = await load_tools_from_connection(conn)
         result = await tools[0].execute(query="hello")
         assert result == "ok"
-        conn.call_tool.assert_awaited_once_with("search", {"query": "hello"})
+        conn.call_tool.assert_awaited_once_with("search", {"query": "hello"}, progress_callback=ANY)
 
 
 # ---------------------------------------------------------------------------

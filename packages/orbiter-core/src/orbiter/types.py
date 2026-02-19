@@ -334,6 +334,32 @@ class UsageEvent(BaseModel):
     model: str = ""
 
 
+class MCPProgressEvent(BaseModel):
+    """Streaming event for MCP tool progress notifications.
+
+    Emitted when an MCP tool sends a progress notification during execution.
+    These are never returned as part of the tool result — they are yielded
+    only during ``agent.stream()`` as they arrive.
+
+    Args:
+        type: Discriminator literal, always ``"mcp_progress"``.
+        tool_name: Name of the MCP tool sending progress.
+        progress: Current progress value (converted to int from MCP float).
+        total: Total progress value if known, else None.
+        message: Human-readable progress message.
+        agent_name: Name of the agent executing this tool.
+    """
+
+    model_config = {"frozen": True}
+
+    type: Literal["mcp_progress"] = "mcp_progress"
+    tool_name: str
+    progress: int
+    total: int | None = None
+    message: str = ""
+    agent_name: str = ""
+
+
 StreamEvent = (
     TextEvent
     | ToolCallEvent
@@ -343,4 +369,5 @@ StreamEvent = (
     | ErrorEvent
     | StatusEvent
     | UsageEvent
+    | MCPProgressEvent
 )

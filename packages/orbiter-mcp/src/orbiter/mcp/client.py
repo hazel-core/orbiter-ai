@@ -281,12 +281,23 @@ class MCPServerConnection:
         self,
         tool_name: str,
         arguments: dict[str, Any] | None = None,
+        *,
+        progress_callback: Any | None = None,
     ) -> CallToolResult:
-        """Invoke a tool on the server."""
+        """Invoke a tool on the server.
+
+        Args:
+            tool_name: Name of the tool to invoke.
+            arguments: Tool arguments to pass.
+            progress_callback: Optional async callable invoked on each progress
+                notification from the server: ``(progress, total, message) -> None``.
+        """
         if not self._session:
             raise MCPClientError(f"Server '{self.name}' not connected. Call connect() first.")
         logger.debug("Calling tool '%s' on server '%s'", tool_name, self.name)
-        return await self._session.call_tool(name=tool_name, arguments=arguments)
+        return await self._session.call_tool(
+            name=tool_name, arguments=arguments, progress_callback=progress_callback
+        )
 
     async def cleanup(self) -> None:
         """Close the transport and session."""
@@ -398,10 +409,12 @@ class MCPClient:
         server_name: str,
         tool_name: str,
         arguments: dict[str, Any] | None = None,
+        *,
+        progress_callback: Any | None = None,
     ) -> CallToolResult:
         """Call a tool on a specific server (connects if needed)."""
         conn = await self.connect(server_name)
-        return await conn.call_tool(tool_name, arguments)
+        return await conn.call_tool(tool_name, arguments, progress_callback=progress_callback)
 
     async def __aenter__(self) -> MCPClient:
         await self.connect_all()

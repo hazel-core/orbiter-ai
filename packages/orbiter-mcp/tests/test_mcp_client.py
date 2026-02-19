@@ -320,7 +320,9 @@ class TestMCPServerConnectionCallTool:
             result = await conn.call_tool("greet", {"name": "world"})
 
         assert result is expected
-        session.call_tool.assert_called_once_with(name="greet", arguments={"name": "world"})
+        session.call_tool.assert_called_once_with(
+            name="greet", arguments={"name": "world"}, progress_callback=None
+        )
 
     async def test_call_tool_not_connected(self) -> None:
         conn = MCPServerConnection(_make_stdio_config())

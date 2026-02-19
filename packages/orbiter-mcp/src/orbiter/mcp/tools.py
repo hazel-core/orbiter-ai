@@ -178,6 +178,7 @@ class MCPToolWrapper(Tool):
         "large_output",
         "name",
         "parameters",
+        "progress_queue",
     )
 
     def __init__(
@@ -201,6 +202,8 @@ class MCPToolWrapper(Tool):
         # Set large_output from server_config.large_output_tools membership
         large_output_tools = getattr(server_config, "large_output_tools", None) or []
         self.large_output: bool = mcp_tool.name in large_output_tools
+        # Queue for progress notifications captured during execute(); drained by agent.stream()
+        self.progress_queue: asyncio.Queue[Any] = asyncio.Queue()
 
     @property
     def original_name(self) -> str:
@@ -257,6 +260,7 @@ class MCPToolWrapper(Tool):
         wrapper._connection = None
         wrapper._reconnect_lock = asyncio.Lock()
         wrapper.large_output = data.get("large_output", False)
+        wrapper.progress_queue = asyncio.Queue()
         if "server_config" in data:
             wrapper._server_config = MCPServerConfig.from_dict(data["server_config"])
         else:
@@ -300,8 +304,33 @@ class MCPToolWrapper(Tool):
                         )
 
         logger.debug("Calling MCP tool '%s' on server '%s'", self._original_name, self._server_name)
+
+        # Build a progress callback that enqueues MCPProgressEvent objects.
+        # Import lazily to avoid a hard dependency on orbiter-core from orbiter-mcp.
         try:
-            result: CallToolResult = await self._call_fn(self._original_name, kwargs or None)
+            from orbiter.types import MCPProgressEvent  # pyright: ignore[reportMissingImports]
+
+            _queue = self.progress_queue
+            _tool_name = self.name
+
+            async def _progress_callback(
+                progress: float, total: float | None, message: str | None
+            ) -> None:
+                event = MCPProgressEvent(
+                    tool_name=_tool_name,
+                    progress=int(progress),
+                    total=int(total) if total is not None else None,
+                    message=message or "",
+                )
+                await _queue.put(event)
+
+        except ImportError:
+            _progress_callback = None  # type: ignore[assignment]
+
+        try:
+            result: CallToolResult = await self._call_fn(
+                self._original_name, kwargs or None, progress_callback=_progress_callback
+            )
         except Exception as exc:
             logger.error(
                 "MCP tool '%s' on server '%s' failed: %s",
