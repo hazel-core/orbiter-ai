@@ -187,6 +187,21 @@ Started: Fri Feb 20 03:26:33 AM IST 2026
   - `agent.tools` is a `dict[str, Tool]`; check presence with `"tool_name" in agent.tools`
 ---
 
+## 2026-02-20 - US-INT-014
+- What was implemented: Memory + context three-package chain tests — verifies SQLite persistence across 6 turns, AI content written to Chroma is semantically retrievable, and a new agent with AgentMemory(long_term=Chroma) correctly injects Chroma-stored facts via _inject_long_term_knowledge
+- Files changed:
+  - `tests/integration/test_memory_context_chain.py` (new)
+- **Learnings for future iterations:**
+  - `AgentMemory(short_term=SQLite, long_term=Chroma)` auto-persists to SQLite only; Chroma (long_term) is searched by `_inject_long_term_knowledge()` for injection but NOT auto-written
+  - `_inject_long_term_knowledge()` runs at line 917 of agent.py: `getattr(agent_memory, "long_term", None)` — only fires if memory has `.long_term` attribute (i.e., `AgentMemory` not bare `MemoryStore`)
+  - To test KnowledgeNeuron injection: use `AgentMemory(short_term=..., long_term=ChromaVectorMemoryStore(...))` and pre-populate Chroma with facts; the agent's system message gets a `<knowledge>` block with matched items
+  - `_inject_long_term_knowledge()` calls `long_term.search(query=user_input, limit=5)` — no metadata filter; all items in Chroma are eligible for matching
+  - SummaryMemory is NOT persisted anywhere; "confirm SummaryMemory item created in SQLite" → adapted to verify conversation items (HumanMemory + AIMemory) persisted
+  - For Chroma population when using `AgentMemory`: need to manually `await chroma_store.add(AIMemory(...))` after getting items from SQLite; Chroma doesn't auto-receive items
+  - ChromaVectorMemoryStore needs `path=tmpdir` for persistence; collection created lazily, no explicit `init()` call needed
+  - Use `shutil.rmtree(chroma_dir, ignore_errors=True)` in finally for Chroma temp dir cleanup
+---
+
 ## 2026-02-20 - US-INT-012
 - What was implemented: Agent self-spawn integration tests — verifies parent agent spawns children and depth limit is enforced
 - Files changed:
