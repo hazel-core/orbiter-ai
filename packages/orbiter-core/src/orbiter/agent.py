@@ -663,6 +663,122 @@ class Agent:
         # max_steps exhausted — return last output as-is
         return output
 
+    async def branch(self, from_message_id: str) -> str:
+        """Branch the conversation at *from_message_id*.
+
+        Creates a new conversation that inherits all messages up to and
+        including the message identified by *from_message_id*.  The branch is
+        independent of the parent — activity in the branch does not affect the
+        original conversation.
+
+        ``Context.fork()`` is used internally to create an isolated child
+        context so summarisation is tracked per-branch and not shared with the
+        parent.
+
+        Args:
+            from_message_id: The ``MemoryItem.id`` of the last message to
+                include in the branch.  All messages up to and including this
+                item are copied to the new conversation scope.
+
+        Returns:
+            A new conversation_id (UUID4 string) for the branched conversation.
+            Pass it to ``agent.run(input, conversation_id=branch_id)`` to
+            continue on the branch.
+
+        Raises:
+            AgentError: If memory is not configured, no active conversation
+                exists, or *from_message_id* is not found in the current
+                conversation.
+        """
+        if self._memory_persistence is None:
+            raise AgentError(
+                f"Agent '{self.name}' requires memory to be set for branch()"
+            )
+        if self.conversation_id is None:
+            raise AgentError(
+                f"Agent '{self.name}' has no active conversation; "
+                "run the agent at least once before calling branch()"
+            )
+
+        store = self._memory_persistence.store
+
+        # Collect all raw items for the current conversation.
+        # Access _items directly (for ShortTermMemory) to bypass windowing and
+        # incomplete-pair filtering — we want the full unfiltered history.
+        raw_items: list[Any] = []
+        store_internal = getattr(store, "_items", None)
+        if store_internal is not None:
+            for item in store_internal:
+                item_meta = item.metadata
+                if (
+                    getattr(item_meta, "agent_id", None) == self.name
+                    and getattr(item_meta, "task_id", None) == self.conversation_id
+                ):
+                    raw_items.append(item)
+        else:
+            try:
+                from orbiter.memory.base import MemoryMetadata  # pyright: ignore[reportMissingImports]
+            except ImportError as exc:
+                raise AgentError("orbiter-memory is required for branch()") from exc
+            _meta_filter = MemoryMetadata(
+                agent_id=self.name, task_id=self.conversation_id
+            )
+            raw_items = await store.search(metadata=_meta_filter, limit=10000)
+            raw_items = sorted(raw_items, key=lambda x: x.created_at)
+
+        # Find the cutoff index
+        cutoff_idx: int | None = None
+        for i, item in enumerate(raw_items):
+            if item.id == from_message_id:
+                cutoff_idx = i
+                break
+
+        if cutoff_idx is None:
+            raise AgentError(
+                f"Message ID {from_message_id!r} not found in conversation "
+                f"{self.conversation_id!r} on agent '{self.name}'"
+            )
+
+        # Create new conversation_id for the branch
+        branch_conv_id = str(uuid.uuid4())
+
+        # Copy messages up to and including the cutoff to the new conversation scope
+        try:
+            from orbiter.memory.base import MemoryMetadata  # pyright: ignore[reportMissingImports]
+        except ImportError as exc:
+            raise AgentError("orbiter-memory is required for branch()") from exc
+
+        branch_meta = MemoryMetadata(agent_id=self.name, task_id=branch_conv_id)
+        items_to_copy = raw_items[: cutoff_idx + 1]
+        for item in items_to_copy:
+            copied = item.model_copy(
+                update={"id": uuid.uuid4().hex, "metadata": branch_meta}
+            )
+            await store.add(copied)
+
+        # Use Context.fork() to create an isolated child context so that
+        # summarisation is tracked per-branch and not shared with the parent.
+        if self.context is not None:
+            try:
+                from orbiter.context.context import Context  # pyright: ignore[reportMissingImports]
+
+                _parent_ctx = Context(
+                    task_id=self.conversation_id, config=self.context
+                )
+                _parent_ctx.fork(branch_conv_id)
+            except ImportError:
+                pass
+
+        _log.info(
+            "branched conversation: agent=%s parent=%s branch=%s messages_copied=%d at_id=%s",
+            self.name,
+            self.conversation_id,
+            branch_conv_id,
+            len(items_to_copy),
+            from_message_id,
+        )
+        return branch_conv_id
+
     async def _call_llm(
         self,
         msg_list: list[Message],
