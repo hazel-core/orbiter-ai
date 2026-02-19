@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from typing import Any
 
 import aiosqlite  # pyright: ignore[reportMissingImports]
@@ -37,6 +38,12 @@ _CREATE_INDEXES = [
 ]
 
 
+def _default_db_path() -> str:
+    """Return the default SQLite path from ORBITER_MEMORY_PATH or ~/.orbiter/memory.db."""
+    raw = os.environ.get("ORBITER_MEMORY_PATH", "~/.orbiter/memory.db")
+    return os.path.expanduser(raw)
+
+
 class SQLiteMemoryStore:
     """SQLite-backed persistent memory store.
 
@@ -45,12 +52,16 @@ class SQLiteMemoryStore:
 
     Use ``async with SQLiteMemoryStore(path) as store:`` or call
     ``await store.init()`` / ``await store.close()`` manually.
+
+    When *db_path* is not provided, the path is read from the
+    ``ORBITER_MEMORY_PATH`` environment variable (default:
+    ``~/.orbiter/memory.db``).
     """
 
     __slots__ = ("_db", "_initialized", "db_path")
 
-    def __init__(self, db_path: str = ":memory:") -> None:
-        self.db_path = db_path
+    def __init__(self, db_path: str | None = None) -> None:
+        self.db_path = db_path if db_path is not None else _default_db_path()
         self._db: aiosqlite.Connection | None = None
         self._initialized = False
 

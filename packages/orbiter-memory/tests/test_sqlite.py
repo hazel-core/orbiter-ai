@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -10,6 +11,7 @@ aiosqlite = pytest.importorskip("aiosqlite")
 
 from orbiter.memory.backends.sqlite import (  # noqa: E402  # pyright: ignore[reportMissingImports]
     SQLiteMemoryStore,
+    _default_db_path,
 )
 from orbiter.memory.base import (  # noqa: E402  # pyright: ignore[reportMissingImports]
     AIMemory,
@@ -358,3 +360,42 @@ class TestCustomMemoryType:
         assert got is not None
         assert got.memory_type == "custom_type"
         assert got.content == "custom"
+
+
+# ---------------------------------------------------------------------------
+# Default path — ORBITER_MEMORY_PATH env var
+# ---------------------------------------------------------------------------
+
+
+class TestDefaultPath:
+    def test_default_path_is_home_orbiter(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("ORBITER_MEMORY_PATH", raising=False)
+        path = _default_db_path()
+        home = os.path.expanduser("~")
+        assert path == os.path.join(home, ".orbiter", "memory.db")
+
+    def test_orbiter_memory_path_env_var_overrides_default(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        custom_path = str(tmp_path / "custom.db")
+        monkeypatch.setenv("ORBITER_MEMORY_PATH", custom_path)
+        path = _default_db_path()
+        assert path == custom_path
+
+    def test_orbiter_memory_path_expands_tilde(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ORBITER_MEMORY_PATH", "~/myapp/memory.db")
+        path = _default_db_path()
+        home = os.path.expanduser("~")
+        assert path == os.path.join(home, "myapp", "memory.db")
+
+    def test_sqlite_store_no_args_uses_env_var(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ORBITER_MEMORY_PATH", "/tmp/env_test.db")
+        store = SQLiteMemoryStore()
+        assert store.db_path == "/tmp/env_test.db"
+
+    def test_sqlite_store_explicit_path_overrides_env_var(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("ORBITER_MEMORY_PATH", "/tmp/should_not_use.db")
+        store = SQLiteMemoryStore(":memory:")
+        assert store.db_path == ":memory:"
