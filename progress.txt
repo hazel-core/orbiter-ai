@@ -174,3 +174,18 @@ Started: Fri Feb 20 03:26:33 AM IST 2026
   - Router instructions must be very explicit: "Your entire response must be exactly the single word: poet" — model may add punctuation otherwise
   - No HandoffEvent or ToolCall is emitted for handoffs in Orbiter; only the routing output ("poet") appears as an AssistantMessage in messages
 ---
+
+## 2026-02-20 - US-INT-012
+- What was implemented: Agent self-spawn integration tests — verifies parent agent spawns children and depth limit is enforced
+- Files changed:
+  - `tests/integration/test_self_spawn.py` (new)
+- **Learnings for future iterations:**
+  - Self-spawn API: `Agent(allow_self_spawn=True, max_spawn_depth=N)` auto-registers `spawn_self(task: str) -> str` tool
+  - `spawn_self` tool is named exactly `spawn_self` (not `spawn_subtask`); check `tc.name == "spawn_self"` in `result.tool_calls`
+  - Depth guard: `if _spawn_depth >= max_spawn_depth: return error_string` — does NOT raise, returns error string; LLM handles it gracefully
+  - To test depth enforcement: set `agent._spawn_depth = agent.max_spawn_depth` before `agent.run()` — spawn_self fires guard on first call
+  - Spawned child gets `allow_self_spawn=False`, so no recursive spawning from children
+  - Use `agent.run()` (not `swarm.run()`); returns `AgentOutput` with `.text` and `.tool_calls`
+  - Use timeout(60) not timeout(30) — each spawn_self call adds a full LLM round-trip
+  - Prompt must instruct SEQUENTIAL spawns to avoid Gemini parallel-tool-call INVALID_ARGUMENT error
+---
