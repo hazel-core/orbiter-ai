@@ -92,3 +92,14 @@ Started: Fri Feb 20 03:26:33 AM IST 2026
   - For chained tools test (get_capital → get_population), model must sequentially call them because the second depends on the output of the first — this avoids the Gemini parallel-tool-call INVALID_ARGUMENT issue
   - Tests skip gracefully when GOOGLE_CLOUD_PROJECT/GOOGLE_CLOUD_LOCATION are not set (via vertex_model fixture)
 ---
+
+## 2026-02-20 - US-INT-006
+- What was implemented: Structured output validation tests using parse_structured_output
+- Files changed:
+  - `tests/integration/test_agent_structured_output.py` (new)
+- **Learnings for future iterations:**
+  - PRD references `result.output` (e.g. `result.output.capital`) but `agent.run()` returns `AgentOutput` with NO `output` field; use `parse_structured_output(result.text, Model)` from `orbiter._internal.output_parser` instead
+  - For structured output tests, instruct the agent via system prompt to reply ONLY with the JSON object; the LLM reliably follows this when clearly told the schema and no-other-text
+  - Tool call assertions use `result.tool_calls` (list of ToolCall); structured output assertions use `parse_structured_output(result.text, Model)`
+  - `temperature_celsius` parsed from JSON may come as int; use `isinstance(x, (int, float))` or just check `isinstance(x, float)` after pydantic coerces it
+---
