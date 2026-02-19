@@ -23,10 +23,13 @@ Usage::
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 from pathlib import Path
 from typing import Annotated, Any
 from urllib.parse import urlparse
+
+logger = logging.getLogger(__name__)
 
 import typer
 from rich.console import Console
@@ -141,6 +144,12 @@ def run(
     """Run an agent or swarm with the given input."""
     verbose: bool = ctx.obj.get("verbose", False)
 
+    logger.debug(
+        "CLI command=%s args=%r",
+        "run",
+        {"input": input_text, "config": config, "model": model, "stream": stream},
+    )
+
     # Resolve config
     cfg = resolve_config(config)
     if verbose and cfg:
@@ -206,6 +215,11 @@ def start_worker(
     ] = None,
 ) -> None:
     """Start a distributed worker that claims and executes agent tasks."""
+    logger.debug(
+        "CLI command=%s args=%r",
+        "start worker",
+        {"redis_url": bool(redis_url), "concurrency": concurrency, "queue": queue, "worker_id": worker_id},
+    )
     url = redis_url or os.environ.get("ORBITER_REDIS_URL")
     if not url:
         console.print(
@@ -305,6 +319,7 @@ def task_status(
     ] = None,
 ) -> None:
     """Show status details for a specific task."""
+    logger.debug("CLI command=%s args=%r", "task status", {"task_id": task_id})
     url = _resolve_redis_url(redis_url)
 
     async def _show() -> None:
@@ -354,6 +369,7 @@ def task_cancel(
     ] = None,
 ) -> None:
     """Cancel a running distributed task."""
+    logger.debug("CLI command=%s args=%r", "task cancel", {"task_id": task_id})
     url = _resolve_redis_url(redis_url)
 
     async def _cancel() -> None:
@@ -387,6 +403,7 @@ def task_list(
     ] = None,
 ) -> None:
     """List recent distributed tasks."""
+    logger.debug("CLI command=%s args=%r", "task list", {"status": status, "limit": limit})
     url = _resolve_redis_url(redis_url)
 
     # Validate status filter if provided.
@@ -457,6 +474,7 @@ def worker_list(
     ] = None,
 ) -> None:
     """List all active distributed workers and their health."""
+    logger.debug("CLI command=%s args=%r", "worker list", {})
     url = _resolve_redis_url(redis_url)
 
     async def _list_workers() -> None:

@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+import logging
 import threading
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
+
+logger = logging.getLogger(__name__)
 
 import httpx
 
@@ -280,12 +283,14 @@ class RemoteAgent:
         Returns:
             ``AgentOutput`` with the remote agent's response text.
         """
+        logger.debug("RemoteAgent.run: name=%s input=%.80s...", self.name, input)
         resp = await self._client.send_task(input)
         text = _extract_text(resp)
         return AgentOutput(text=text, tool_calls=[], usage=Usage())
 
     async def describe(self) -> dict[str, Any]:
         """Return a description using the resolved agent card."""
+        logger.debug("RemoteAgent.describe: name=%s", self.name)
         card = await self._client.resolve_agent_card()
         return {
             "name": self.name,

@@ -444,6 +444,7 @@ class Worker:
                     task.task_id,
                     duration,
                     exc,
+                    exc_info=True,
                 )
                 await self._store.set_status(
                     task.task_id,
