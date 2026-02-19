@@ -116,3 +116,15 @@ Started: Fri Feb 20 03:26:33 AM IST 2026
   - `memory_store` fixture (from conftest.py) yields an already-init'd SQLiteMemoryStore backed by a temp file — no need to call `await store.init()` again
   - Tests that only exercise SQLiteMemoryStore directly (no LLM needed) run in ~0.2s total — very fast
 ---
+
+## 2026-02-20 - US-INT-008
+- What was implemented: ChromaVectorMemoryStore semantic search and similarity threshold tests
+- Files changed:
+  - `tests/integration/test_memory_vector.py` (new)
+- **Learnings for future iterations:**
+  - `ChromaVectorMemoryStore.search()` has no `min_score` parameter; to test similarity thresholds, embed query and items manually via `vector_store._embedding_provider.embed()` and compute dot product (unit-norm vectors → dot product = cosine similarity)
+  - `all-MiniLM-L6-v2` (SentenceTransformerEmbeddingProvider default) produces unit-norm vectors; dot product of two embeddings equals their cosine similarity
+  - Semantic search correctly distinguishes unrelated domains (astronomy vs cooking, cooking vs quantum physics) — at least 2 of 3 relevant items returned in top-5 results
+  - `vector_store` fixture is already initialized; no `init()` call needed, just call `await store.add()` directly
+  - Test runtime ~20s due to model loading on first use; subsequent tests in same session are faster
+---
