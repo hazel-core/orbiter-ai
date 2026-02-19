@@ -193,7 +193,8 @@ class TestAgentFromDict:
         path = f"{search._fn.__module__}.{search._fn.__qualname__}"
         data = {"name": "bot", "tools": [path]}
         agent = Agent.from_dict(data)
-        assert len(agent.tools) == 1
+        # search + retrieve_artifact (always auto-registered)
+        assert len(agent.tools) == 2
         assert "search" in agent.tools
 
     def test_with_handoffs(self) -> None:
@@ -545,9 +546,9 @@ class TestMCPToolWrapperSerialization:
 
         # Reconstruct
         restored = Agent.from_dict(data)
-        assert len(restored.tools) == 1
-        tool_name = next(iter(restored.tools.keys()))
-        assert "search" in tool_name
+        # mcp search tool + retrieve_artifact (always auto-registered)
+        assert len(restored.tools) == 2
+        assert any("search" in name for name in restored.tools)
 
     def test_agent_with_mixed_tools_round_trip(self) -> None:
         """Agent with both regular and MCP tools round-trips correctly."""
@@ -572,7 +573,8 @@ class TestMCPToolWrapperSerialization:
         assert dict in types
 
         restored = Agent.from_dict(data)
-        assert len(restored.tools) == 2
+        # search + mcp_search + retrieve_artifact (always auto-registered)
+        assert len(restored.tools) == 3
 
 
 # ---------------------------------------------------------------------------
@@ -648,9 +650,9 @@ class TestSwarmMCPToolWrapperSerialization:
         assert len(restored.agents) == 2
 
         # Researcher should have the MCP tool with SSE config preserved
-        r_tools = list(restored.agents["researcher"].tools.values())
+        # (plus retrieve_artifact always auto-registered)
+        r_tools = [t for t in restored.agents["researcher"].tools.values() if isinstance(t, MCPToolWrapper)]
         assert len(r_tools) == 1
-        assert isinstance(r_tools[0], MCPToolWrapper)
         assert r_tools[0]._server_config is not None
         assert r_tools[0]._server_config.transport.value == "sse"
         assert r_tools[0]._server_config.url == "http://localhost:3001/sse"
@@ -710,7 +712,8 @@ class TestSwarmMCPToolWrapperSerialization:
 
         restored = Swarm.from_dict(data)
         hybrid = restored.agents["hybrid"]
-        assert len(hybrid.tools) == 2
+        # search + MCPToolWrapper + retrieve_artifact (always auto-registered)
+        assert len(hybrid.tools) == 3
 
         mcp_tools = [t for t in hybrid.tools.values() if isinstance(t, MCPToolWrapper)]
         assert len(mcp_tools) == 1
@@ -744,7 +747,8 @@ class TestSwarmMCPToolWrapperSerialization:
         restored = Swarm.from_dict(json.loads(wire))
 
         worker = restored.agents["worker-agent"]
-        assert len(worker.tools) == 3
+        # search + 2 MCP tools + retrieve_artifact (always auto-registered)
+        assert len(worker.tools) == 4
 
         mcp_tools = [t for t in worker.tools.values() if isinstance(t, MCPToolWrapper)]
         assert len(mcp_tools) == 2
@@ -781,7 +785,7 @@ class TestSwarmMCPToolWrapperSerialization:
         assert restored.mode == "handoff"
         assert restored.max_handoffs == 5
 
-        spec_tools = list(restored.agents["specialist"].tools.values())
+        spec_tools = [t for t in restored.agents["specialist"].tools.values() if isinstance(t, MCPToolWrapper)]
         assert len(spec_tools) == 1
         assert isinstance(spec_tools[0], MCPToolWrapper)
         assert spec_tools[0]._server_config.transport.value == "sse"
@@ -813,11 +817,11 @@ class TestSwarmMCPToolWrapperSerialization:
         assert len(restored.agents) == 3
 
         for name in ("data-worker", "file-worker"):
-            tools = list(restored.agents[name].tools.values())
-            assert len(tools) == 1
-            assert isinstance(tools[0], MCPToolWrapper)
-            assert tools[0]._server_config.transport.value == "sse"
-            assert tools[0]._call_fn is None
+            mcp_tools_only = [t for t in restored.agents[name].tools.values() if isinstance(t, MCPToolWrapper)]
+            assert len(mcp_tools_only) == 1
+            assert isinstance(mcp_tools_only[0], MCPToolWrapper)
+            assert mcp_tools_only[0]._server_config.transport.value == "sse"
+            assert mcp_tools_only[0]._call_fn is None
 
     def test_sse_config_fields_preserved(self) -> None:
         """All SSE-specific config fields survive the swarm round-trip."""

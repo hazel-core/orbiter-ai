@@ -56,6 +56,7 @@ class MCPServerConfig:
         "cwd",
         "env",
         "headers",
+        "large_output_tools",
         "name",
         "session_timeout",
         "sse_read_timeout",
@@ -79,6 +80,7 @@ class MCPServerConfig:
         sse_read_timeout: float = 300.0,
         cache_tools: bool = False,
         session_timeout: float | None = 120.0,
+        large_output_tools: list[str] | None = None,
     ) -> None:
         self.name = name
         self.transport = MCPTransport(transport)
@@ -92,6 +94,7 @@ class MCPServerConfig:
         self.sse_read_timeout = sse_read_timeout
         self.cache_tools = cache_tools
         self.session_timeout = session_timeout
+        self.large_output_tools: list[str] = list(large_output_tools) if large_output_tools else []
 
     def validate(self) -> None:
         """Validate config fields for the chosen transport."""
@@ -120,6 +123,7 @@ class MCPServerConfig:
             "sse_read_timeout": self.sse_read_timeout,
             "cache_tools": self.cache_tools,
             "session_timeout": self.session_timeout,
+            "large_output_tools": self.large_output_tools,
         }
 
     @classmethod
@@ -145,6 +149,7 @@ class MCPServerConfig:
             sse_read_timeout=data.get("sse_read_timeout", 300.0),
             cache_tools=data.get("cache_tools", False),
             session_timeout=data.get("session_timeout", 120.0),
+            large_output_tools=data.get("large_output_tools"),
         )
 
     def __repr__(self) -> str:

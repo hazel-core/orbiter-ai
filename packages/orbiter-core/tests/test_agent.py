@@ -50,7 +50,9 @@ class TestAgentCreation:
         assert agent.provider_name == "openai"
         assert agent.model_name == "gpt-4o"
         assert agent.instructions == ""
-        assert agent.tools == {}
+        # retrieve_artifact is always auto-registered (needed for threshold-based offloading)
+        assert "retrieve_artifact" in agent.tools
+        assert len([k for k in agent.tools if k != "retrieve_artifact"]) == 0
         assert agent.handoffs == {}
         assert agent.output_type is None
         assert agent.max_steps == 10
@@ -91,7 +93,8 @@ class TestAgentCreation:
         assert agent.provider_name == "anthropic"
         assert agent.model_name == "claude-sonnet-4-20250514"
         assert agent.instructions == "Research things."
-        assert len(agent.tools) == 2
+        # 2 user tools + retrieve_artifact (always auto-registered)
+        assert len(agent.tools) == 3
         assert agent.output_type is ReportOutput
         assert agent.max_steps == 20
         assert agent.temperature == 0.7
@@ -159,9 +162,11 @@ class TestToolRegistration:
     def test_get_tool_schemas(self) -> None:
         agent = Agent(name="bot", tools=[greet])
         schemas = agent.get_tool_schemas()
-        assert len(schemas) == 1
+        # greet + retrieve_artifact (always auto-registered)
+        assert len(schemas) == 2
+        names = {s["function"]["name"] for s in schemas}
+        assert "greet" in names
         assert schemas[0]["type"] == "function"
-        assert schemas[0]["function"]["name"] == "greet"
 
 
 # ---------------------------------------------------------------------------
@@ -259,7 +264,8 @@ class TestDescribeAndRepr:
         desc = agent.describe()
         assert desc["name"] == "bot"
         assert desc["model"] == "openai:gpt-4o"
-        assert desc["tools"] == []
+        # retrieve_artifact is always auto-registered
+        assert "retrieve_artifact" in desc["tools"]
         assert desc["handoffs"] == []
         assert desc["output_type"] is None
 
@@ -272,7 +278,7 @@ class TestDescribeAndRepr:
             output_type=ReportOutput,
         )
         desc = agent.describe()
-        assert desc["tools"] == ["greet"]
+        assert "greet" in desc["tools"]
         assert desc["handoffs"] == ["helper"]
         assert desc["output_type"] == "ReportOutput"
 
@@ -286,7 +292,9 @@ class TestDescribeAndRepr:
     def test_repr_with_tools(self) -> None:
         agent = Agent(name="bot", tools=[greet])
         r = repr(agent)
-        assert "tools=['greet']" in r
+        # retrieve_artifact is always auto-registered alongside user tools
+        assert "greet" in r
+        assert "retrieve_artifact" in r
 
 
 # ---------------------------------------------------------------------------
@@ -429,7 +437,8 @@ class TestAgentRun:
 
         call_args = provider.complete.call_args
         assert call_args[1]["tools"] is not None
-        assert len(call_args[1]["tools"]) == 1
+        # greet + retrieve_artifact (always auto-registered)
+        assert len(call_args[1]["tools"]) == 2
 
 
 # ---------------------------------------------------------------------------
@@ -854,10 +863,10 @@ class TestAgentEdgeCases:
 
         schemas = agent.get_tool_schemas()
 
-        assert len(schemas) == 1
-        assert schemas[0]["function"]["name"] == "greet"
-        # Handoff should not appear as a tool
+        # greet + retrieve_artifact (always auto-registered); handoff should not appear
+        assert len(schemas) == 2
         names = [s["function"]["name"] for s in schemas]
+        assert "greet" in names
         assert "helper" not in names
 
     async def test_sequential_tool_calls_accumulate_messages(self) -> None:

@@ -1,4 +1,4 @@
-"""Tests for @tool(large_output=True) and ToolResultOffloader wiring — US-026."""
+"""Tests for @tool(large_output=True), threshold-based offloading, and MCP large_output_tools — US-026/US-027."""
 
 from __future__ import annotations
 
@@ -107,8 +107,8 @@ class TestFunctionToolLargeOutput:
 
 
 class TestRetrieveArtifactAutoRegister:
-    def test_no_large_output_tool_no_retrieve_artifact(self) -> None:
-        """When no large_output=True tool is registered, retrieve_artifact is absent."""
+    def test_retrieve_artifact_always_registered(self) -> None:
+        """retrieve_artifact is always present on all agents (needed for threshold offloading)."""
 
         @tool
         def normal() -> str:
@@ -116,17 +116,11 @@ class TestRetrieveArtifactAutoRegister:
             return "ok"
 
         agent = Agent(name="bot", memory=None, context=None, tools=[normal])
-        assert "retrieve_artifact" not in agent.tools
+        assert "retrieve_artifact" in agent.tools
 
-    def test_large_output_tool_auto_registers_retrieve_artifact(self) -> None:
-        """When a large_output=True tool is registered, retrieve_artifact is auto-added."""
-
-        @tool(large_output=True)
-        def big() -> str:
-            """Big tool."""
-            return "x" * 50000
-
-        agent = Agent(name="bot", memory=None, context=None, tools=[big])
+    def test_retrieve_artifact_present_on_empty_tools_agent(self) -> None:
+        """retrieve_artifact is registered even when no tools are provided."""
+        agent = Agent(name="bot", memory=None, context=None)
         assert "retrieve_artifact" in agent.tools
 
     def test_retrieve_artifact_is_function_tool(self) -> None:
@@ -159,8 +153,8 @@ class TestRetrieveArtifactAutoRegister:
         assert list(agent.tools.keys()).count("retrieve_artifact") == 1
 
     @pytest.mark.asyncio
-    async def test_add_tool_large_output_also_registers_retrieve_artifact(self) -> None:
-        """add_tool with large_output=True also auto-registers retrieve_artifact."""
+    async def test_add_tool_does_not_duplicate_retrieve_artifact(self) -> None:
+        """add_tool does not create a second retrieve_artifact (already registered in __init__)."""
 
         @tool(large_output=True)
         def big() -> str:
@@ -168,9 +162,10 @@ class TestRetrieveArtifactAutoRegister:
             return "x" * 50000
 
         agent = Agent(name="bot", memory=None, context=None)
-        assert "retrieve_artifact" not in agent.tools
-        await agent.add_tool(big)
         assert "retrieve_artifact" in agent.tools
+        await agent.add_tool(big)
+        # Still only one retrieve_artifact
+        assert list(agent.tools.keys()).count("retrieve_artifact") == 1
 
 
 # ---------------------------------------------------------------------------
@@ -467,3 +462,205 @@ class TestToolResultOffloaderLargeOutputFlag:
             for r in caplog.records
         )
         assert any("artifact_id" in r.message for r in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# US-027: Threshold-based auto-offload
+# ---------------------------------------------------------------------------
+
+
+class TestThresholdBasedAutoOffload:
+    @pytest.mark.asyncio
+    async def test_result_above_threshold_is_offloaded(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A tool result exceeding ORBITER_LARGE_OUTPUT_THRESHOLD bytes is auto-offloaded."""
+        monkeypatch.setenv("ORBITER_LARGE_OUTPUT_THRESHOLD", "50")  # very small threshold
+
+        large_content = "x" * 100  # 100 bytes > 50
+
+        @tool
+        def big_normal() -> str:
+            """Normal tool that returns a lot."""
+            return large_content
+
+        tool_calls = [ToolCall(id="tc1", name="big_normal", arguments="{}")]
+        provider = _mock_provider(content="done", tool_calls=tool_calls)
+        agent = Agent(name="bot", memory=None, context=None, tools=[big_normal])
+        await agent.run("go", provider=provider)
+
+        second_call_messages = provider.complete.call_args_list[1][0][0]
+        from orbiter.types import ToolResult
+
+        tool_result_msgs = [m for m in second_call_messages if isinstance(m, ToolResult)]
+        assert len(tool_result_msgs) == 1
+        assert "Result stored as artifact" in tool_result_msgs[0].content
+        assert large_content not in tool_result_msgs[0].content
+
+    @pytest.mark.asyncio
+    async def test_result_below_threshold_not_offloaded(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A tool result under the threshold is passed through unchanged."""
+        monkeypatch.setenv("ORBITER_LARGE_OUTPUT_THRESHOLD", "10240")
+
+        small_content = "small"
+
+        @tool
+        def small_tool() -> str:
+            """Small tool."""
+            return small_content
+
+        tool_calls = [ToolCall(id="tc1", name="small_tool", arguments="{}")]
+        provider = _mock_provider(content="ok", tool_calls=tool_calls)
+        agent = Agent(name="bot", memory=None, context=None, tools=[small_tool])
+        await agent.run("go", provider=provider)
+
+        second_call_messages = provider.complete.call_args_list[1][0][0]
+        from orbiter.types import ToolResult
+
+        tool_result_msgs = [m for m in second_call_messages if isinstance(m, ToolResult)]
+        assert len(tool_result_msgs) == 1
+        assert tool_result_msgs[0].content == small_content
+
+    @pytest.mark.asyncio
+    async def test_default_threshold_is_10kb(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Default threshold is 10240 bytes when env var is not set."""
+        from orbiter.agent import _get_large_output_threshold
+
+        monkeypatch.delenv("ORBITER_LARGE_OUTPUT_THRESHOLD", raising=False)
+        assert _get_large_output_threshold() == 10240
+
+    @pytest.mark.asyncio
+    async def test_env_var_overrides_threshold(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """ORBITER_LARGE_OUTPUT_THRESHOLD env var overrides the default."""
+        from orbiter.agent import _get_large_output_threshold
+
+        monkeypatch.setenv("ORBITER_LARGE_OUTPUT_THRESHOLD", "1000")
+        assert _get_large_output_threshold() == 1000
+
+    @pytest.mark.asyncio
+    async def test_invalid_env_var_falls_back_to_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Invalid ORBITER_LARGE_OUTPUT_THRESHOLD value falls back to 10240."""
+        from orbiter.agent import _get_large_output_threshold
+
+        monkeypatch.setenv("ORBITER_LARGE_OUTPUT_THRESHOLD", "not_a_number")
+        assert _get_large_output_threshold() == 10240
+
+
+# ---------------------------------------------------------------------------
+# US-027: MCPServerConfig.large_output_tools + MCPToolWrapper.large_output
+# ---------------------------------------------------------------------------
+
+
+class TestMCPLargeOutputTools:
+    def test_mcp_server_config_large_output_tools_default(self) -> None:
+        """MCPServerConfig.large_output_tools defaults to empty list."""
+        try:
+            from orbiter.mcp.client import MCPServerConfig  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-mcp not installed")
+
+        config = MCPServerConfig(name="test", command="echo")
+        assert config.large_output_tools == []
+
+    def test_mcp_server_config_large_output_tools_set(self) -> None:
+        """MCPServerConfig accepts large_output_tools list."""
+        try:
+            from orbiter.mcp.client import MCPServerConfig  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-mcp not installed")
+
+        config = MCPServerConfig(name="test", command="echo", large_output_tools=["search", "read_file"])
+        assert config.large_output_tools == ["search", "read_file"]
+
+    def test_mcp_server_config_serializes_large_output_tools(self) -> None:
+        """MCPServerConfig.to_dict() includes large_output_tools."""
+        try:
+            from orbiter.mcp.client import MCPServerConfig  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-mcp not installed")
+
+        config = MCPServerConfig(name="test", command="echo", large_output_tools=["tool1"])
+        d = config.to_dict()
+        assert d["large_output_tools"] == ["tool1"]
+
+    def test_mcp_server_config_round_trips_large_output_tools(self) -> None:
+        """MCPServerConfig from_dict() restores large_output_tools."""
+        try:
+            from orbiter.mcp.client import MCPServerConfig  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-mcp not installed")
+
+        config = MCPServerConfig(name="test", command="echo", large_output_tools=["tool1", "tool2"])
+        restored = MCPServerConfig.from_dict(config.to_dict())
+        assert restored.large_output_tools == ["tool1", "tool2"]
+
+    def test_mcp_tool_wrapper_large_output_from_config(self) -> None:
+        """MCPToolWrapper.large_output is True when tool name is in server_config.large_output_tools."""
+        try:
+            from orbiter.mcp.client import MCPServerConfig  # pyright: ignore[reportMissingImports]
+            from orbiter.mcp.tools import MCPToolWrapper  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-mcp not installed")
+        from unittest.mock import MagicMock
+
+        mcp_tool = MagicMock()
+        mcp_tool.name = "search"
+        mcp_tool.description = "Search tool"
+        mcp_tool.inputSchema = {"type": "object", "properties": {}}
+
+        config = MCPServerConfig(name="srv", command="echo", large_output_tools=["search"])
+        wrapper = MCPToolWrapper(mcp_tool, "srv", MagicMock(), server_config=config)
+        assert wrapper.large_output is True
+
+    def test_mcp_tool_wrapper_large_output_false_when_not_listed(self) -> None:
+        """MCPToolWrapper.large_output is False when tool name is not in large_output_tools."""
+        try:
+            from orbiter.mcp.client import MCPServerConfig  # pyright: ignore[reportMissingImports]
+            from orbiter.mcp.tools import MCPToolWrapper  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-mcp not installed")
+        from unittest.mock import MagicMock
+
+        mcp_tool = MagicMock()
+        mcp_tool.name = "list_files"
+        mcp_tool.description = "List files"
+        mcp_tool.inputSchema = {"type": "object", "properties": {}}
+
+        config = MCPServerConfig(name="srv", command="echo", large_output_tools=["search"])
+        wrapper = MCPToolWrapper(mcp_tool, "srv", MagicMock(), server_config=config)
+        assert wrapper.large_output is False
+
+    def test_mcp_tool_wrapper_large_output_false_when_no_config(self) -> None:
+        """MCPToolWrapper.large_output is False when no server_config is provided."""
+        try:
+            from orbiter.mcp.tools import MCPToolWrapper  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-mcp not installed")
+        from unittest.mock import MagicMock
+
+        mcp_tool = MagicMock()
+        mcp_tool.name = "search"
+        mcp_tool.description = "Search"
+        mcp_tool.inputSchema = {"type": "object", "properties": {}}
+
+        wrapper = MCPToolWrapper(mcp_tool, "srv", MagicMock())
+        assert wrapper.large_output is False
+
+    def test_mcp_tool_wrapper_large_output_round_trips(self) -> None:
+        """MCPToolWrapper.large_output=True round-trips through to_dict/from_dict."""
+        try:
+            from orbiter.mcp.client import MCPServerConfig  # pyright: ignore[reportMissingImports]
+            from orbiter.mcp.tools import MCPToolWrapper  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-mcp not installed")
+        from unittest.mock import MagicMock
+
+        mcp_tool = MagicMock()
+        mcp_tool.name = "fetch"
+        mcp_tool.description = "Fetch data"
+        mcp_tool.inputSchema = {"type": "object", "properties": {}}
+
+        config = MCPServerConfig(name="srv", command="echo", large_output_tools=["fetch"])
+        wrapper = MCPToolWrapper(mcp_tool, "srv", MagicMock(), server_config=config)
+        assert wrapper.large_output is True
+
+        restored = MCPToolWrapper.from_dict(wrapper.to_dict())
+        assert restored.large_output is True

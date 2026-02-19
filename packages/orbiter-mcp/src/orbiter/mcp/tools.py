@@ -175,6 +175,7 @@ class MCPToolWrapper(Tool):
         "_server_config",
         "_server_name",
         "description",
+        "large_output",
         "name",
         "parameters",
     )
@@ -197,6 +198,9 @@ class MCPToolWrapper(Tool):
         self.name = namespace_tool_name(mcp_tool.name, server_name, namespace=namespace)
         self.description = mcp_tool.description or f"MCP tool: {mcp_tool.name}"
         self.parameters = extract_schema(mcp_tool)
+        # Set large_output from server_config.large_output_tools membership
+        large_output_tools = getattr(server_config, "large_output_tools", None) or []
+        self.large_output: bool = mcp_tool.name in large_output_tools
 
     @property
     def original_name(self) -> str:
@@ -221,6 +225,7 @@ class MCPToolWrapper(Tool):
             "parameters": self.parameters,
             "original_name": self._original_name,
             "server_name": self._server_name,
+            "large_output": self.large_output,
         }
         if self._server_config is not None:
             data["server_config"] = self._server_config.to_dict()
@@ -251,6 +256,7 @@ class MCPToolWrapper(Tool):
         wrapper._call_fn = None
         wrapper._connection = None
         wrapper._reconnect_lock = asyncio.Lock()
+        wrapper.large_output = data.get("large_output", False)
         if "server_config" in data:
             wrapper._server_config = MCPServerConfig.from_dict(data["server_config"])
         else:

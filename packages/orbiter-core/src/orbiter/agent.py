@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib
+import os
 import uuid
 from collections.abc import Callable, Sequence
 from typing import Any
@@ -31,6 +32,21 @@ _log = get_logger(__name__)
 # Sentinels: distinguish "not provided" (auto-create) from explicit None (disable)
 _MEMORY_UNSET: Any = object()
 _CONTEXT_UNSET: Any = object()
+
+# Default byte threshold for automatic large-output offloading (10 KB)
+_LARGE_OUTPUT_THRESHOLD_DEFAULT = 10240
+
+
+def _get_large_output_threshold() -> int:
+    """Return the byte threshold for automatic tool result offloading.
+
+    Reads the ``ORBITER_LARGE_OUTPUT_THRESHOLD`` environment variable
+    (default: 10240 = 10 KB).
+    """
+    try:
+        return int(os.environ.get("ORBITER_LARGE_OUTPUT_THRESHOLD", str(_LARGE_OUTPUT_THRESHOLD_DEFAULT)))
+    except (ValueError, TypeError):
+        return _LARGE_OUTPUT_THRESHOLD_DEFAULT
 
 
 def _make_default_long_term() -> Any:
@@ -429,6 +445,11 @@ class Agent:
         if tools:
             for t in tools:
                 self._register_tool(t)
+
+        # Always register retrieve_artifact so any tool result that exceeds the
+        # ORBITER_LARGE_OUTPUT_THRESHOLD byte limit can be retrieved by the LLM.
+        if "retrieve_artifact" not in self.tools:
+            self._register_retrieve_artifact()
 
         # Handoff targets indexed by name
         self.handoffs: dict[str, Agent] = {}
@@ -1158,8 +1179,9 @@ class Agent:
                 try:
                     output = await tool.execute(**action.arguments)
                     content = output if isinstance(output, str) else str(output)
-                    # Large-output offloading: store in workspace and inject pointer
-                    if getattr(tool, "large_output", False):
+                    # Large-output offloading: store in workspace and inject pointer.
+                    # Fires when large_output=True OR result exceeds the byte threshold.
+                    if getattr(tool, "large_output", False) or len(content.encode("utf-8")) > _get_large_output_threshold():
                         content = await self._offload_large_result(action.tool_name, content)
                     result = ToolResult(
                         tool_call_id=action.tool_call_id,
@@ -1231,9 +1253,11 @@ class Agent:
             "max_tokens": self.max_tokens,
         }
 
-        # Serialize tools as importable dotted paths
-        if self.tools:
-            data["tools"] = [_serialize_tool(t) for t in self.tools.values()]
+        # Serialize tools as importable dotted paths.
+        # Skip retrieve_artifact — it's always auto-registered on reconstruction.
+        user_tools = [t for name, t in self.tools.items() if name != "retrieve_artifact"]
+        if user_tools:
+            data["tools"] = [_serialize_tool(t) for t in user_tools]
 
         # Serialize handoffs recursively
         if self.handoffs:

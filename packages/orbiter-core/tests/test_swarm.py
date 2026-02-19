@@ -857,7 +857,8 @@ class TestSwarmTeam:
         # Lead should have only its original tool, not delegate tools
         assert "my_tool" in lead.tools
         assert "delegate_to_worker" not in lead.tools
-        assert len(lead.tools) == 1
+        # my_tool + retrieve_artifact (always auto-registered)
+        assert len(lead.tools) == 2
 
     async def test_team_tools_restored_on_error(self) -> None:
         """Lead's tools are restored even if run() raises."""
