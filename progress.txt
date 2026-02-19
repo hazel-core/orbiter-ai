@@ -2,6 +2,22 @@
 Started: Thu Feb 19 11:52:28 PM IST 2026
 ---
 
+## 2026-02-20 - US-011
+- orbiter-web/engine.py: added `import time`; removed `import contextlib` (no longer needed); added `_log.info("Workflow %s starting: ...")` at top of `execute_workflow()`; added `_log.debug("Executing node %s (type=%s)", ...)` before each node task creation; added `node_start_times` dict + `elapsed_ms` tracking per node; added `_log.info("Node %s completed in %.1fms", ...)` after task result; added `_log.error("Node %s failed: %s", ..., exc_info=True)` in exception handler; replaced all 5 `contextlib.suppress(Exception)` usages in emit() functions with `try/except + _log.warning("WebSocket send failed: %s", exc)` (fixes audit B-16)
+- orbiter-web/services/agent_runtime.py: added `import logging` + `_log = logging.getLogger(__name__)`; added `_log.info("run_agent start: ...")` and `_log.error(..., exc_info=True)` on failure; added `_log.debug("run_agent tool calls: ...")` when tool_calls present; added `_log.info("stream_agent start: ...")` and `_log.error(..., exc_info=True)` on failure
+- orbiter-web/services/scheduler.py: added `_log.debug("Next run for schedule %s: %s", ...)` after computing next_run
+- orbiter-web/services/memory.py: added `import logging` + `_log = logging.getLogger(__name__)`; added `_log.debug("get_memory: agent=%s thread=%s type=%s", ...)` at start of get_memory()
+- orbiter-web/services/sandbox.py: added `import logging` + `_log = logging.getLogger(__name__)`; added `_log.debug("execute_code: code_len=%d timeout=%ds", ...)` at start of execute_code(); added `_log.warning("execute_code: timed out after %ds", ...)` in TimeoutExpired handler
+- Files changed: 5 files across orbiter-web package
+- All 29 orbiter-web tests pass; 0 new type errors in modified files (pre-existing errors in orbiter-web are unrelated)
+- **Learnings for future iterations:**
+  - engine.py uses `contextlib.suppress(Exception)` for all 4 emit() functions + 1 inline event_callback call — all 5 replaced simultaneously
+  - After removing all contextlib.suppress usages, `import contextlib` became unused and was removed
+  - Track per-node start times with `node_start_times: dict[str, float]` before creating asyncio.Tasks; access in the gather loop
+  - agent_runtime.py had no logging at all — needed full import + logger setup
+  - scheduler.py already had good logging; only needed `logger.debug next_run` addition
+---
+
 ## 2026-02-20 - US-010
 - orbiter-eval/ralph/runner.py: added `import logging` + `logger`; added `logger.info` at start of `run()` with input_len/scorers count; replaced bare `except: pass` in `_analyze()` with `logger.warning("Scorer failed case=%s: %s", case_id, exc, exc_info=True)` (fixes audit C-10)
 - orbiter-eval/trajectory_scorers.py: added `import logging` + `logger`; added `logger.debug` per-case score in `TrajectoryValidator.score()` and `TimeCostScorer.score()`
