@@ -11,7 +11,9 @@ from orbiter.observability.logging import (  # pyright: ignore[reportMissingImpo
     JsonFormatter,
     LogContext,
     TextFormatter,
+    _ENV_FORMAT,
     _log_context,
+    _configure_from_env,
     configure_logging,
     get_logger,
     reset_logging,
@@ -294,3 +296,130 @@ class TestLogContext:
             output = fmt.format(_make_record(msg="logged"))
         data = json.loads(output)
         assert data["extra"]["agent_name"] == "beta"
+
+
+# ---------------------------------------------------------------------------
+# _configure_from_env (ORBITER_LOG_LEVEL / ORBITER_DEBUG)
+# ---------------------------------------------------------------------------
+
+
+class TestConfigureFromEnv:
+    """Verify ORBITER_LOG_LEVEL and ORBITER_DEBUG env-var driven auto-configuration."""
+
+    def test_orbiter_debug_sets_debug_level(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        reset_logging()
+        monkeypatch.setenv("ORBITER_DEBUG", "1")
+        monkeypatch.delenv("ORBITER_LOG_LEVEL", raising=False)
+        _configure_from_env()
+        root = logging.getLogger(_PREFIX)
+        assert root.level == logging.DEBUG
+
+    def test_orbiter_log_level_info(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        reset_logging()
+        monkeypatch.delenv("ORBITER_DEBUG", raising=False)
+        monkeypatch.setenv("ORBITER_LOG_LEVEL", "INFO")
+        _configure_from_env()
+        root = logging.getLogger(_PREFIX)
+        assert root.level == logging.INFO
+
+    def test_orbiter_log_level_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        reset_logging()
+        monkeypatch.delenv("ORBITER_DEBUG", raising=False)
+        monkeypatch.setenv("ORBITER_LOG_LEVEL", "ERROR")
+        _configure_from_env()
+        root = logging.getLogger(_PREFIX)
+        assert root.level == logging.ERROR
+
+    def test_orbiter_debug_takes_precedence_over_log_level(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        reset_logging()
+        monkeypatch.setenv("ORBITER_DEBUG", "1")
+        monkeypatch.setenv("ORBITER_LOG_LEVEL", "ERROR")
+        _configure_from_env()
+        root = logging.getLogger(_PREFIX)
+        assert root.level == logging.DEBUG
+
+    def test_invalid_log_level_defaults_to_warning(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        reset_logging()
+        monkeypatch.delenv("ORBITER_DEBUG", raising=False)
+        monkeypatch.setenv("ORBITER_LOG_LEVEL", "VERBOSE")
+        _configure_from_env()
+        root = logging.getLogger(_PREFIX)
+        assert root.level == logging.WARNING
+
+    def test_no_env_vars_leaves_level_at_warning(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        reset_logging()
+        monkeypatch.delenv("ORBITER_DEBUG", raising=False)
+        monkeypatch.delenv("ORBITER_LOG_LEVEL", raising=False)
+        _configure_from_env()
+        root = logging.getLogger(_PREFIX)
+        assert root.level == logging.WARNING
+
+    def test_env_var_adds_handler_with_standard_format(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        reset_logging()
+        monkeypatch.setenv("ORBITER_DEBUG", "1")
+        monkeypatch.delenv("ORBITER_LOG_LEVEL", raising=False)
+        _configure_from_env()
+        root = logging.getLogger(_PREFIX)
+        assert len(root.handlers) == 1
+        fmt = root.handlers[0].formatter
+        assert isinstance(fmt, logging.Formatter)
+        assert fmt._fmt == _ENV_FORMAT  # type: ignore[union-attr]
+
+    def test_orbiter_log_level_adds_handler(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        reset_logging()
+        monkeypatch.delenv("ORBITER_DEBUG", raising=False)
+        monkeypatch.setenv("ORBITER_LOG_LEVEL", "DEBUG")
+        _configure_from_env()
+        root = logging.getLogger(_PREFIX)
+        assert len(root.handlers) == 1
+
+    def test_no_env_vars_does_not_add_handler(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        reset_logging()
+        monkeypatch.delenv("ORBITER_DEBUG", raising=False)
+        monkeypatch.delenv("ORBITER_LOG_LEVEL", raising=False)
+        _configure_from_env()
+        root = logging.getLogger(_PREFIX)
+        assert len(root.handlers) == 0
+
+    def test_configure_from_env_idempotent(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        reset_logging()
+        monkeypatch.setenv("ORBITER_DEBUG", "1")
+        _configure_from_env()
+        _configure_from_env()
+        root = logging.getLogger(_PREFIX)
+        assert len(root.handlers) == 1
+
+    def test_child_logger_inherits_level(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        reset_logging()
+        monkeypatch.setenv("ORBITER_DEBUG", "1")
+        monkeypatch.delenv("ORBITER_LOG_LEVEL", raising=False)
+        _configure_from_env()
+        child = get_logger("memory")
+        # Child effective level is inherited from root "orbiter"
+        assert child.getEffectiveLevel() == logging.DEBUG
+
+    def test_case_insensitive_log_level(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        reset_logging()
+        monkeypatch.delenv("ORBITER_DEBUG", raising=False)
+        monkeypatch.setenv("ORBITER_LOG_LEVEL", "info")
+        _configure_from_env()
+        root = logging.getLogger(_PREFIX)
+        assert root.level == logging.INFO
