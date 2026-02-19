@@ -127,6 +127,35 @@ Started: Thu Feb 19 11:52:28 PM IST 2026
   - EvolutionPipeline epoch_idx is 0-based; log as epoch_idx+1 for human readability
 ---
 
+## 2026-02-20 - US-016
+- Added `token_budget_trigger: float = 0.8` field to `ContextConfig` in `orbiter-context/config.py` (Field ge=0, le=1)
+- Added `_CONTEXT_UNSET` sentinel and `_make_default_context()` / `_make_context_from_mode()` helpers to `orbiter-core/agent.py`
+- Added `context_mode: Any = _CONTEXT_UNSET` parameter to `Agent.__init__`; changed `context: Any = None` → `context: Any = _CONTEXT_UNSET`
+- Resolution logic: explicit `context=` takes precedence; `context_mode=` sets mode; both unset → auto-create `ContextConfig(mode='copilot')`; either `=None` disables context engine
+- Added `_context_is_auto: bool` flag; updated `to_dict()` to skip auto-created context (same pattern as `_memory_is_auto`)
+- Added `_SWARM_CONTEXT_UNSET` sentinel and `context_mode: Any = _SWARM_CONTEXT_UNSET` to `Swarm.__init__`; propagates ContextConfig to all member agents when provided
+- Updated `test_minimal` in `test_agent.py` to check for auto-created ContextConfig (with ImportError fallback)
+- Updated `test_agent_context_default_none` → `test_agent_context_default_auto_created` in `test_context_integration.py`
+- Added `TestAgentContextDefaults` (9 tests) to `test_agent.py`
+- Added `TestSwarmContextMode` (3 tests) to `test_swarm.py`
+- Added `token_budget_trigger` tests to `test_context_config.py`
+- Files changed:
+  - packages/orbiter-context/src/orbiter/context/config.py
+  - packages/orbiter-core/src/orbiter/agent.py
+  - packages/orbiter-core/src/orbiter/swarm.py
+  - packages/orbiter-core/tests/test_agent.py
+  - packages/orbiter-core/tests/test_swarm.py
+  - packages/orbiter-context/tests/test_context_config.py
+  - packages/orbiter-context/tests/test_context_integration.py
+- All 1282 orbiter-core + orbiter-context tests pass; pre-existing pyright error at agent.py (MCPToolWrapper.to_dict) unrelated to changes
+- **Learnings for future iterations:**
+  - Use `_CONTEXT_UNSET = object()` sentinel (same pattern as `_MEMORY_UNSET`) to distinguish "not provided" from `None` (disable) in both `context_mode` and `context` params
+  - Resolution order: `context` (explicit ContextConfig or None) > `context_mode` (str or None) > auto-create copilot
+  - Swarm propagates context_mode by mutating `agent.context` and `agent._context_is_auto` in-place after agent dict is built (agents are pre-created before Swarm init)
+  - Swarm imports `_make_context_from_mode` lazily from `orbiter.agent` (inside the `if context_mode is not _SWARM_CONTEXT_UNSET:` block) to avoid circular imports at module level
+  - `token_budget_trigger` added with `ge=0.0, le=1.0` Pydantic validation — it does NOT participate in `_validate_thresholds()` which only checks summary vs offload
+---
+
 ## Codebase Patterns
 - orbiter-web tests are in packages/orbiter-web/tests/ (not src/)
 - subprocess.run(text=True) applies universal newline translation (\r → \n), so don't assert literal \r in captured stdout
