@@ -146,3 +146,17 @@ Started: Fri Feb 20 03:26:33 AM IST 2026
   - `vector_store` fixture is already initialized; no `init()` call needed, just call `await store.add()` directly
   - Test runtime ~20s due to model loading on first use; subsequent tests in same session are faster
 ---
+
+## 2026-02-20 - US-INT-010
+- What was implemented: MCP stdio subprocess integration tests — verifies agent can connect to real stdio MCP server subprocess and call its tools
+- Files changed:
+  - `tests/integration/test_mcp_stdio.py` (new)
+- **Learnings for future iterations:**
+  - `await agent.add_mcp_server(mcp_server_config)` connects to MCP server and registers all its tools on the agent; tools are namespaced: `mcp__test_server__get_capital`
+  - Check tool registration via `any("get_capital" in name for name in agent.tools.keys())` since names are namespaced
+  - `result.tool_calls` (from `agent.run()`) is `list[ToolCall]`; each `.name` is the namespaced name; check with `"get_capital" in tc.name`
+  - `result.text` (not `result.output`) contains the LLM's text response — assert keyword presence with `.lower()`
+  - MCP stdio client spawns a fresh subprocess per connection (not a long-running process); the `MCPServerConfig` in the fixture just describes how to launch it
+  - For sequential MCP tool calls, chain them so second depends on first (avoids Gemini parallel-tool-call INVALID_ARGUMENT)
+  - Use timeout(60) not timeout(30) for MCP tests — subprocess spawn + LLM call needs extra headroom
+---
