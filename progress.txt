@@ -81,3 +81,14 @@ Started: Fri Feb 20 03:26:33 AM IST 2026
   - ContextConfig frozen=True — pass all params at creation; `make_config("pilot")` sets `history_rounds=100, summary_threshold=100, offload_threshold=100`
   - Behavioral test pattern: plant unique token in turn 1, pad with N turns, ask about token — windowed agent says "I don't know", pilot agent recalls it
 ---
+
+## 2026-02-20 - US-INT-005
+- What was implemented: Agent multi-tool selection tests
+- Files changed:
+  - `tests/integration/test_agent_tools.py` (new)
+- **Learnings for future iterations:**
+  - `AgentOutput.tool_calls` is `list[ToolCall]`; each `ToolCall` has `.name` (str) and `.arguments` (JSON-encoded str); use `json.loads(tc.arguments)` to get the dict
+  - For multi-tool selection test, checking `result.tool_calls` (not `result.messages`) is the correct way to inspect tool calls from `agent.run()`
+  - For chained tools test (get_capital → get_population), model must sequentially call them because the second depends on the output of the first — this avoids the Gemini parallel-tool-call INVALID_ARGUMENT issue
+  - Tests skip gracefully when GOOGLE_CLOUD_PROJECT/GOOGLE_CLOUD_LOCATION are not set (via vertex_model fixture)
+---
