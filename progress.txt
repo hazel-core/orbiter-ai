@@ -289,3 +289,15 @@ Started: Fri Feb 20 03:26:33 AM IST 2026
   - 5 fictional facts about a fictional product (Orbiter framework) are robust test data — unlikely to appear in any model's training data; the founding city (Auckland) is verifiable because it appears in the first fact and the vector search query ("Orbiter framework founded city") will match it
   - No `short_term` store is needed for this test; the agent doesn't need to persist history, only retrieve injected knowledge
 ---
+
+## 2026-02-20 - US-INT-020
+- What was implemented: Spawn memory isolation test — verifies that memory items written by child agent A (conversation_id='child-a-session') are not visible when querying by child B's session_id, and are visible when querying by child A's session_id
+- Files changed:
+  - `tests/integration/test_spawn_memory_isolation.py` (new, 1 test)
+- **Learnings for future iterations:**
+  - Memory isolation between agents with different conversation_ids relies on `task_id` scoping in SQLiteMemoryStore; HumanMemory is stored before the LLM call with `task_id=conversation_id`
+  - Use a unique token in the prompt (e.g., 'CHILD_A_UNIQUE_FACT_XYZ') as the "stored fact"; HumanMemory stores the prompt text, making the token reliably retrievable
+  - Query with `MemoryMetadata(task_id="child-a-session")` to scope results to a specific agent's conversation
+  - The test uses two distinct Agent instances (different names and conversation_ids) on the same shared store to simulate child agent isolation
+  - Isolation works by default without any special configuration; task_id is auto-set to conversation_id on every agent run
+---
