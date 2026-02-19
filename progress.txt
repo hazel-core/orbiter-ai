@@ -187,6 +187,28 @@ Started: Thu Feb 19 11:52:28 PM IST 2026
   - `token_budget_trigger` added with `ge=0.0, le=1.0` Pydantic validation — it does NOT participate in `_validate_thresholds()` which only checks summary vs offload
 ---
 
+## 2026-02-20 - US-018
+- Added `context_window_tokens: int | None = None` field to `ModelConfig` in `orbiter-core/src/orbiter/config.py` (not types.py — the AC referenced the wrong file; ModelConfig lives in config.py)
+- Created `packages/orbiter-models/src/orbiter/models/context_windows.py` with `MODEL_CONTEXT_WINDOWS` dict covering 8 well-known models (gpt-4o: 128000, gpt-4o-mini: 128000, o1: 200000, claude-sonnet-4-6: 200000, claude-opus-4-6: 200000, claude-haiku-4-5-20251001: 200000, gemini-2.0-flash: 1048576, gemini-1.5-pro: 2097152)
+- Updated `get_provider()` in `provider.py` to look up `model_name` in `MODEL_CONTEXT_WINDOWS` and pass `context_window_tokens` to `ModelConfig`; caller can explicitly override via `context_window_tokens=...` kwarg
+- Exported `MODEL_CONTEXT_WINDOWS` from `orbiter-models/__init__.py` + updated `EXPECTED_ALL` in integration test
+- Added `TestModelContextWindows` class (8 tests) to `test_models_integration.py`
+- Added `test_context_window_tokens_field`, `test_context_window_tokens_none`, `test_roundtrip_with_context_window` to `test_config.py`; updated `test_defaults` to assert `context_window_tokens is None`
+- All 1079 orbiter-models + orbiter-core tests pass; 0 new type errors
+- Files changed:
+  - packages/orbiter-core/src/orbiter/config.py (added context_window_tokens field)
+  - packages/orbiter-models/src/orbiter/models/context_windows.py (new file)
+  - packages/orbiter-models/src/orbiter/models/provider.py (import + ctx_tokens lookup in get_provider)
+  - packages/orbiter-models/src/orbiter/models/__init__.py (export MODEL_CONTEXT_WINDOWS)
+  - packages/orbiter-models/tests/test_models_integration.py (EXPECTED_ALL update + TestModelContextWindows)
+  - packages/orbiter-core/tests/test_config.py (new tests for context_window_tokens)
+- **Learnings for future iterations:**
+  - `ModelConfig` is in `orbiter-core/src/orbiter/config.py`, NOT `orbiter-core/src/orbiter/types.py` — the PRD AC had the wrong file path
+  - `MODEL_CONTEXT_WINDOWS` keys are model_name strings (after the colon in "provider:model_name") — lookup uses model_name from `parse_model_string()`, not the full model string
+  - `kwargs.pop("context_window_tokens", ...)` pattern allows callers to explicitly override registry values while keeping the signature clean
+  - `EXPECTED_ALL` in `test_models_integration.py` is sorted and checked with `sorted(models.__all__) == EXPECTED_ALL` — update alphabetically when adding exports
+---
+
 ## Codebase Patterns
 - Context windowing helper `_apply_context_windowing(msg_list, context, provider)` lives in `agent.py`; lazy-imported in `runner.py` — use same pattern for any future context-related helpers
 - orbiter-web tests are in packages/orbiter-web/tests/ (not src/)
