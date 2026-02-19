@@ -2,6 +2,28 @@
 Started: Thu Feb 19 11:52:28 PM IST 2026
 ---
 
+## 2026-02-20 - US-024
+- Added `self._tools_lock: asyncio.Lock = asyncio.Lock()` to `Agent.__init__` (between handoffs block and hooks block)
+- Added `async def add_tool(self, tool: Tool) -> None`: acquires `_tools_lock`, calls `_register_tool()` (raises on duplicate)
+- Added `def remove_tool(self, tool_name: str) -> None`: sync dict delete, raises `AgentError` if name not found; safe in asyncio single-threaded context
+- Added `async def add_handoff(self, target: Agent) -> None`: acquires `_tools_lock`, calls `_register_handoff()` (raises on duplicate)
+- Added `async def add_mcp_server(self, config: Any) -> None`: lazy-imports `MCPServerConnection` + `load_tools_from_connection` from orbiter-mcp; connects server; loads all tools under `_tools_lock`; wraps errors in `AgentError`; logs `add_mcp_server: agent=... server=... tools_added=...`
+- Moved `tool_schemas = self.get_tool_schemas() or None` from pre-loop into the `for _step in range(self.max_steps):` loop body in both `agent.py::Agent.run()` and `runner.py::_stream()` — re-enumerates on each step so dynamically added/removed tools appear automatically
+- Created `packages/orbiter-core/tests/test_dynamic_loading.py` (17 tests): `TestAddTool` (6), `TestRemoveTool` (4), `TestAddHandoff` (3), `TestAddMcpServer` (3), `TestToolReenumerationPerStep` (1)
+- All 873 orbiter-core tests pass; only pre-existing pyright error at agent.py:1119 (MCPToolWrapper.to_dict) unrelated to changes
+- Files changed:
+  - packages/orbiter-core/src/orbiter/agent.py (added _tools_lock + 4 public methods; moved tool_schemas inside loop)
+  - packages/orbiter-core/src/orbiter/runner.py (moved tool_schemas inside loop)
+  - packages/orbiter-core/tests/test_dynamic_loading.py (new file)
+- **Learnings for future iterations:**
+  - `asyncio.Lock` is created in `__init__` as `self._tools_lock = asyncio.Lock()` — must NOT be created at class-level (would be shared across instances); must be per-instance
+  - `remove_tool` is sync (not async) per the AC; dict operations in CPython are GIL-safe and asyncio is single-threaded — no explicit lock acquisition needed for a simple `del self.tools[name]`
+  - Moving `tool_schemas = get_tool_schemas()` inside the step loop ensures newly registered tools appear in each iteration's LLM call without any special notification mechanism
+  - `add_mcp_server` lazy-imports orbiter-mcp inside the method body (same pattern as `branch()` importing orbiter-memory) — no module-level import needed
+  - When testing `add_mcp_server` without real orbiter-mcp installed, set `sys.modules["orbiter.mcp.client"]` and `sys.modules["orbiter.mcp.tools"]` to mock module objects with the needed attributes; restore after test
+  - `asyncio.gather()` is the idiomatic way to test concurrent add_tool calls (different tool names); will surface any race condition bugs if locking is broken
+---
+
 ## 2026-02-20 - US-023
 - Added `async def branch(self, from_message_id: str) -> str` to `Agent` in `agent.py`
 - `branch()` fetches all raw items from the current conversation by accessing `store._items` directly (bypasses windowing/incomplete-pair filtering for ShortTermMemory), or falls back to `store.search(metadata=..., limit=10000)` for other backends
