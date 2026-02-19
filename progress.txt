@@ -2,6 +2,28 @@
 Started: Thu Feb 19 11:52:28 PM IST 2026
 ---
 
+## 2026-02-20 - US-012
+- Added `AgentMemory` dataclass to `orbiter-memory/src/orbiter/memory/base.py` with fields `short_term: MemoryStore` and `long_term: MemoryStore`; also imported `dataclass` and `field` from `dataclasses`
+- Extended `MemoryStore` Protocol's `search()` from abstract (`...`) to a concrete default implementation that filters `self._items` by keyword, memory_type, status, and metadata fields
+- Made `MemoryPersistence.attach()` idempotent: added `_attached_agent_ids: set[int]` tracking; second call for same agent object returns early; `detach()` removes agent from set via `discard()`
+- Exported `AgentMemory` from `orbiter-memory/src/orbiter/memory/__init__.py` (import + `__all__` entry)
+- Added `TestMemoryStoreDefaultSearch` (5 tests) and `TestAgentMemory` (4 tests) to `test_memory_base.py`
+- Added `test_attach_idempotent` and `test_attach_idempotent_different_agents` to `test_memory_persistence.py::TestAttachDetach`
+- Files changed:
+  - packages/orbiter-memory/src/orbiter/memory/base.py
+  - packages/orbiter-memory/src/orbiter/memory/persistence.py
+  - packages/orbiter-memory/src/orbiter/memory/__init__.py
+  - packages/orbiter-memory/tests/test_memory_base.py
+  - packages/orbiter-memory/tests/test_memory_persistence.py
+- All 299 orbiter-memory tests pass (6 skipped); 0 new type errors in modified source files
+- **Learnings for future iterations:**
+  - `MemoryStore` is a `@runtime_checkable Protocol`; concrete default methods in the Protocol body work but only apply when a class INHERITS from the Protocol (not structural subtypes)
+  - To test the Protocol's default `search` from a structural subtype, call `MemoryStore.search(self, ...)` directly
+  - `MemoryPersistence._attached_agent_ids` uses `id(agent)` (Python object identity); call `discard()` in `detach()` to avoid KeyError
+  - `AgentMemory` uses `@dataclass` (not Pydantic) because `MemoryStore` is a Protocol (not a serializable type), and dataclass field ordering is straightforward
+  - `ShortTermMemory.__slots__` is set, which means it can't be used as a keyword argument in `AgentMemory(short_term=X)` directly — but since `AgentMemory` is a `@dataclass`, positional OR keyword args both work fine
+---
+
 ## 2026-02-20 - US-011
 - orbiter-web/engine.py: added `import time`; removed `import contextlib` (no longer needed); added `_log.info("Workflow %s starting: ...")` at top of `execute_workflow()`; added `_log.debug("Executing node %s (type=%s)", ...)` before each node task creation; added `node_start_times` dict + `elapsed_ms` tracking per node; added `_log.info("Node %s completed in %.1fms", ...)` after task result; added `_log.error("Node %s failed: %s", ..., exc_info=True)` in exception handler; replaced all 5 `contextlib.suppress(Exception)` usages in emit() functions with `try/except + _log.warning("WebSocket send failed: %s", exc)` (fixes audit B-16)
 - orbiter-web/services/agent_runtime.py: added `import logging` + `_log = logging.getLogger(__name__)`; added `_log.info("run_agent start: ...")` and `_log.error(..., exc_info=True)` on failure; added `_log.debug("run_agent tool calls: ...")` when tool_calls present; added `_log.info("stream_agent start: ...")` and `_log.error(..., exc_info=True)` on failure
