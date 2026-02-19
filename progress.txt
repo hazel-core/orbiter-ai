@@ -7,6 +7,9 @@ Started: Thu Feb 19 11:52:28 PM IST 2026
 - subprocess.run(text=True) applies universal newline translation (\r → \n), so don't assert literal \r in captured stdout
 - pyright has ~170 pre-existing errors in orbiter-web; check only modified files for new errors
 - Use repr() (not json.dumps()) for embedding arbitrary strings in Python source code literals
+- Route handlers that do `from module import func` inside the function body: patch at the source module (e.g., `orbiter_web.engine.execute_workflow`), not at the router module
+- Use `starlette.testclient.TestClient` with a minimal FastAPI app for synchronous HTTP-level route tests; no pytest-asyncio marks needed
+- `_make_get_db(*rows)` pattern: create an `@asynccontextmanager` that yields a mock db and returns rows sequentially for each `db.execute()` call
 
 ---
 
@@ -21,6 +24,20 @@ Started: Thu Feb 19 11:52:28 PM IST 2026
   - `_validate_startup()` is called from `lifespan()` at startup — mocking `settings` and `_DB_PATH` is the cleanest way to test it
   - The `or not settings.secret_key` branch was split out so empty-key stays as warning while default-key raises in production
   - `patch("orbiter_web.app.settings")` patches the settings object used inside app.py (not the one imported at test time)
+---
+
+## 2026-02-20 - US-003
+- Added `hmac.compare_digest()` token validation to `trigger_webhook()` in `routes/webhooks.py`
+- Added `url_token: str | None = Query(default=None)` parameter to the handler
+- Token check runs after 404 check but before enabled check; returns 403 with `{"detail": "Invalid token"}` on mismatch or missing token
+- Created `packages/orbiter-web/tests/test_webhooks.py` with 3 tests: missing token → 403, wrong token → 403, correct token → 200
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/routes/webhooks.py (added `import hmac`, `url_token` param, validation block)
+  - packages/orbiter-web/tests/test_webhooks.py (new file)
+- **Learnings for future iterations:**
+  - `can_start_run` and `execute_workflow` are imported inside the function body in `trigger_webhook` — patch at source (`orbiter_web.services.run_queue.can_start_run`, `orbiter_web.engine.execute_workflow`)
+  - `starlette.testclient.TestClient` with a minimal FastAPI app handles async route handlers synchronously — no asyncio setup needed
+  - `_append_request_log` makes additional `get_db()` calls that need to be included in the mock row sequence
 ---
 
 ## 2026-02-19 - US-001
