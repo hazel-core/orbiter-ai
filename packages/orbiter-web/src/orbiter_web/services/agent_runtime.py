@@ -13,8 +13,9 @@ from typing import Any
 from orbiter.agent import Agent
 from orbiter.models.provider import ModelProvider, get_provider
 from orbiter.models.types import ModelResponse, StreamChunk
+from orbiter.runner import run as orbiter_run
 from orbiter.tool import FunctionTool
-from orbiter.types import Message, OrbiterError, UserMessage
+from orbiter.types import Message, OrbiterError, TextEvent, Usage, UsageEvent, UserMessage
 from orbiter_web.crypto import decrypt_api_key
 from orbiter_web.database import get_db
 
@@ -250,14 +251,20 @@ class AgentService:
         agent_id: str,
         messages: list[Message],
     ) -> AsyncIterator[StreamChunk]:
-        """Stream agent execution, yielding chunks incrementally.
+        """Stream agent execution using the full agent tool loop.
+
+        Delegates to ``orbiter.runner.run.stream()`` so that tool calls
+        emitted by the LLM are executed and their results fed back before
+        the next streaming response.  Yields ``StreamChunk`` objects for
+        backward compatibility with existing callers.
 
         Args:
             agent_id: The database ID of the agent.
             messages: Conversation history as Orbiter Message objects.
 
         Yields:
-            ``StreamChunk`` events from the model provider.
+            ``StreamChunk`` objects — one per text delta, plus a final
+            chunk with ``finish_reason="stop"`` and accumulated usage.
 
         Raises:
             AgentRuntimeError: If the agent, provider, or model call fails.
@@ -275,25 +282,32 @@ class AgentService:
             provider_type, model_name, row["user_id"]
         )
 
-        # Build messages with system prompt
-        from orbiter._internal.message_builder import build_messages
+        # Extract the last user message as input (same logic as run_agent)
+        user_input = ""
+        for msg in reversed(messages):
+            if isinstance(msg, UserMessage):
+                user_input = msg.content
+                break
 
-        instructions = agent.instructions
-        if callable(instructions):
-            instructions = instructions(agent.name)
+        history = messages[:-1] if user_input else list(messages)
 
-        msg_list = build_messages(instructions, list(messages))
-        tool_schemas = agent.get_tool_schemas() or None
-
+        last_usage: Usage | None = None
         try:
-            async for chunk in provider.stream(
-                msg_list,
-                tools=tool_schemas,
-                temperature=agent.temperature,
-                max_tokens=agent.max_tokens,
+            async for event in orbiter_run.stream(
+                agent,
+                user_input,
+                messages=history,
+                provider=provider,
+                detailed=True,
             ):
-                yield chunk
+                if isinstance(event, TextEvent):
+                    yield StreamChunk(delta=event.text)
+                elif isinstance(event, UsageEvent):
+                    last_usage = event.usage
         except Exception as exc:
             raise AgentRuntimeError(
                 f"Stream failed for agent {agent_id}: {exc}"
             ) from exc
+
+        # Final chunk signals completion and carries accumulated token usage
+        yield StreamChunk(finish_reason="stop", usage=last_usage or Usage())
