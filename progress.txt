@@ -2,6 +2,37 @@
 Started: Thu Feb 19 11:52:28 PM IST 2026
 ---
 
+## 2026-02-20 - US-017
+- Added `_ProviderSummarizer` class to `agent.py` — wraps a model provider with `async summarize(prompt) -> str` for use with orbiter-memory's `generate_summary()`
+- Added `_apply_context_windowing(msg_list, context, provider)` helper to `agent.py`:
+  - Separates SystemMessage(s) from non-system messages
+  - Step 1: when msg_count > offload_threshold, aggressively trims to summary_threshold messages
+  - Step 2: when msg_count >= summary_threshold, converts messages to MemoryItems, calls `check_trigger()` + `generate_summary()` from orbiter-memory, replaces old messages with a summary SystemMessage + recent messages tail
+  - Step 3: applies history_rounds windowing (keeps last history_rounds non-system messages)
+  - Falls back gracefully when orbiter-memory is not installed (ImportError silently skips summarization)
+- Wired `_apply_context_windowing()` into `Agent.run()` after `build_messages()` call (when `self.context is not None`)
+- Wired `_apply_context_windowing()` into `runner.py _stream()` via lazy `from orbiter.agent import _apply_context_windowing` (same pattern as existing AgentError lazy import)
+- Verified US-015 already handles all persistence (HumanMemory pre-run, AIMemory/ToolMemory via POST_LLM_CALL/POST_TOOL_CALL hooks) — no additional persistence added (no double-persist)
+- Added `TestAgentContextWindowing` class (6 tests) to `test_context_integration.py`:
+  - `test_windowing_trims_old_messages`: 20 history messages → trimmed to history_rounds=3
+  - `test_windowing_does_not_trim_when_within_limit`: 4 history + 1 input = 5 messages preserved when within history_rounds=20
+  - `test_no_windowing_when_context_none`: context=None → all 31 messages passed through
+  - `test_summarization_triggered_when_threshold_hit`: summary_threshold=5, 10 messages → summarization fires
+  - `test_offload_threshold_triggers_aggressive_trim`: 20 messages > offload_threshold=10 → trimmed to summary_threshold=5
+  - `test_apply_context_windowing_unit`: direct unit test of helper with system message preservation
+- Files changed:
+  - packages/orbiter-core/src/orbiter/agent.py (added SystemMessage import, _ProviderSummarizer class, _apply_context_windowing(), wired in run())
+  - packages/orbiter-core/src/orbiter/runner.py (wired _apply_context_windowing() in _stream())
+  - packages/orbiter-context/tests/test_context_integration.py (added TestAgentContextWindowing with 6 tests)
+- All 1288 orbiter-core + orbiter-context tests pass; pre-existing pyright error at agent.py (MCPToolWrapper.to_dict) unrelated to changes
+- **Learnings for future iterations:**
+  - `_apply_context_windowing()` is placed in `agent.py` (not a separate internal module) and lazy-imported in `runner.py` inside `_stream()` — avoids circular imports since agent.py doesn't import from runner.py at module level
+  - Message → MemoryItem conversion: UserMessage→HumanMemory, AssistantMessage→AIMemory, ToolResult→ToolMemory (all have `content` attribute)
+  - The windowing order matters: offload_threshold check first (most aggressive), then summarization, then history_rounds windowing last
+  - US-015 already handles all persistence via hooks (POST_LLM_CALL saves AIMemory, POST_TOOL_CALL saves ToolMemory); HumanMemory saved pre-run in the memory block — no persistence needed in US-017
+  - ContextConfig is a Pydantic model (not a Context object); use `getattr(context, "history_rounds", 20)` for robust attribute access
+---
+
 ## 2026-02-20 - US-015
 - Added `conversation_id: str | None = None` parameter to `Agent.run()` in `agent.py`
 - Added pre-run memory block in `Agent.run()`: auto-assigns UUID4 `conversation_id` on first run (only updates `self.conversation_id` when no per-call override), updates `_memory_persistence.metadata` with `MemoryMetadata(agent_id=self.name, task_id=active_conv)`, calls `load_history()` and prepends DB history before explicit `messages`, saves `HumanMemory` to store before LLM call
@@ -157,6 +188,7 @@ Started: Thu Feb 19 11:52:28 PM IST 2026
 ---
 
 ## Codebase Patterns
+- Context windowing helper `_apply_context_windowing(msg_list, context, provider)` lives in `agent.py`; lazy-imported in `runner.py` — use same pattern for any future context-related helpers
 - orbiter-web tests are in packages/orbiter-web/tests/ (not src/)
 - subprocess.run(text=True) applies universal newline translation (\r → \n), so don't assert literal \r in captured stdout
 - pyright has ~170 pre-existing errors in orbiter-web; check only modified files for new errors
