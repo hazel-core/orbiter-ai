@@ -157,6 +157,7 @@ async def _stream(
     max_steps: int | None = None,
     detailed: bool = False,
     event_types: set[str] | None = None,
+    conversation_id: str | None = None,
 ) -> AsyncIterator[StreamEvent]:
     """Stream agent execution, yielding events in real-time.
 
@@ -257,8 +258,40 @@ async def _stream(
     elif raw_instr:
         instr = str(raw_instr)
 
-    # Build initial message list
+    # ---- Memory: load history and persist user input before streaming ----
     history: list[Message] = list(messages) if messages else []
+    _persistence = getattr(agent, "_memory_persistence", None)
+    if _persistence is not None:
+        import uuid as _uuid
+        _active_conv = conversation_id or getattr(agent, "conversation_id", None)
+        if _active_conv is None:
+            _active_conv = str(_uuid.uuid4())
+            if conversation_id is None:
+                agent.conversation_id = _active_conv
+        from orbiter.memory.base import HumanMemory, MemoryMetadata  # pyright: ignore[reportMissingImports]
+        _persistence.metadata = MemoryMetadata(
+            agent_id=agent.name,
+            task_id=_active_conv,
+        )
+        _db_history = await _persistence.load_history(
+            agent_name=agent.name,
+            conversation_id=_active_conv,
+            rounds=max_steps or agent.max_steps,
+        )
+        history = list(_db_history) + history
+        await _persistence.store.add(
+            HumanMemory(
+                content=input,
+                metadata=_persistence.metadata,
+            )
+        )
+        _log.debug(
+            "memory stream pre-run: agent=%s conversation=%s db_history=%d",
+            agent.name, _active_conv, len(_db_history),
+        )
+    # ---- end Memory ----
+
+    # Build initial message list
     history.append(UserMessage(content=input))
     msg_list = build_messages(instr, history)
 

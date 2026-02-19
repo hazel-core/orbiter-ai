@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib
+import uuid
 from collections.abc import Callable, Sequence
 from typing import Any
 
@@ -215,6 +216,7 @@ class Agent:
         messages: Sequence[Message] | None = None,
         provider: Any = None,
         max_retries: int = 3,
+        conversation_id: str | None = None,
     ) -> AgentOutput:
         """Execute the agent's LLM-tool loop with retry logic.
 
@@ -229,6 +231,9 @@ class Agent:
             provider: An object with an ``async complete()`` method
                 (e.g. a ``ModelProvider`` instance).
             max_retries: Maximum retry attempts for transient errors.
+            conversation_id: Conversation scope override for this call only.
+                When omitted, the agent's ``conversation_id`` attribute is
+                used (auto-assigned UUID4 on first run if memory is set).
 
         Returns:
             Parsed ``AgentOutput`` from the final LLM response.
@@ -249,8 +254,38 @@ class Agent:
         else:
             instructions = raw_instr
 
-        # Build initial message list
+        # ---- Memory: load history and persist user input before LLM call ----
         history: list[Message] = list(messages) if messages else []
+        if self._memory_persistence is not None:
+            _active_conv = conversation_id or self.conversation_id
+            if _active_conv is None:
+                _active_conv = str(uuid.uuid4())
+                if conversation_id is None:
+                    self.conversation_id = _active_conv
+            from orbiter.memory.base import HumanMemory, MemoryMetadata  # pyright: ignore[reportMissingImports]
+            self._memory_persistence.metadata = MemoryMetadata(
+                agent_id=self.name,
+                task_id=_active_conv,
+            )
+            _db_history = await self._memory_persistence.load_history(
+                agent_name=self.name,
+                conversation_id=_active_conv,
+                rounds=self.max_steps,
+            )
+            history = list(_db_history) + history
+            await self._memory_persistence.store.add(
+                HumanMemory(
+                    content=input,
+                    metadata=self._memory_persistence.metadata,
+                )
+            )
+            _log.debug(
+                "memory pre-run: agent=%s conversation=%s db_history=%d",
+                self.name, _active_conv, len(_db_history),
+            )
+        # ---- end Memory ----
+
+        # Build initial message list
         history.append(UserMessage(content=input))
         msg_list = build_messages(instructions, history)
 

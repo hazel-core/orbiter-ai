@@ -1037,3 +1037,143 @@ class TestAgentMemoryDefaults:
         """Agent(memory=None) still has conversation_id=None."""
         agent = Agent(name="bot", memory=None)
         assert agent.conversation_id is None
+
+
+# ---------------------------------------------------------------------------
+# Agent history persistence (US-015)
+# ---------------------------------------------------------------------------
+
+
+class TestAgentHistoryPersistence:
+    async def test_second_run_picks_up_history(self) -> None:
+        """Second run() on same agent instance sees messages from the first run."""
+        try:
+            from orbiter.memory.base import AgentMemory  # pyright: ignore[reportMissingImports]
+            from orbiter.memory.short_term import ShortTermMemory  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-memory not installed")
+
+        # Use in-memory stores for test isolation
+        memory = AgentMemory(short_term=ShortTermMemory(), long_term=ShortTermMemory())
+        provider1 = _mock_provider(content="First reply")
+        agent = Agent(name="history-bot", memory=memory)
+
+        # First run
+        await agent.run("First input", provider=provider1)
+
+        # Second run — capture messages sent to the LLM
+        provider2 = _mock_provider(content="Second reply")
+        original_complete = provider2.complete
+        captured_messages: list[Any] = []
+
+        async def capturing_complete(msgs: Any, **kwargs: Any) -> Any:
+            captured_messages.extend(msgs)
+            return await original_complete(msgs, **kwargs)
+
+        provider2.complete = capturing_complete
+        await agent.run("Second input", provider=provider2)
+
+        # History from the first run should be present in the second run's LLM call
+        user_msgs = [m for m in captured_messages if m.role == "user"]
+        assistant_msgs = [m for m in captured_messages if m.role == "assistant"]
+        user_contents = [m.content for m in user_msgs]
+        assert "First input" in user_contents, "First run's user message not found in history"
+        assert "Second input" in user_contents, "Current input not found"
+        assert len(assistant_msgs) >= 1, "First run's assistant reply not found in history"
+
+    async def test_conversation_id_auto_assigned_on_first_run(self) -> None:
+        """conversation_id is auto-assigned (UUID4) on first run when memory is set."""
+        try:
+            from orbiter.memory.base import AgentMemory  # pyright: ignore[reportMissingImports]
+            from orbiter.memory.short_term import ShortTermMemory  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-memory not installed")
+
+        memory = AgentMemory(short_term=ShortTermMemory(), long_term=ShortTermMemory())
+        agent = Agent(name="bot", memory=memory)
+        assert agent.conversation_id is None
+
+        provider = _mock_provider(content="hello")
+        await agent.run("hi", provider=provider)
+
+        assert agent.conversation_id is not None
+        assert len(agent.conversation_id) > 0
+
+    async def test_conversation_id_param_overrides_per_call_only(self) -> None:
+        """conversation_id kwarg overrides instance conversation_id for that call only."""
+        try:
+            from orbiter.memory.base import AgentMemory  # pyright: ignore[reportMissingImports]
+            from orbiter.memory.short_term import ShortTermMemory  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-memory not installed")
+
+        memory = AgentMemory(short_term=ShortTermMemory(), long_term=ShortTermMemory())
+        agent = Agent(name="bot", memory=memory)
+
+        provider = _mock_provider(content="reply")
+        # Run with explicit conversation_id
+        await agent.run("hi", provider=provider, conversation_id="my-conv-123")
+
+        # Instance conversation_id should NOT be updated when override is passed
+        assert agent.conversation_id != "my-conv-123"
+
+    async def test_explicit_messages_merged_with_history(self) -> None:
+        """Explicit messages= are merged after loaded history, not replaced."""
+        try:
+            from orbiter.memory.base import AgentMemory  # pyright: ignore[reportMissingImports]
+            from orbiter.memory.short_term import ShortTermMemory  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-memory not installed")
+
+        from orbiter.types import AssistantMessage, UserMessage
+
+        memory = AgentMemory(short_term=ShortTermMemory(), long_term=ShortTermMemory())
+        provider1 = _mock_provider(content="First reply")
+        agent = Agent(name="bot", memory=memory)
+
+        # First run to populate history
+        await agent.run("First input", provider=provider1)
+
+        # Second run with explicit messages
+        provider2 = _mock_provider(content="Second reply")
+        original_complete = provider2.complete
+        captured_messages: list[Any] = []
+
+        async def capture(msgs: Any, **kwargs: Any) -> Any:
+            captured_messages.extend(msgs)
+            return await original_complete(msgs, **kwargs)
+
+        provider2.complete = capture
+        explicit_msgs = [
+            UserMessage(content="explicit-prior"),
+            AssistantMessage(content="explicit-reply"),
+        ]
+        await agent.run("New input", messages=explicit_msgs, provider=provider2)
+
+        user_contents = [m.content for m in captured_messages if m.role == "user"]
+        # Both DB history and explicit messages must be present
+        assert "First input" in user_contents
+        assert "explicit-prior" in user_contents
+        assert "New input" in user_contents
+
+    async def test_no_memory_no_history_loading(self) -> None:
+        """Agent with memory=None does not attempt history loading."""
+        provider = _mock_provider(content="Direct answer")
+        agent = Agent(name="bot", memory=None)
+
+        captured_messages: list[Any] = []
+        original_complete = provider.complete
+
+        async def capture(msgs: Any, **kwargs: Any) -> Any:
+            captured_messages.extend(msgs)
+            return await original_complete(msgs, **kwargs)
+
+        provider.complete = capture
+        await agent.run("Hello", provider=provider)
+
+        # conversation_id still None after run (memory disabled)
+        assert agent.conversation_id is None
+        # Only the current user message should be present (no history)
+        user_msgs = [m for m in captured_messages if m.role == "user"]
+        assert len(user_msgs) == 1
+        assert user_msgs[0].content == "Hello"
