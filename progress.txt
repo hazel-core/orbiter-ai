@@ -418,6 +418,33 @@ Started: Thu Feb 19 11:52:28 PM IST 2026
   - `ModelResponse(content="", tool_calls=[tc], ...)` — content must be `""` not `None` for tool-calling responses
 ---
 
+## 2026-02-20 - US-028
+- Added `MCPProgressEvent` Pydantic model to `orbiter-core/src/orbiter/types.py` with fields: `type: Literal["mcp_progress"]`, `tool_name: str`, `progress: int`, `total: int | None`, `message: str`, `agent_name: str`
+- Added `MCPProgressEvent` to the `StreamEvent` union in `types.py`
+- Updated `MCPServerConnection.call_tool()` in `client.py` to accept `progress_callback: Any | None = None` (keyword-only) and pass it to `self._session.call_tool(..., progress_callback=progress_callback)`
+- Updated `MCPClient.call_tool()` in `client.py` similarly for the high-level API
+- Added `progress_queue` to `MCPToolWrapper.__slots__`; initialized as `asyncio.Queue()` in `__init__()` and `from_dict()`
+- In `MCPToolWrapper.execute()`: lazily imports `MCPProgressEvent` from `orbiter.types`; builds async `_progress_callback` closure that enqueues `MCPProgressEvent(tool_name=..., progress=int(progress), total=..., message=message or "")` on each notification; passes `progress_callback=_progress_callback` to `self._call_fn(...)`; falls back to `_progress_callback=None` when orbiter-core not importable
+- The final tool result is returned from `execute()` unchanged; progress events are only in `progress_queue`
+- Created `packages/orbiter-mcp/tests/test_progress.py` with 17 tests: `TestMCPProgressEvent` (5), `TestMCPServerConnectionProgressCallback` (3), `TestMCPToolWrapperProgressQueue` (9)
+- Updated 4 existing tests in `test_mcp_client.py` and `test_mcp_tools.py` to include `progress_callback` arg in their assertions (using `ANY` for the closure)
+- All 180 orbiter-mcp tests pass + 931 orbiter-core tests pass; only pre-existing `reportMissingImports` pyright errors in tools.py
+- Files changed:
+  - packages/orbiter-core/src/orbiter/types.py (added MCPProgressEvent, updated StreamEvent union)
+  - packages/orbiter-mcp/src/orbiter/mcp/client.py (progress_callback in MCPServerConnection.call_tool + MCPClient.call_tool)
+  - packages/orbiter-mcp/src/orbiter/mcp/tools.py (progress_queue slot/init/from_dict, progress callback in execute)
+  - packages/orbiter-mcp/tests/test_progress.py (new file with 17 tests)
+  - packages/orbiter-mcp/tests/test_mcp_client.py (updated assertion)
+  - packages/orbiter-mcp/tests/test_mcp_tools.py (updated 3 assertions, added ANY import)
+- **Learnings for future iterations:**
+  - `MCPServerConnection.call_tool()` uses keyword-only `progress_callback` parameter (after `*`) — always pass as kwarg: `call_fn(name, args, progress_callback=cb)`
+  - The `ProgressFnT` protocol uses `float` for progress/total; `MCPProgressEvent` stores `int` — cast with `int(progress)` and `int(total) if total is not None else None`
+  - Progress queue is per-MCPToolWrapper instance; it accumulates across calls — runner must drain it after each tool call (US-029 will wire this into agent.stream())
+  - When testing tool wrappers that now pass `progress_callback`, use `AsyncMock.assert_awaited_once_with(..., progress_callback=ANY)` (import `ANY` from `unittest.mock`)
+  - `sys.modules["orbiter.types"] = None` blocks the import inside `execute()` for testing the ImportError fallback path
+  - Never use `git stash` in the middle of a pyright check if there are modified files that conflict (uv.lock) — use `pyright` with specific file paths directly instead
+---
+
 ## Codebase Patterns
 - Context windowing helper `_apply_context_windowing(msg_list, context, provider)` lives in `agent.py`; lazy-imported in `runner.py` — use same pattern for any future context-related helpers
 - orbiter-web tests are in packages/orbiter-web/tests/ (not src/)
