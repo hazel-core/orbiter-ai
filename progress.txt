@@ -103,3 +103,16 @@ Started: Fri Feb 20 03:26:33 AM IST 2026
   - Tool call assertions use `result.tool_calls` (list of ToolCall); structured output assertions use `parse_structured_output(result.text, Model)`
   - `temperature_celsius` parsed from JSON may come as int; use `isinstance(x, (int, float))` or just check `isinstance(x, float)` after pydantic coerces it
 ---
+
+## 2026-02-20 - US-INT-007
+- What was implemented: SQLiteMemoryStore persistence, keyword search, and metadata isolation tests
+- Files changed:
+  - `tests/integration/test_memory_persistence.py` (new)
+- **Learnings for future iterations:**
+  - PRD says `memory_store.save()` and `memory_store.load(session_id=...)` but actual API uses `add()` and `search(metadata=MemoryMetadata(session_id=...))` — adapt accordingly
+  - `search(query="KEYWORD", limit=N)` does SQLite LIKE/FTS matching on content field; returns only items whose content contains the query string
+  - `search(metadata=MemoryMetadata(session_id="..."))` filters by session_id via json_extract on metadata column
+  - `search(metadata=MemoryMetadata(user_id="..."))` filters by user_id — user isolation works correctly
+  - `memory_store` fixture (from conftest.py) yields an already-init'd SQLiteMemoryStore backed by a temp file — no need to call `await store.init()` again
+  - Tests that only exercise SQLiteMemoryStore directly (no LLM needed) run in ~0.2s total — very fast
+---
