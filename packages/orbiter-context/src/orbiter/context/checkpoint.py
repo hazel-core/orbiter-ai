@@ -7,9 +7,12 @@ taken and any prior version can be restored.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 class CheckpointError(Exception):
@@ -129,6 +132,10 @@ class CheckpointStore:
             metadata=dict(metadata) if metadata else {},
         )
         self._checkpoints.append(cp)
+        logger.debug(
+            "checkpoint saved: task_id=%r version=%d keys=%d",
+            self._task_id, cp.version, len(cp.values),
+        )
         return cp
 
     def get(self, version: int) -> Checkpoint:
@@ -141,6 +148,7 @@ class CheckpointStore:
         """
         if version < 1 or version > len(self._checkpoints):
             msg = f"Checkpoint version {version} not found (available: 1-{len(self._checkpoints)})"
+            logger.warning("checkpoint get failed: %s", msg)
             raise CheckpointError(msg)
         return self._checkpoints[version - 1]
 

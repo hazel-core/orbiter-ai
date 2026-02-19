@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from orbiter.memory.base import (  # pyright: ignore[reportMissingImports]
     AIMemory,
     MemoryError,
@@ -10,6 +12,9 @@ from orbiter.memory.base import (  # pyright: ignore[reportMissingImports]
     MemoryStatus,
     ToolMemory,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 class ShortTermMemory:
@@ -44,6 +49,7 @@ class ShortTermMemory:
     async def add(self, item: MemoryItem) -> None:
         """Persist a memory item."""
         self._items.append(item)
+        logger.debug("added item type=%s id=%s scope=%s", item.memory_type, item.id, self.scope)
 
     async def get(self, item_id: str) -> MemoryItem | None:
         """Retrieve a memory item by ID."""
@@ -80,6 +86,7 @@ class ShortTermMemory:
         # Ensure tool call integrity
         results = self._filter_incomplete_pairs(results)
 
+        logger.debug("search query=%r results=%d scope=%s", query, len(results[:limit]), self.scope)
         return results[:limit]
 
     async def clear(
@@ -91,6 +98,7 @@ class ShortTermMemory:
         if metadata is None:
             count = len(self._items)
             self._items.clear()
+            logger.debug("cleared all items count=%d scope=%s", count, self.scope)
             return count
 
         keep: list[MemoryItem] = []
@@ -101,6 +109,7 @@ class ShortTermMemory:
             else:
                 keep.append(item)
         self._items = keep
+        logger.debug("cleared filtered items count=%d scope=%s", removed, self.scope)
         return removed
 
     # -- Filtering helpers -----------------------------------------------------

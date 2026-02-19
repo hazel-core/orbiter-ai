@@ -86,6 +86,7 @@ class CostTracker:
         """
         with self._lock:
             self._pricing.insert(0, pricing)
+        logger.debug("registered pricing for pattern %r: in=$%.6f/1k out=$%.6f/1k", pricing.model_pattern, pricing.input_cost_per_1k, pricing.output_cost_per_1k)
 
     def _find_pricing(self, model: str) -> ModelPricing | None:
         """Find the first pricing entry whose pattern matches *model*."""
@@ -120,6 +121,7 @@ class CostTracker:
         with self._lock:
             self._entries.append(entry)
 
+        logger.debug("recorded cost: model=%s tokens=%d+%d cost=$%.6f", model, input_tokens, output_tokens, entry.total_cost)
         return entry
 
     # -- Queries --------------------------------------------------------------

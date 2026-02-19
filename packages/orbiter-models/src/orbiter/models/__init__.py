@@ -4,7 +4,6 @@
 from .anthropic import AnthropicProvider
 from .gemini import GeminiProvider
 from .openai import OpenAIProvider
-from .vertex import VertexProvider
 from .provider import ModelProvider, get_provider, model_registry
 from .types import (
     FinishReason,
@@ -13,6 +12,7 @@ from .types import (
     StreamChunk,
     ToolCallDelta,
 )
+from .vertex import VertexProvider
 
 __all__ = [
     "AnthropicProvider",

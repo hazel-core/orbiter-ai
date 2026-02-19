@@ -6,9 +6,12 @@ windows. Provides budget calculations and compliance reports.
 
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -59,6 +62,7 @@ class SLOTracker:
     def register(self, slo: SLO) -> None:
         """Register an SLO. Overwrites any existing SLO with the same name."""
         self._slos[slo.name] = slo
+        logger.debug("registered SLO %r (metric=%s, target=%s, comparator=%s)", slo.name, slo.metric_name, slo.target, slo.comparator)
 
     def unregister(self, name: str) -> None:
         """Remove a registered SLO by name."""
@@ -119,7 +123,7 @@ class SLOTracker:
         # 1.0 = all good, 0.0 = all violating.
         budget_remaining = max(0.0, 1.0 - (violating / len(values)))
 
-        return SLOReport(
+        report = SLOReport(
             slo_name=slo.name,
             target=slo.target,
             actual=actual,
@@ -129,6 +133,11 @@ class SLOTracker:
             total_samples=len(values),
             violating_samples=violating,
         )
+        if not compliant:
+            logger.warning("SLO %r is non-compliant: actual=%.4f target=%.4f budget=%.2f%%", slo.name, actual, slo.target, budget_remaining * 100)
+        else:
+            logger.debug("SLO %r compliant: actual=%.4f target=%.4f budget=%.2f%%", slo.name, actual, slo.target, budget_remaining * 100)
+        return report
 
     def report_all(self) -> list[SLOReport]:
         """Generate compliance reports for all registered SLOs."""

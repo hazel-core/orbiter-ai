@@ -7,7 +7,10 @@ into the parent with net token calculation.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from orbiter.context.checkpoint import (  # pyright: ignore[reportMissingImports]
     Checkpoint,
@@ -131,6 +134,7 @@ class Context:
         """
         child = Context(task_id, parent=self)
         self._children.append(child)
+        logger.debug("forked context %r from parent %r", task_id, self._task_id)
         return child
 
     def merge(self, child: Context) -> None:
@@ -144,6 +148,7 @@ class Context:
         """
         if child._parent is not self:
             msg = f"Context {child.task_id!r} is not a child of {self.task_id!r}"
+            logger.warning("merge rejected: %s", msg)
             raise ContextError(msg)
 
         # 1. Merge child's local state into parent
@@ -159,6 +164,11 @@ class Context:
             net = child_value - snapshot_value
             if net > 0:
                 self._token_usage[key] = self._token_usage.get(key, 0) + net
+
+        logger.debug(
+            "merged child %r into parent %r: %d state keys, token delta applied",
+            child.task_id, self._task_id, len(local),
+        )
 
     # ── Checkpoint ────────────────────────────────────────────────────
 
@@ -182,11 +192,13 @@ class Context:
         -------
         The created :class:`Checkpoint`.
         """
-        return self._checkpoint_store.save(
+        cp = self._checkpoint_store.save(
             values=self._state.to_dict(),
             token_usage=dict(self._token_usage),
             metadata=metadata,
         )
+        logger.debug("snapshot created: task_id=%r version=%d", self._task_id, cp.version)
+        return cp
 
     @classmethod
     def restore(cls, checkpoint: Checkpoint, *, config: ContextConfig | None = None) -> Context:
@@ -220,6 +232,10 @@ class Context:
         ctx._state.update(checkpoint.values)
         # Restore token usage
         ctx._token_usage = dict(checkpoint.token_usage)
+        logger.debug(
+            "context restored from checkpoint: task_id=%r version=%d",
+            checkpoint.task_id, checkpoint.version,
+        )
         return ctx
 
     # ── Representation ───────────────────────────────────────────────

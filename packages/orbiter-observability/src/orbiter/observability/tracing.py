@@ -10,11 +10,14 @@ from __future__ import annotations
 import asyncio
 import functools
 import inspect
+import logging
 import sys
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Optional OTel import

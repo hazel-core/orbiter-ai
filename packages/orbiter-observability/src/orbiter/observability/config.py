@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import threading
 from enum import StrEnum
 
 from pydantic import BaseModel, Field
+
+logger = logging.getLogger(__name__)
 
 
 class TraceBackend(StrEnum):
@@ -99,6 +102,7 @@ def configure(config: ObservabilityConfig | None = None, **kwargs: object) -> Ob
     with _lock:
         if _configured and not force:
             assert _current_config is not None
+            logger.debug("observability already configured, returning existing config")
             return _current_config
 
         if config is None:
@@ -106,6 +110,7 @@ def configure(config: ObservabilityConfig | None = None, **kwargs: object) -> Ob
 
         _current_config = config
         _configured = True
+        logger.debug("observability configured: log_level=%s, trace_enabled=%s, service=%s", config.log_level, config.trace_enabled, config.service_name)
         return config
 
 

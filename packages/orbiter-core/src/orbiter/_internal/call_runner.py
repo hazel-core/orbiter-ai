@@ -8,6 +8,7 @@ repeatedly produces the same tool calls without making progress.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Sequence
 from typing import Any
 
@@ -92,7 +93,11 @@ async def call_runner(
         instr: str = ""
         raw_instr = agent.instructions
         if callable(raw_instr):
-            instr = str(raw_instr(agent.name))
+            result_instr = raw_instr(agent.name)
+            if asyncio.iscoroutine(result_instr):
+                instr = str(await result_instr)
+            else:
+                instr = str(result_instr)
         elif raw_instr:
             instr = str(raw_instr)
         final_messages = build_messages(
@@ -145,6 +150,11 @@ def _check_loop(
     # Build a signature from tool names + arguments
     signature = _tool_call_signature(output)
 
+    # Store the signature on the current node FIRST so it is counted
+    current = state.current_node
+    if current is not None:
+        current.metadata["tool_signature"] = signature
+
     # Check how many recent consecutive nodes share this signature
     consecutive = 0
     for node in reversed(state.nodes):
@@ -152,11 +162,6 @@ def _check_loop(
             consecutive += 1
         else:
             break
-
-    # Store the signature on the current node for future checks
-    current = state.current_node
-    if current is not None:
-        current.metadata["tool_signature"] = signature
 
     if consecutive >= threshold:
         _log.error("Loop detected: %d repeated tool patterns", consecutive)

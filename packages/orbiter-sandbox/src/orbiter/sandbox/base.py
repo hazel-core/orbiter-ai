@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 from abc import ABC, abstractmethod
 from enum import StrEnum
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 class SandboxError(Exception):
@@ -105,6 +108,7 @@ class Sandbox(ABC):
         if target.value not in allowed:
             msg = f"Cannot transition from {self._status!r} to {target!r}"
             raise SandboxError(msg)
+        logger.debug("Sandbox %s: %s -> %s", self._sandbox_id, self._status.value, target.value)
         self._status = target
 
     # -- abstract lifecycle -------------------------------------------------
@@ -162,6 +166,7 @@ class LocalSandbox(Sandbox):
         if self._status != SandboxStatus.RUNNING:
             msg = f"Sandbox must be running to call tools (status={self._status!r})"
             raise SandboxError(msg)
+        logger.debug("Sandbox %s: running tool %s", self._sandbox_id, tool_name)
         return {"tool": tool_name, "arguments": arguments, "status": "ok"}
 
     async def __aenter__(self) -> LocalSandbox:

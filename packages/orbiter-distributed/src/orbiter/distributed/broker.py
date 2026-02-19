@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 
 import redis.asyncio as aioredis
 
@@ -10,6 +11,8 @@ from orbiter.distributed.models import (  # pyright: ignore[reportMissingImports
     TaskPayload,
     TaskStatus,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class TaskBroker:
@@ -39,21 +42,25 @@ class TaskBroker:
 
     async def connect(self) -> None:
         """Connect to Redis and ensure the consumer group exists."""
+        logger.debug("TaskBroker connecting to Redis (queue=%s)", self._queue_name)
         self._redis = aioredis.from_url(self._redis_url, decode_responses=True)
         try:
             await self._redis.xgroup_create(
                 self._queue_name, self._group_name, id="0", mkstream=True
             )
+            logger.debug("TaskBroker created consumer group %s", self._group_name)
         except aioredis.ResponseError as exc:
             # Group already exists — safe to ignore.
             if "BUSYGROUP" not in str(exc):
                 raise
+            logger.debug("TaskBroker consumer group %s already exists", self._group_name)
 
     async def disconnect(self) -> None:
         """Close the Redis connection."""
         if self._redis is not None:
             await self._redis.aclose()
             self._redis = None
+            logger.debug("TaskBroker disconnected")
 
     def _client(self) -> aioredis.Redis:
         if self._redis is None:
@@ -66,6 +73,7 @@ class TaskBroker:
         r = self._client()
         data = task.model_dump()
         await r.xadd(self._queue_name, {"payload": json.dumps(data)})
+        logger.debug("TaskBroker submitted task %s to %s", task.task_id, self._queue_name)
         return task.task_id
 
     async def claim(
@@ -93,6 +101,12 @@ class TaskBroker:
         payload = TaskPayload(**json.loads(payload_json))
         # Store the stream message id so ack/nack can reference it.
         self._pending_ids[payload.task_id] = msg_id
+        logger.debug(
+            "TaskBroker worker %s claimed task %s (msg_id=%s)",
+            worker_id,
+            payload.task_id,
+            msg_id,
+        )
         return payload
 
     async def ack(self, task_id: str) -> None:
@@ -101,6 +115,9 @@ class TaskBroker:
         msg_id = self._pending_ids.pop(task_id, None)
         if msg_id is not None:
             await r.xack(self._queue_name, self._group_name, msg_id)
+            logger.debug("TaskBroker acked task %s (msg_id=%s)", task_id, msg_id)
+        else:
+            logger.warning("TaskBroker ack called for unknown task %s (no pending msg_id)", task_id)
 
     async def nack(self, task_id: str) -> None:
         """Return a task to the queue for retry by another consumer.
@@ -117,6 +134,17 @@ class TaskBroker:
             if msgs:
                 _mid, fields = msgs[0]
                 await r.xadd(self._queue_name, {"payload": fields["payload"]})
+                logger.debug("TaskBroker nacked task %s — re-queued for retry", task_id)
+            else:
+                logger.warning(
+                    "TaskBroker nack for task %s: original message %s not found in stream",
+                    task_id,
+                    msg_id,
+                )
+        else:
+            logger.warning(
+                "TaskBroker nack called for unknown task %s (no pending msg_id)", task_id
+            )
 
     async def cancel(self, task_id: str) -> None:
         """Cancel a running task.
@@ -125,6 +153,7 @@ class TaskBroker:
         channel and sets the task status to CANCELLED in the task hash.
         """
         r = self._client()
+        logger.info("TaskBroker cancelling task %s", task_id)
         # Publish cancel signal via Pub/Sub.
         await r.publish(  # type: ignore[misc]
             f"orbiter:cancel:{task_id}", "cancel"

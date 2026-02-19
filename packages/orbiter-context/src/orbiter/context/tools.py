@@ -11,11 +11,14 @@ JSON schema so that LLMs only see the user-facing parameters.
 
 from __future__ import annotations
 
+import logging
 import re
 from pathlib import Path
 from typing import Any
 
 from orbiter.tool import Tool, ToolError, _extract_description, _generate_schema
+
+logger = logging.getLogger(__name__)
 
 # ── Helper: build a tool that receives ctx at call time ─────────────
 
@@ -58,7 +61,9 @@ class _ContextTool(Tool):
 
     async def execute(self, **kwargs: Any) -> str | dict[str, Any]:
         if self._ctx is None:
+            logger.error("tool %r executed without bound context", self.name)
             raise ToolError(f"Tool '{self.name}' requires a bound context (call .bind(ctx) first)")
+        logger.debug("executing context tool %r", self.name)
         return await self._fn(ctx=self._ctx, **kwargs)
 
 
@@ -222,10 +227,11 @@ async def _read_file(ctx: Any, path: str) -> str:
     working_dir = ctx.state.get("working_dir")
     if working_dir is None:
         return "No working directory set in context."
-    base = Path(working_dir)
+    base = Path(working_dir).resolve()
     target = (base / path).resolve()
     # Prevent path traversal outside working directory
-    if not str(target).startswith(str(base.resolve())):
+    if not target.is_relative_to(base):
+        logger.warning("path traversal blocked: %r resolved outside working dir %s", path, base)
         return f"Access denied: '{path}' is outside the working directory."
     if not target.is_file():
         return f"File not found: '{path}'."

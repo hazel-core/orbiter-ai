@@ -7,8 +7,11 @@ Wraps the ``google-genai`` SDK to implement ``ModelProvider.complete()`` and
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import AsyncIterator
 from typing import Any
+
+from google import genai
 
 from orbiter.config import ModelConfig
 from orbiter.types import (
@@ -30,7 +33,7 @@ from .types import (
     ToolCallDelta,
 )
 
-from google import genai
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Finish reason mapping
@@ -89,15 +92,19 @@ def _to_google_contents(messages: list[Message]) -> tuple[list[dict[str, Any]], 
             contents.append({"role": "model", "parts": parts})
         elif isinstance(msg, ToolResult):
             response_data = msg.error if msg.error else msg.content
-            contents.append({
-                "role": "user",
-                "parts": [{
-                    "function_response": {
-                        "name": msg.tool_name,
-                        "response": {"content": response_data},
-                    },
-                }],
-            })
+            contents.append(
+                {
+                    "role": "user",
+                    "parts": [
+                        {
+                            "function_response": {
+                                "name": msg.tool_name,
+                                "response": {"content": response_data},
+                            },
+                        }
+                    ],
+                }
+            )
 
     return contents, "\n".join(system_parts)
 
@@ -119,11 +126,13 @@ def _convert_tools(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
     declarations: list[dict[str, Any]] = []
     for t in tools:
         fn = t.get("function", {})
-        declarations.append({
-            "name": fn.get("name", ""),
-            "description": fn.get("description", ""),
-            "parameters": fn.get("parameters", {"type": "object", "properties": {}}),
-        })
+        declarations.append(
+            {
+                "name": fn.get("name", ""),
+                "description": fn.get("description", ""),
+                "parameters": fn.get("parameters", {"type": "object", "properties": {}}),
+            }
+        )
     return [{"function_declarations": declarations}] if declarations else []
 
 
@@ -313,6 +322,12 @@ class GeminiProvider(ModelProvider):
         Raises:
             ModelError: If the API call fails.
         """
+        logger.debug(
+            "gemini complete: model=%s, messages=%d, tools=%d",
+            self.config.model_name,
+            len(messages),
+            len(tools or []),
+        )
         contents, system_instruction = _to_google_contents(messages)
         config = _build_config(tools, temperature, max_tokens, system_instruction)
         try:
@@ -322,6 +337,12 @@ class GeminiProvider(ModelProvider):
                 config=config,
             )
         except Exception as exc:
+            logger.error(
+                "gemini complete failed: model=%s, error=%s",
+                self.config.model_name,
+                exc,
+                exc_info=True,
+            )
             raise ModelError(str(exc), model=f"gemini:{self.config.model_name}") from exc
         return _parse_response(response, self.config.model_name)
 
@@ -347,6 +368,12 @@ class GeminiProvider(ModelProvider):
         Raises:
             ModelError: If the API call fails.
         """
+        logger.debug(
+            "gemini stream: model=%s, messages=%d, tools=%d",
+            self.config.model_name,
+            len(messages),
+            len(tools or []),
+        )
         contents, system_instruction = _to_google_contents(messages)
         config = _build_config(tools, temperature, max_tokens, system_instruction)
         try:
@@ -359,6 +386,12 @@ class GeminiProvider(ModelProvider):
         except ModelError:
             raise
         except Exception as exc:
+            logger.error(
+                "gemini stream failed: model=%s, error=%s",
+                self.config.model_name,
+                exc,
+                exc_info=True,
+            )
             raise ModelError(str(exc), model=f"gemini:{self.config.model_name}") from exc
 
 

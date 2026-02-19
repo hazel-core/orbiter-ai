@@ -15,7 +15,10 @@ from collections.abc import Sequence
 from typing import Any
 
 from orbiter._internal.call_runner import call_runner
+from orbiter.observability.logging import get_logger  # pyright: ignore[reportMissingImports]
 from orbiter.types import Message, OrbiterError, RunResult, Usage
+
+_log = get_logger(__name__)
 
 
 class GroupError(OrbiterError):
@@ -78,22 +81,31 @@ class ParallelGroup:
             ``RunResult`` with aggregated output, merged usage, and
             combined step count.
         """
-        results: list[RunResult] = [RunResult()] * len(self.agent_order)
+        results: list[RunResult] = [RunResult() for _ in range(len(self.agent_order))]
 
         async def _run_one(idx: int) -> None:
             agent_name = self.agent_order[idx]
-            agent = self.agents[agent_name]
-            results[idx] = await call_runner(
-                agent,
-                input,
-                messages=messages,
-                provider=provider,
-                max_retries=max_retries,
-            )
+            try:
+                agent = self.agents[agent_name]
+                results[idx] = await call_runner(
+                    agent,
+                    input,
+                    messages=messages,
+                    provider=provider,
+                    max_retries=max_retries,
+                )
+            except Exception as exc:
+                raise GroupError(f"Agent '{agent_name}' failed: {exc}") from exc
 
-        async with asyncio.TaskGroup() as tg:
-            for i in range(len(self.agent_order)):
-                tg.create_task(_run_one(i))
+        _log.debug("ParallelGroup '%s' starting: agents=%s", self.name, self.agent_order)
+        try:
+            async with asyncio.TaskGroup() as tg:
+                for i in range(len(self.agent_order)):
+                    tg.create_task(_run_one(i))
+        except* GroupError as eg:
+            msgs = "; ".join(str(e) for e in eg.exceptions)
+            raise GroupError(f"ParallelGroup '{self.name}' failed: {msgs}") from eg
+        _log.debug("ParallelGroup '%s' completed", self.name)
 
         return self._aggregate(results)
 
@@ -196,7 +208,14 @@ class SerialGroup:
 
         last_result: RunResult | None = None
 
-        for agent_name in self.agent_order:
+        for i, agent_name in enumerate(self.agent_order):
+            _log.debug(
+                "SerialGroup '%s' step %d/%d: agent='%s'",
+                self.name,
+                i + 1,
+                len(self.agent_order),
+                agent_name,
+            )
             agent = self.agents[agent_name]
             result = await call_runner(
                 agent,

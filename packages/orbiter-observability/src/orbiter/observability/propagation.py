@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from contextvars import ContextVar
 from typing import Any, Protocol, runtime_checkable
 from urllib.parse import quote_plus, unquote_plus
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Carrier protocol — abstraction over header containers
@@ -109,6 +112,7 @@ class BaggagePropagator:
             return {}
 
         if len(raw) > MAX_HEADER_LENGTH:
+            logger.warning("baggage header exceeds max length (%d > %d), ignoring", len(raw), MAX_HEADER_LENGTH)
             return {}
 
         pairs: dict[str, str] = {}
@@ -126,6 +130,7 @@ class BaggagePropagator:
                 pairs[key] = value
                 set_baggage(key, value)
 
+        logger.debug("extracted %d baggage entries", len(pairs))
         return pairs
 
     def inject(self, carrier: Carrier, baggage: dict[str, str] | None = None) -> None:
@@ -199,6 +204,7 @@ def register_span_consumer(consumer: SpanConsumer | None = None) -> Any:
     if consumer is not None:
         if isinstance(consumer, SpanConsumer):
             _CONSUMER_REGISTRY[consumer.name] = consumer
+            logger.debug("registered span consumer %r", consumer.name)
             return consumer
         # Used as a bare decorator on a class: @register_span_consumer
         cls = consumer
@@ -230,7 +236,10 @@ def list_span_consumers() -> list[str]:
 def dispatch_spans(spans: Sequence[Any]) -> None:
     """Send a batch of spans to all registered consumers."""
     for consumer in _CONSUMER_REGISTRY.values():
-        consumer.consume(spans)
+        try:
+            consumer.consume(spans)
+        except Exception:
+            logger.error("span consumer %r failed to process %d spans", consumer.name, len(spans), exc_info=True)
 
 
 def clear_span_consumers() -> None:

@@ -234,18 +234,27 @@ class Worker:
         key = f"orbiter:workers:{self._worker_id}"
         try:
             while not self._shutdown_event.is_set():
-                fields = {
-                    "status": "running",
-                    "tasks_processed": str(self._tasks_processed),
-                    "tasks_failed": str(self._tasks_failed),
-                    "current_task_id": self._current_task_id or "",
-                    "started_at": str(self._started_at),
-                    "last_heartbeat": str(time.time()),
-                    "concurrency": str(self._concurrency),
-                    "hostname": socket.gethostname(),
-                }
-                await r.hset(key, mapping=fields)  # type: ignore[misc]
-                await r.expire(key, self._heartbeat_ttl)  # type: ignore[misc]
+                try:
+                    fields = {
+                        "status": "running",
+                        "tasks_processed": str(self._tasks_processed),
+                        "tasks_failed": str(self._tasks_failed),
+                        "current_task_id": self._current_task_id or "",
+                        "started_at": str(self._started_at),
+                        "last_heartbeat": str(time.time()),
+                        "concurrency": str(self._concurrency),
+                        "hostname": socket.gethostname(),
+                    }
+                    await r.hset(key, mapping=fields)  # type: ignore[misc]
+                    await r.expire(key, self._heartbeat_ttl)  # type: ignore[misc]
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    _log.warning(
+                        "Worker %s heartbeat failed, will retry next interval",
+                        self._worker_id,
+                        exc_info=True,
+                    )
                 await asyncio.sleep(self._heartbeat_ttl / 3)
         finally:
             await r.aclose()
@@ -253,7 +262,18 @@ class Worker:
     async def _claim_loop(self) -> None:
         """Claim tasks and execute them until shutdown."""
         while not self._shutdown_event.is_set():
-            task = await self._broker.claim(self._worker_id, timeout=2.0)
+            try:
+                task = await self._broker.claim(self._worker_id, timeout=2.0)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                _log.error(
+                    "Worker %s error claiming task, retrying in 2s",
+                    self._worker_id,
+                    exc_info=True,
+                )
+                await asyncio.sleep(2.0)
+                continue
             if task is None:
                 continue
             await self._execute_task(task)
@@ -347,6 +367,16 @@ class Worker:
                         )
 
                         persistence = MemoryPersistence(store, metadata=mem_metadata)
+                        # L-6: Guard against double hook registration. If the agent
+                        # already has a MemoryPersistence attached (e.g. from
+                        # Agent.__init__ with memory=), detach it first.
+                        existing_persistence = getattr(agent, "_memory_persistence", None)
+                        if existing_persistence is not None:
+                            existing_persistence.detach(agent)
+                            _log.debug(
+                                "Task %s: detached existing memory persistence before re-attaching",
+                                task.task_id,
+                            )
                         persistence.attach(agent)
                         _log.debug(
                             "Task %s: memory persistence attached (scope=%s)",
@@ -547,16 +577,15 @@ class Worker:
                 # Persistent backends return newest-first; ensure chronological
                 if len(prior_items) > 1 and prior_items[0].created_at > prior_items[-1].created_at:
                     prior_items.reverse()
-                # Exclude the current user input (saved by hydration)
-                prior_items = [
-                    it
-                    for it in prior_items
-                    if not (
-                        it.memory_type == "human"
-                        and it.content == task.input
-                        and it is prior_items[-1]
-                    )
-                ]
+                # L-10: Exclude the last item if it matches the current user
+                # input (saved by hydration). Use index comparison instead of
+                # `is` identity, which breaks when items are reconstructed.
+                if (
+                    prior_items
+                    and prior_items[-1].memory_type == "human"
+                    and prior_items[-1].content == task.input
+                ):
+                    prior_items = prior_items[:-1]
                 if prior_items:
                     history = memory_items_to_messages(prior_items)
                     messages = history + (messages or [])

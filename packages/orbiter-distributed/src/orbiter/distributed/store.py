@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 import redis.asyncio as aioredis
@@ -11,6 +12,8 @@ from orbiter.distributed.models import (  # pyright: ignore[reportMissingImports
     TaskResult,
     TaskStatus,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class TaskStore:
@@ -34,6 +37,7 @@ class TaskStore:
 
     async def connect(self) -> None:
         """Connect to Redis."""
+        logger.debug("TaskStore connecting to Redis (prefix=%s)", self._prefix)
         self._redis = aioredis.from_url(self._redis_url, decode_responses=True)
 
     async def disconnect(self) -> None:
@@ -41,6 +45,7 @@ class TaskStore:
         if self._redis is not None:
             await self._redis.aclose()
             self._redis = None
+            logger.debug("TaskStore disconnected")
 
     def _client(self) -> aioredis.Redis:
         if self._redis is None:
@@ -81,6 +86,7 @@ class TaskStore:
 
         # Maintain secondary index for list_tasks().
         await r.sadd(self._index_key, task_id)  # type: ignore[misc]
+        logger.debug("TaskStore set_status task %s -> %s", task_id, status)
 
     async def get_status(self, task_id: str) -> TaskResult | None:
         """Retrieve current task state, or ``None`` if not found."""

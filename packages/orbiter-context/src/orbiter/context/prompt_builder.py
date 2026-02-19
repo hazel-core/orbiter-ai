@@ -8,7 +8,10 @@ string.  Template variable resolution is supported via
 
 from __future__ import annotations
 
+import logging
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from orbiter.context.context import Context  # pyright: ignore[reportMissingImports]
 from orbiter.context.neuron import Neuron, neuron_registry  # pyright: ignore[reportMissingImports]
@@ -85,6 +88,7 @@ class PromptBuilder:
             neuron = neuron_registry.get(neuron_name)
         except Exception as exc:
             msg = f"Neuron {neuron_name!r} not found in registry"
+            logger.warning(msg)
             raise PromptBuilderError(msg) from exc
         self._entries.append(_NeuronEntry(neuron=neuron, kwargs=kwargs))
         return self
@@ -130,6 +134,10 @@ class PromptBuilder:
         if self._variables is not None and prompt:
             prompt = self._variables.resolve_template(prompt, self._ctx.state)
 
+        logger.debug(
+            "prompt built: %d neurons, %d fragments, %d chars",
+            len(sorted_entries), len(fragments), len(prompt),
+        )
         return prompt
 
     def clear(self) -> None:

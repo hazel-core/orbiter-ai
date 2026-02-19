@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 from enum import StrEnum
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -118,4 +121,6 @@ def make_config(mode: AutomationMode | str = "copilot", **overrides: Any) -> Con
     }
     defaults = presets[mode]
     defaults.update(overrides)
-    return ContextConfig(mode=mode, **defaults)
+    config = ContextConfig(mode=mode, **defaults)
+    logger.debug("created config: mode=%s overrides=%s", mode.value, list(overrides.keys()) or "none")
+    return config

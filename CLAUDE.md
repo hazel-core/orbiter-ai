@@ -122,3 +122,68 @@ orbiter (meta-package, re-exports everything)
 - Web app entry: `packages/orbiter-web/src/orbiter_web/app.py`
 - DB migrations: `packages/orbiter-web/src/orbiter_web/migrations/`
 - Handle types (keep in sync): `packages/orbiter-web/src/islands/Canvas/handleTypes.ts` ↔ `routes/tools.py` (`_NODE_HANDLE_MAP`)
+
+---
+
+## Audit & Ongoing Work
+
+An 83-finding audit report lives at `/home/atg/Github/orbiter-ai/audit.md`. It covers Bugs & Security, Logical Issues, Non-Completeness, Inconsistencies, and Duplications across all 15 packages. Consult it for context on every session below.
+
+### Approach: Parallel Sub-agents
+
+For multi-file work across multiple packages, use `TeamCreate` + multiple `Task` agents (`general-purpose` subagent_type) working in parallel — one agent per package. This pattern has been validated and cuts wall-clock time by ~3x.
+
+```
+TeamCreate → TaskCreate (per package) → Task(..., team_name=...) x N → all complete → TeamDelete
+```
+
+### Logging conventions (two patterns, do NOT mix)
+
+- **orbiter-core internal files** (`_internal/`): `from orbiter.observability.logging import get_logger  # pyright: ignore[reportMissingImports]` → `_log = get_logger(__name__)`
+- **orbiter-models / orbiter-mcp** (and all other external packages): `import logging` → `logger = logging.getLogger(__name__)`
+
+---
+
+### Session 1 — 2026-02-19: Asyncio Error Clarity + Logging Coverage
+
+**What was done:** Two bug fixes + logging coverage across 3 packages, 11 files.
+
+**How:** `TeamCreate` with 3 concurrent `general-purpose` sub-agents (one per package).
+
+**Bug fixes:**
+1. **`ExceptionGroup` opacity in parallel execution** — `asyncio.TaskGroup` wraps all child failures in an opaque `ExceptionGroup`. Fixed in both parallel execution sites by wrapping the `_run_one` body in `try/except Exception as exc: raise TypedError(...) from exc`, then catching the group with `except* TypedError as eg` to produce a joined, human-readable error message.
+2. **MCPToolWrapper race condition on lazy reconnect** — added `asyncio.Lock` with double-checked locking pattern in `execute()` so concurrent coroutines don't create duplicate connections.
+
+**Files changed:**
+
+| Package | File | Change |
+|---|---|---|
+| orbiter-core | `_internal/handlers.py` | `except*` ExceptionGroup fix in `_run_parallel`; `_log` + debug/warning logging throughout |
+| orbiter-core | `_internal/agent_group.py` | `except*` ExceptionGroup fix in `ParallelGroup.run`; `_log` + debug logging |
+| orbiter-core | `_internal/state.py` | `_log` + state transition logging (`→ RUNNING/SUCCESS/FAILED/TIMEOUT`) in all `RunNode`/`RunState` methods |
+| orbiter-core | `_internal/background.py` | `_log` + lifecycle logging in `submit`, `handle_result`, `handle_error` |
+| orbiter-models | `provider.py` | `logger` + resolved provider debug log in `get_provider()` |
+| orbiter-models | `openai.py` | `logger` + debug before call + error with `exc_info=True` in `complete()` and `stream()` |
+| orbiter-models | `anthropic.py` | Same pattern as `openai.py` |
+| orbiter-models | `gemini.py` | Same pattern (catches bare `Exception`) |
+| orbiter-models | `vertex.py` | Same pattern |
+| orbiter-mcp | `tools.py` | `asyncio.Lock` double-check reconnect; `cleanup()` try/finally; `logger.debug/error` throughout |
+| orbiter-mcp | `client.py` | `logger.debug` on connect reuse, cache hit, tool list, call, disconnect |
+
+**Tests after changes:** orbiter-core 809 ✓ · orbiter-models 163 ✓ · orbiter-mcp 231 ✓
+
+---
+
+### Next: Items from audit.md Recommended Fix Priority
+
+The session above did **not** address any items from the audit's Recommended Fix Priority list. Start there next.
+
+**Immediate priority — all in `orbiter-web`:**
+
+| # | ID | File | Issue |
+|---|---|---|---|
+| 1 | **B-1** | `services/sandbox.py:87-88` | Sandbox escape: `_build_runner_script` uses `.replace()` to escape user code but misses `\r`, `\t`, `\0`, Unicode escapes. Fix: use `ast.literal_eval`-safe serialization (e.g. `repr()` or `json.dumps()`) instead of manual escaping. |
+| 2 | **B-2** | `config.py:14` | Hardcoded default secret key `"change-me-in-production"` with no warning. Fix: add a startup assertion/check in `app.py` lifespan that rejects the default in non-debug mode. |
+| 3 | **B-4** | `routes/webhooks.py:146-236` | Webhook trigger `POST /api/v1/webhooks/{workflow_id}/{hook_id}` has no auth. `url_token` stored in DB is never validated. Fix: fetch the hook row and compare `url_token` from the query param against the stored value. |
+
+After those three, continue with **B-8** (token in logs), **L-2** (stream_agent bypasses tool loop), **B-15** (async callable instructions never awaited).

@@ -17,9 +17,12 @@ Built-in processors:
 from __future__ import annotations
 
 import contextlib
+import logging
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from orbiter.context.context import Context  # pyright: ignore[reportMissingImports]
 
@@ -104,6 +107,7 @@ class ProcessorPipeline:
         Returns ``self`` for method chaining.
         """
         self._processors[processor.event].append(processor)
+        logger.debug("registered processor %r for event %r", processor.name, processor.event)
         return self
 
     def unregister(self, processor: ContextProcessor) -> None:
@@ -126,7 +130,11 @@ class ProcessorPipeline:
             Optional event-specific data dict.  Defaults to ``{}``.
         """
         data = payload if payload is not None else {}
-        for proc in self._processors.get(event, []):
+        processors = self._processors.get(event, [])
+        if processors:
+            logger.debug("firing event %r with %d processor(s)", event, len(processors))
+        for proc in processors:
+            logger.debug("running processor %r for event %r", proc.name, event)
             await proc.process(ctx, data)
 
     def has_processors(self, event: str) -> bool:
@@ -190,6 +198,10 @@ class SummarizeProcessor(ContextProcessor):
         # Candidates are the oldest messages beyond the threshold
         excess_count = len(history) - threshold
         ctx.state.set("summary_candidates", history[:excess_count])
+        logger.debug(
+            "summarization triggered: %d messages exceed threshold %d, %d candidates",
+            len(history), threshold, excess_count,
+        )
 
 
 class ToolResultOffloader(ContextProcessor):
@@ -250,3 +262,7 @@ class ToolResultOffloader(ContextProcessor):
             f"({len(content)} chars)]"
         )
         payload["tool_result"] = reference
+        logger.debug(
+            "offloaded tool result: tool=%r size=%d chars (max=%d)",
+            tool_name, len(content), self._max_size,
+        )

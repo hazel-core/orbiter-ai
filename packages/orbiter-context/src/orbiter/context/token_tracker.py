@@ -6,7 +6,10 @@ trajectory analysis, cost aggregation, and budget enforcement.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,6 +104,10 @@ class TokenTracker:
             output_tokens=output_tokens,
         )
         self._steps.append(token_step)
+        logger.debug(
+            "token step recorded: agent=%r step=%d prompt=%d output=%d",
+            agent_id, step_index, prompt_tokens, output_tokens,
+        )
         return token_step
 
     def get_trajectory(self, agent_id: str) -> list[TokenStep]:

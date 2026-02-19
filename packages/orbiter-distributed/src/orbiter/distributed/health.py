@@ -6,11 +6,14 @@ health of all active workers.
 
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass
 from typing import Any
 
 import redis.asyncio as aioredis
+
+logger = logging.getLogger(__name__)
 
 from orbiter.observability.health import (  # pyright: ignore[reportMissingImports]
     HealthResult,
@@ -69,6 +72,7 @@ class WorkerHealthCheck:
         """
         import redis
 
+        logger.debug("WorkerHealthCheck checking worker %s", self._worker_id)
         r = redis.from_url(self._redis_url, decode_responses=True)
         try:
             key = f"orbiter:workers:{self._worker_id}"
@@ -152,6 +156,7 @@ async def get_worker_fleet_status(redis_url: str) -> list[WorkerHealth]:
     Returns:
         List of :class:`WorkerHealth` for all workers found.
     """
+    logger.debug("Scanning fleet status from Redis")
     r: aioredis.Redis = aioredis.from_url(redis_url, decode_responses=True)
     try:
         workers: list[WorkerHealth] = []
@@ -169,6 +174,7 @@ async def get_worker_fleet_status(redis_url: str) -> list[WorkerHealth]:
             if cursor == 0:
                 break
 
+        logger.debug("Fleet status: found %d workers", len(workers))
         return workers
     finally:
         await r.aclose()

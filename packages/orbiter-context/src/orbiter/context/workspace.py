@@ -8,12 +8,15 @@ with revert, and an observer callback pattern for create/update/delete events.
 from __future__ import annotations
 
 import json
+import logging
 import shutil
 import time
 from collections.abc import Callable, Coroutine
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 class WorkspaceError(Exception):
@@ -170,7 +173,14 @@ class Workspace:
 
     async def _notify(self, event: str, artifact: Artifact) -> None:
         for cb in self._observers.get(event, []):
-            await cb(event, artifact)
+            try:
+                await cb(event, artifact)
+            except Exception:
+                logger.error(
+                    "observer callback failed for event %r on artifact %r",
+                    event, artifact.name, exc_info=True,
+                )
+                raise
 
     # ── CRUD ─────────────────────────────────────────────────────────
 
@@ -196,6 +206,7 @@ class Workspace:
             existing._add_version(content)
             self._persist(existing)
             self._index_artifact(existing)
+            logger.debug("updated artifact %r (version %d)", name, existing.version_count)
             await self._notify("on_update", existing)
             return existing
 
@@ -203,6 +214,7 @@ class Workspace:
         self._artifacts[name] = artifact
         self._persist(artifact)
         self._index_artifact(artifact)
+        logger.debug("created artifact %r (type=%s)", name, artifact_type.value)
         await self._notify("on_create", artifact)
         return artifact
 
@@ -229,6 +241,7 @@ class Workspace:
             return False
         self._remove_persisted(artifact)
         self._deindex_artifact(artifact)
+        logger.debug("deleted artifact %r", name)
         await self._notify("on_delete", artifact)
         return True
 
@@ -251,10 +264,12 @@ class Workspace:
             raise WorkspaceError(msg)
         if version < 0 or version >= artifact.version_count:
             msg = f"version {version} out of range (0..{artifact.version_count - 1})"
+            logger.warning("revert failed for artifact %r: %s", name, msg)
             raise WorkspaceError(msg)
         old_content = artifact.versions[version].content
         artifact._add_version(old_content)
         self._persist(artifact)
+        logger.debug("reverted artifact %r to version %d", name, version)
         return artifact
 
     # ── Knowledge store integration ────────────────────────────────
@@ -275,7 +290,17 @@ class Workspace:
         """Write artifact content to filesystem if storage_path is set."""
         if self._storage_path is None:
             return
-        artifact_dir = self._storage_path / artifact.name
+        # Validate artifact name to prevent path traversal
+        resolved = (self._storage_path / artifact.name).resolve()
+        if not resolved.is_relative_to(self._storage_path.resolve()):
+            logger.error(
+                "path traversal blocked in _persist: artifact name %r escapes storage_path",
+                artifact.name,
+            )
+            raise WorkspaceError(
+                f"artifact name {artifact.name!r} resolves outside storage directory"
+            )
+        artifact_dir = resolved
         artifact_dir.mkdir(parents=True, exist_ok=True)
         (artifact_dir / "content").write_text(artifact.content, encoding="utf-8")
         meta = {
@@ -289,9 +314,18 @@ class Workspace:
         """Remove artifact directory from filesystem if storage_path is set."""
         if self._storage_path is None:
             return
-        artifact_dir = self._storage_path / artifact.name
-        if artifact_dir.exists():
-            shutil.rmtree(artifact_dir)
+        # Validate artifact name to prevent path traversal
+        resolved = (self._storage_path / artifact.name).resolve()
+        if not resolved.is_relative_to(self._storage_path.resolve()):
+            logger.error(
+                "path traversal blocked in _remove_persisted: artifact name %r escapes storage_path",
+                artifact.name,
+            )
+            raise WorkspaceError(
+                f"artifact name {artifact.name!r} resolves outside storage directory"
+            )
+        if resolved.exists():
+            shutil.rmtree(resolved)
 
     # ── Representation ───────────────────────────────────────────────
 

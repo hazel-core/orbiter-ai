@@ -445,9 +445,7 @@ class TestGeminiProviderComplete:
         assert "tools" in call_kwargs["config"]
 
     @patch("orbiter.models.gemini.genai")
-    async def test_complete_with_temperature_and_max_tokens(
-        self, mock_genai: MagicMock
-    ) -> None:
+    async def test_complete_with_temperature_and_max_tokens(self, mock_genai: MagicMock) -> None:
         config = _make_config()
         provider = GeminiProvider(config)
         raw = _make_response()
@@ -484,9 +482,7 @@ class TestGeminiProviderComplete:
         provider._client = MagicMock()
         provider._client.aio.models.generate_content = AsyncMock(return_value=raw)
 
-        await provider.complete(
-            [SystemMessage(content="be helpful"), UserMessage(content="hi")]
-        )
+        await provider.complete([SystemMessage(content="be helpful"), UserMessage(content="hi")])
 
         call_kwargs = provider._client.aio.models.generate_content.call_args[1]
         assert call_kwargs["config"]["system_instruction"] == "be helpful"
@@ -534,9 +530,7 @@ class TestGeminiProviderStream:
             return gen()
 
         provider._client = MagicMock()
-        provider._client.aio.models.generate_content_stream = AsyncMock(
-            side_effect=mock_stream
-        )
+        provider._client.aio.models.generate_content_stream = AsyncMock(side_effect=mock_stream)
 
         collected = []
         async for chunk in provider.stream([UserMessage(content="hi")]):
@@ -567,9 +561,7 @@ class TestGeminiProviderStream:
             return gen()
 
         provider._client = MagicMock()
-        provider._client.aio.models.generate_content_stream = AsyncMock(
-            side_effect=mock_stream
-        )
+        provider._client.aio.models.generate_content_stream = AsyncMock(side_effect=mock_stream)
 
         collected = []
         async for chunk in provider.stream([UserMessage(content="search")]):

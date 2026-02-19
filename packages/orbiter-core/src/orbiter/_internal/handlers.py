@@ -16,8 +16,11 @@ from typing import Any, Generic, TypeVar
 
 from orbiter._internal.call_runner import call_runner
 from orbiter._internal.state import RunState
+from orbiter.observability.logging import get_logger  # pyright: ignore[reportMissingImports]
 from orbiter.tool import Tool, ToolError
 from orbiter.types import Message, OrbiterError, RunResult, ToolResult
+
+_log = get_logger(__name__)
 
 IN = TypeVar("IN")
 OUT = TypeVar("OUT")
@@ -121,6 +124,7 @@ class AgentHandler(Handler[str, RunResult]):
 
         Output of each agent becomes input for the next.
         """
+        _log.debug("Workflow starting: agents=%s", self.flow_order)
         current_input = input
         for agent_name in self.flow_order:
             agent = self.agents.get(agent_name)
@@ -143,6 +147,7 @@ class AgentHandler(Handler[str, RunResult]):
         current_agent_name = self.flow_order[0] if self.flow_order else ""
         current_input = input
         handoff_count = 0
+        _log.debug("Handoff chain starting from '%s'", current_agent_name)
 
         while current_agent_name:
             agent = self.agents.get(current_agent_name)
@@ -178,6 +183,7 @@ class AgentHandler(Handler[str, RunResult]):
             raise HandlerError("Team mode requires at least one agent")
 
         lead_name = self.flow_order[0]
+        _log.debug("Team mode: lead='%s'", lead_name)
         lead = self.agents.get(lead_name)
         if lead is None:
             raise HandlerError(f"Lead agent '{lead_name}' not found in swarm")
@@ -291,7 +297,9 @@ class ToolHandler(Handler[dict[str, Any], ToolResult]):
             return
 
         call_ids = list(input.keys())
-        results: list[ToolResult] = [ToolResult(tool_call_id="", tool_name="")] * len(call_ids)
+        results: list[ToolResult] = [
+            ToolResult(tool_call_id="", tool_name="") for _ in range(len(call_ids))
+        ]
 
         async def _run_one(idx: int) -> None:
             call_id = call_ids[idx]
@@ -309,6 +317,7 @@ class ToolHandler(Handler[dict[str, Any], ToolResult]):
                 return
 
             try:
+                _log.debug("Executing tool '%s' (call_id=%s)", tool_name, call_id)
                 output = await tool.execute(**arguments)
                 content = output if isinstance(output, str) else str(output)
                 results[idx] = ToolResult(
@@ -398,18 +407,27 @@ class GroupHandler(Handler[str, RunResult]):
         in the order agents are registered.
         """
         agent_names = list(self.agents.keys())
-        results: list[RunResult] = [RunResult()] * len(agent_names)
+        results: list[RunResult] = [RunResult() for _ in range(len(agent_names))]
 
         async def _run_one(idx: int) -> None:
             name = agent_names[idx]
-            agent = self.agents[name]
-            results[idx] = await call_runner(
-                agent, input, messages=messages, provider=self.provider
-            )
+            try:
+                agent = self.agents[name]
+                results[idx] = await call_runner(
+                    agent, input, messages=messages, provider=self.provider
+                )
+            except Exception as exc:
+                raise HandlerError(f"Agent '{name}' failed in parallel group: {exc}") from exc
 
-        async with asyncio.TaskGroup() as tg:
-            for i in range(len(agent_names)):
-                tg.create_task(_run_one(i))
+        _log.debug("Running %d agents in parallel: %s", len(agent_names), agent_names)
+        try:
+            async with asyncio.TaskGroup() as tg:
+                for i in range(len(agent_names)):
+                    tg.create_task(_run_one(i))
+        except* HandlerError as eg:
+            msgs = "; ".join(str(e) for e in eg.exceptions)
+            raise HandlerError(f"Parallel agent group failed: {msgs}") from eg
+        _log.debug("Parallel group completed (%d agents)", len(agent_names))
 
         for result in results:
             yield result
@@ -424,7 +442,8 @@ class GroupHandler(Handler[str, RunResult]):
         order = self._resolve_order()
         outputs: dict[str, str] = {}
 
-        for agent_name in order:
+        for i, agent_name in enumerate(order):
+            _log.debug("Running agent '%s' (serial step %d/%d)", agent_name, i + 1, len(order))
             agent = self.agents.get(agent_name)
             if agent is None:
                 raise HandlerError(f"Agent '{agent_name}' not found in group")

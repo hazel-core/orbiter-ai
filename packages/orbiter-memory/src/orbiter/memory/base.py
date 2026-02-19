@@ -5,10 +5,13 @@ Provides pluggable memory storage with scoped metadata and status lifecycle.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, Protocol, runtime_checkable
+
+logger = logging.getLogger(__name__)
 
 from pydantic import BaseModel, Field
 
@@ -93,8 +96,10 @@ class MemoryItem(BaseModel):
         if new_status not in allowed:
             msg = f"Cannot transition from {self.status!r} to {new_status!r}"
             raise MemoryError(msg)
+        old_status = self.status
         self.status = new_status
         self.updated_at = datetime.now(UTC).isoformat()
+        logger.debug("item %s transitioned %s -> %s", self.id, old_status, new_status)
 
 
 class SystemMemory(MemoryItem):

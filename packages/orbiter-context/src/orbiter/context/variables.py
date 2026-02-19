@@ -7,7 +7,10 @@ context state using dot-separated paths like ``user.name`` or
 
 from __future__ import annotations
 
+import logging
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from orbiter.context.state import ContextState  # pyright: ignore[reportMissingImports]
 
@@ -72,10 +75,12 @@ class DynamicVariableRegistry:
         if path in self._resolvers:
             resolver = self._resolvers[path]
             if callable(resolver):
+                logger.debug("resolving variable %r via registered callable", path)
                 return resolver(state)
             return resolver
 
         # 2. Try nested path lookup in state
+        logger.debug("resolving variable %r via nested state lookup", path)
         return self._resolve_nested(path, state)
 
     def _resolve_nested(self, path: str, state: ContextState | dict[str, Any]) -> Any:

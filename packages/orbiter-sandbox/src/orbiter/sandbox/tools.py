@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import platform
 import sys
 from pathlib import Path
 from typing import Any
 
 from orbiter.tool import Tool, ToolError  # pyright: ignore[reportMissingImports]
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # FilesystemTool
@@ -77,6 +80,7 @@ class FilesystemTool(Tool):
             raise ToolError(f"Unknown filesystem action: {action!r}")
 
         path = self._validate_path(raw_path)
+        logger.debug("FilesystemTool: %s %s", action, path)
 
         if action == "read":
             return await self._read(path)
@@ -200,12 +204,14 @@ class TerminalTool(Tool):
             raise ToolError("Empty command")
 
         self._check_command(command)
+        logger.debug("TerminalTool: executing %r (timeout=%.1fs)", command, self._timeout)
 
         if platform.system() == "Windows":
             prog: str | None = None  # use default shell
         else:
             prog = "/bin/sh"
 
+        proc: asyncio.subprocess.Process | None = None
         try:
             proc = await asyncio.create_subprocess_shell(
                 command,
@@ -215,11 +221,25 @@ class TerminalTool(Tool):
             )
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=self._timeout)
         except TimeoutError as exc:
-            proc.kill()  # type: ignore[union-attr]
+            if proc is not None:
+                proc.kill()
+                await proc.wait()
+            logger.warning("TerminalTool: command timed out after %.1fs: %r", self._timeout, command)
             raise ToolError(f"Command timed out after {self._timeout}s") from exc
+        except asyncio.CancelledError:
+            if proc is not None:
+                proc.kill()
+                await proc.wait()
+            logger.debug("TerminalTool: cancelled, killed subprocess for %r", command)
+            raise
         except Exception as exc:
+            if proc is not None and proc.returncode is None:
+                proc.kill()
+                await proc.wait()
+            logger.error("TerminalTool: execution failed for %r: %s", command, exc)
             raise ToolError(f"Command execution failed: {exc}") from exc
 
+        logger.debug("TerminalTool: %r exited with code %s", command, proc.returncode)
         return {
             "exit_code": proc.returncode,
             "stdout": stdout.decode(errors="replace") if stdout else "",

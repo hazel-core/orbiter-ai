@@ -7,9 +7,12 @@ messages accumulate, or extraction after a session ends).
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from orbiter.events import EventBus  # pyright: ignore[reportMissingImports]
+
+logger = logging.getLogger(__name__)
 from orbiter.memory.base import (  # pyright: ignore[reportMissingImports]
     MemoryItem,
     MemoryMetadata,
@@ -44,6 +47,7 @@ class MemoryEventEmitter:
     async def add(self, item: MemoryItem) -> None:
         """Add item and emit ``memory:added`` event."""
         await self.store.add(item)
+        logger.debug("memory:added type=%s id=%s", item.memory_type, item.id)
         await self.bus.emit(MEMORY_ADDED, item=item)
 
     async def get(self, item_id: str) -> MemoryItem | None:
@@ -68,6 +72,7 @@ class MemoryEventEmitter:
             status=status,
             limit=limit,
         )
+        logger.debug("memory:searched query=%r results=%d", query, len(results))
         await self.bus.emit(MEMORY_SEARCHED, results=results, query=query)
         return results
 
@@ -78,6 +83,7 @@ class MemoryEventEmitter:
     ) -> int:
         """Clear and emit ``memory:cleared`` event."""
         count: int = await self.store.clear(metadata=metadata)
+        logger.debug("memory:cleared count=%d", count)
         await self.bus.emit(MEMORY_CLEARED, count=count, metadata=metadata)
         return count
 

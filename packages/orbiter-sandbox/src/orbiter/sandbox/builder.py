@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from orbiter.sandbox.base import LocalSandbox, Sandbox  # pyright: ignore[reportMissingImports]
+
+logger = logging.getLogger(__name__)
 
 
 class SandboxBuilder:
@@ -109,6 +112,7 @@ class SandboxBuilder:
         kwargs.update(self._sandbox_kwargs)
 
         self._built = self._sandbox_class(**kwargs)
+        logger.debug("Built %s (id=%s)", self._sandbox_class.__name__, self._built.sandbox_id)
         return self._built
 
     def reset(self) -> SandboxBuilder:

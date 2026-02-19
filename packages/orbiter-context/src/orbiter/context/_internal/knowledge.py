@@ -12,6 +12,10 @@ import math
 import re
 from dataclasses import dataclass
 
+from orbiter.observability.logging import get_logger  # pyright: ignore[reportMissingImports]
+
+_log = get_logger(__name__)
+
 
 class KnowledgeError(Exception):
     """Raised for knowledge store operation errors."""
@@ -144,11 +148,15 @@ class KnowledgeStore:
             for i, seg in enumerate(segments)
         ]
         self._chunks[name] = chunks
+        _log.debug("indexed artifact %r: %d chunks from %d chars", name, len(chunks), len(content))
         return chunks
 
     def remove(self, name: str) -> bool:
         """Remove an artifact from the index.  Returns True if removed."""
-        return self._chunks.pop(name, None) is not None
+        removed = self._chunks.pop(name, None) is not None
+        if removed:
+            _log.debug("removed artifact %r from index", name)
+        return removed
 
     def get(self, name: str) -> list[Chunk]:
         """Get all chunks for an artifact.  Returns empty list if missing."""
@@ -182,7 +190,9 @@ class KnowledgeStore:
                     results.append(SearchResult(chunk=chunk, score=score))
 
         results.sort(key=lambda r: r.score, reverse=True)
-        return results[:top_k]
+        top = results[:top_k]
+        _log.debug("search query=%r found %d results (top_k=%d)", query, len(results), top_k)
+        return top
 
     # ── Introspection ────────────────────────────────────────────────
 

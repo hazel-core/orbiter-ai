@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 import aiosqlite  # pyright: ignore[reportMissingImports]
+
+logger = logging.getLogger(__name__)
 
 from orbiter.memory.base import (  # pyright: ignore[reportMissingImports]
     MemoryItem,
@@ -57,6 +60,7 @@ class SQLiteMemoryStore:
         """Open the database and create tables if needed."""
         if self._db is not None:
             return
+        logger.debug("opening sqlite database path=%s", self.db_path)
         self._db = await aiosqlite.connect(self.db_path)
         db = self._db
         assert db is not None  # always set after connect()
@@ -66,6 +70,7 @@ class SQLiteMemoryStore:
             await db.execute(idx_sql)
         await db.commit()
         self._initialized = True
+        logger.debug("sqlite memory store initialized")
 
     async def close(self) -> None:
         """Close the database connection."""
@@ -73,6 +78,7 @@ class SQLiteMemoryStore:
             await self._db.close()
             self._db = None
             self._initialized = False
+            logger.debug("sqlite memory store closed")
 
     async def __aenter__(self) -> SQLiteMemoryStore:
         await self.init()
@@ -120,6 +126,7 @@ class SQLiteMemoryStore:
             ),
         )
         await db.commit()
+        logger.debug("upserted item type=%s id=%s", item.memory_type, item.id)
 
     async def get(self, item_id: str) -> MemoryItem | None:
         """Retrieve a non-deleted memory item by ID."""
@@ -176,6 +183,7 @@ class SQLiteMemoryStore:
 
         cursor = await db.execute(sql, params)
         rows = await cursor.fetchall()
+        logger.debug("search returned %d rows", len(rows))
         return [_row_to_item(r) for r in rows]
 
     async def clear(
@@ -188,6 +196,7 @@ class SQLiteMemoryStore:
         if metadata is None:
             cursor = await db.execute("UPDATE memory_items SET deleted = 1 WHERE deleted = 0")
             await db.commit()
+            logger.debug("soft-deleted all items count=%d", cursor.rowcount)
             return cursor.rowcount
 
         clauses: list[str] = ["deleted = 0"]
@@ -211,6 +220,7 @@ class SQLiteMemoryStore:
             params,
         )
         await db.commit()
+        logger.debug("soft-deleted filtered items count=%d", cursor.rowcount)
         return cursor.rowcount
 
     # -- extras ---------------------------------------------------------------

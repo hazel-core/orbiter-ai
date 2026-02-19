@@ -7,6 +7,7 @@ agent experiences, facts) from conversation history via LLM.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -32,6 +33,8 @@ class ExtractionType(StrEnum):
     AGENT_EXPERIENCE = "agent_experience"
     FACTS = "facts"
 
+
+logger = logging.getLogger(__name__)
 
 _DEFAULT_EXTRACTION_PROMPTS: dict[ExtractionType, str] = {
     ExtractionType.USER_PROFILE: (
@@ -147,8 +150,10 @@ class LongTermMemory:
         # Check for duplicate content
         for existing in self._items.values():
             if existing.content == item.content and existing.memory_type == item.memory_type:
+                logger.debug("skipping duplicate item type=%s id=%s", item.memory_type, item.id)
                 return  # Skip duplicate
         self._items[item.id] = item
+        logger.debug("added item type=%s id=%s namespace=%s", item.memory_type, item.id, self.namespace)
 
     async def get(self, item_id: str) -> MemoryItem | None:
         """Retrieve a memory item by ID."""
@@ -179,6 +184,7 @@ class LongTermMemory:
             results.append(item)
         # Sort by creation time (newest first)
         results.sort(key=lambda x: x.created_at, reverse=True)
+        logger.debug("search query=%r results=%d namespace=%s", query, len(results[:limit]), self.namespace)
         return results[:limit]
 
     async def clear(
@@ -190,6 +196,7 @@ class LongTermMemory:
         if metadata is None:
             count = len(self._items)
             self._items.clear()
+            logger.debug("cleared all items count=%d namespace=%s", count, self.namespace)
             return count
 
         to_remove = [
@@ -199,6 +206,7 @@ class LongTermMemory:
         ]
         for item_id in to_remove:
             del self._items[item_id]
+        logger.debug("cleared filtered items count=%d namespace=%s", len(to_remove), self.namespace)
         return len(to_remove)
 
     @staticmethod
@@ -299,6 +307,7 @@ class MemoryOrchestrator:
             )
             self._tasks[task.task_id] = task
             tasks.append(task)
+        logger.debug("submitted %d extraction tasks from %d items", len(tasks), len(items))
         return tasks
 
     async def process(
@@ -330,11 +339,13 @@ class MemoryOrchestrator:
             raise KeyError(msg)
 
         task.start()
+        logger.debug("processing extraction task=%s type=%s", task.task_id, task.extraction_type)
         try:
             content = _format_extraction_items(task.source_items)
             prompt = self.config.get_prompt(task.extraction_type).format(content=content)
             result = await extractor.extract(prompt)
             task.complete(result)
+            logger.debug("extraction completed task=%s", task.task_id)
 
             # Store extracted knowledge
             item = MemoryItem(
@@ -345,6 +356,7 @@ class MemoryOrchestrator:
             await self.store.add(item)
         except Exception as exc:
             task.fail(str(exc))
+            logger.error("extraction failed task=%s: %s", task.task_id, exc, exc_info=True)
 
         return task
 

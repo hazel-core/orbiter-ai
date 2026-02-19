@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 import asyncpg  # pyright: ignore[reportMissingImports]
+
+logger = logging.getLogger(__name__)
 
 from orbiter.memory.base import (  # pyright: ignore[reportMissingImports]
     MemoryItem,
@@ -59,6 +62,7 @@ class PostgresMemoryStore:
         """Open the connection pool and create tables if needed."""
         if self._pool is not None:
             return
+        logger.debug("connecting to postgres dsn=%s", self.dsn)
         self._pool = await asyncpg.create_pool(self.dsn)
         pool = self._pool
         assert pool is not None
@@ -67,6 +71,7 @@ class PostgresMemoryStore:
             for idx_sql in _CREATE_INDEXES:
                 await conn.execute(idx_sql)
         self._initialized = True
+        logger.debug("postgres memory store initialized")
 
     async def close(self) -> None:
         """Close the connection pool."""
@@ -74,6 +79,7 @@ class PostgresMemoryStore:
             await self._pool.close()
             self._pool = None
             self._initialized = False
+            logger.debug("postgres memory store closed")
 
     async def __aenter__(self) -> PostgresMemoryStore:
         await self.init()
@@ -119,6 +125,7 @@ class PostgresMemoryStore:
                 item.created_at,
                 item.updated_at,
             )
+        logger.debug("upserted item type=%s id=%s", item.memory_type, item.id)
 
     async def get(self, item_id: str) -> MemoryItem | None:
         """Retrieve a non-deleted memory item by ID."""
@@ -183,6 +190,7 @@ class PostgresMemoryStore:
 
         async with pool.acquire() as conn:
             rows = await conn.fetch(sql, *params)
+        logger.debug("search returned %d rows", len(rows))
         return [_row_to_item(r) for r in rows]
 
     async def clear(
@@ -195,7 +203,9 @@ class PostgresMemoryStore:
         async with pool.acquire() as conn:
             if metadata is None:
                 result = await conn.execute("UPDATE memory_items SET deleted = 1 WHERE deleted = 0")
-                return _parse_rowcount(result)
+                count = _parse_rowcount(result)
+                logger.debug("soft-deleted all items count=%d", count)
+                return count
 
             clauses: list[str] = ["deleted = 0"]
             params: list[Any] = []
@@ -222,7 +232,9 @@ class PostgresMemoryStore:
                 f"UPDATE memory_items SET deleted = 1 WHERE {where}",
                 *params,
             )
-            return _parse_rowcount(result)
+            count = _parse_rowcount(result)
+            logger.debug("soft-deleted filtered items count=%d", count)
+            return count
 
     # -- extras ---------------------------------------------------------------
 

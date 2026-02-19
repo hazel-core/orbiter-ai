@@ -13,8 +13,11 @@ Install the optional dependency group::
 from __future__ import annotations
 
 import json
+import logging
 import os
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from orbiter.distributed.cancel import CancellationToken  # pyright: ignore[reportMissingImports]
 from orbiter.distributed.events import EventPublisher  # pyright: ignore[reportMissingImports]
@@ -162,14 +165,19 @@ class TemporalExecutor:
 
     async def connect(self) -> None:
         """Connect to the Temporal server."""
+        logger.debug(
+            "TemporalExecutor connecting to %s (namespace=%s)", self._host, self._namespace
+        )
         self._client = await TemporalClient.connect(  # pyright: ignore[reportOptionalMemberAccess]
             self._host, namespace=self._namespace
         )
+        logger.info("TemporalExecutor connected to %s", self._host)
 
     async def disconnect(self) -> None:
         """Clean up Temporal resources."""
         self._client = None
         self._temporal_worker = None
+        logger.debug("TemporalExecutor disconnected")
 
     async def execute_task(
         self,
@@ -203,6 +211,9 @@ class TemporalExecutor:
 
         # Start the workflow
         workflow_id = f"orbiter-task-{task.task_id}"
+        logger.info(
+            "TemporalExecutor starting workflow %s (task=%s)", workflow_id, task.task_id
+        )
         handle = await self._client.start_workflow(
             AgentExecutionWorkflow.run,
             payload_json,
@@ -213,6 +224,7 @@ class TemporalExecutor:
         # Wait for result
         result_json = await handle.result()
         result_data = json.loads(result_json)
+        logger.debug("TemporalExecutor workflow %s completed", workflow_id)
         return result_data.get("output", "")
 
     async def start_temporal_worker(self) -> None:

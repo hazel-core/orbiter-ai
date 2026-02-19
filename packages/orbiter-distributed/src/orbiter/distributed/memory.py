@@ -7,7 +7,10 @@ the dependency optional.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 async def create_memory_store(mem_config: dict[str, Any], task_id: str) -> tuple[Any, Any]:
@@ -39,6 +42,7 @@ async def create_memory_store(mem_config: dict[str, Any], task_id: str) -> tuple
     )
 
     backend = mem_config.get("backend", "short_term")
+    logger.debug("create_memory_store: backend=%s, task_id=%s", backend, task_id)
 
     if backend == "short_term":
         from orbiter.memory.short_term import (
@@ -67,6 +71,7 @@ async def create_memory_store(mem_config: dict[str, Any], task_id: str) -> tuple
         return store, metadata
 
     # Fallback to short_term for unknown backends
+    logger.warning("Unknown memory backend %r, falling back to short_term", backend)
     from orbiter.memory.short_term import ShortTermMemory  # pyright: ignore[reportMissingImports]
 
     store = ShortTermMemory(scope="session")
@@ -77,6 +82,7 @@ async def teardown_memory_store(store: Any) -> None:
     """Close store connections if a ``close()`` method exists."""
     close = getattr(store, "close", None)
     if close is not None and callable(close):
+        logger.debug("Tearing down memory store %s", type(store).__name__)
         result = close()
         # Support both sync and async close
         if hasattr(result, "__await__"):

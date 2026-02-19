@@ -7,6 +7,7 @@ aggregate, producing a JSON-serializable health summary.
 from __future__ import annotations
 
 import asyncio
+import logging
 import resource
 import threading
 import time
@@ -14,6 +15,8 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, Protocol, runtime_checkable
+
+logger = logging.getLogger(__name__)
 
 
 class HealthStatus(StrEnum):
@@ -164,6 +167,7 @@ class HealthRegistry:
         """Register a health check by its name."""
         with self._lock:
             self._checks[check.name] = check
+        logger.debug("registered health check %r", check.name)
 
     def unregister(self, name: str) -> None:
         """Remove a health check by name."""
@@ -174,7 +178,18 @@ class HealthRegistry:
         """Run all registered checks and return results keyed by name."""
         with self._lock:
             checks = dict(self._checks)
-        return {name: check.check() for name, check in checks.items()}
+        results: dict[str, HealthResult] = {}
+        for name, check in checks.items():
+            try:
+                results[name] = check.check()
+            except Exception:
+                logger.error("health check %r raised an exception", name, exc_info=True)
+                results[name] = HealthResult(
+                    status=HealthStatus.UNHEALTHY,
+                    message=f"Check {name!r} raised an exception",
+                )
+        logger.debug("ran %d health checks", len(results))
+        return results
 
     def run(self, name: str) -> HealthResult:
         """Run a single named check."""

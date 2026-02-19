@@ -73,6 +73,8 @@ class Agent:
         memory: Any = None,
         context: Any = None,
     ) -> None:
+        if max_steps < 1:
+            raise AgentError(f"max_steps must be >= 1, got {max_steps}")
         self.name = name
         self.model = model
         self.provider_name, self.model_name = parse_model_string(model)
@@ -209,10 +211,14 @@ class Agent:
         if provider is None:
             raise AgentError(f"Agent '{self.name}' requires a provider for run()")
 
-        # Resolve instructions
+        # Resolve instructions (may be async callable)
         instructions = self.instructions
         if callable(instructions):
-            instructions = instructions(self.name)
+            result = instructions(self.name)
+            if asyncio.iscoroutine(result):
+                instructions = await result
+            else:
+                instructions = result
 
         # Build initial message list
         history: list[Message] = list(messages) if messages else []
@@ -294,7 +300,9 @@ class Agent:
         actions: list[Any],
     ) -> list[ToolResult]:
         """Execute tool calls in parallel, catching errors per-tool."""
-        results: list[ToolResult] = [ToolResult(tool_call_id="", tool_name="")] * len(actions)
+        results: list[ToolResult] = [
+            ToolResult(tool_call_id="", tool_name="") for _ in range(len(actions))
+        ]
 
         async def _run_one(idx: int) -> None:
             action = actions[idx]

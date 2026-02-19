@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import time
 from collections.abc import AsyncIterator
@@ -22,6 +23,8 @@ from orbiter.observability.propagation import (  # pyright: ignore[reportMissing
 )
 from orbiter.observability.tracing import aspan  # pyright: ignore[reportMissingImports]
 from orbiter.types import StreamEvent  # pyright: ignore[reportMissingImports]
+
+logger = logging.getLogger(__name__)
 
 _DEFAULT_REDIS_ENV = "ORBITER_REDIS_URL"
 
@@ -57,6 +60,30 @@ class TaskHandle:
         """The unique task identifier."""
         return self._task_id
 
+    async def close(self) -> None:
+        """Close underlying Redis connections for broker, store, and subscriber.
+
+        Always call this (or use the async context manager) when the handle is
+        no longer needed to avoid leaking Redis connections.
+        """
+        logger.debug("TaskHandle closing connections for task %s", self._task_id)
+        for component in (self._broker, self._store, self._subscriber):
+            try:
+                await component.disconnect()
+            except Exception:
+                logger.warning(
+                    "Error disconnecting %s for task %s",
+                    type(component).__name__,
+                    self._task_id,
+                    exc_info=True,
+                )
+
+    async def __aenter__(self) -> TaskHandle:
+        return self
+
+    async def __aexit__(self, *exc_info: Any) -> None:
+        await self.close()
+
     async def result(self, *, poll_interval: float = 0.5) -> dict[str, Any]:
         """Block until the task completes and return the result dict.
 
@@ -70,16 +97,22 @@ class TaskHandle:
         Raises:
             RuntimeError: If the task failed or was cancelled.
         """
+        logger.debug("TaskHandle waiting for result of task %s", self._task_id)
         terminal = {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED}
         while True:
             task_result = await self._store.get_status(self._task_id)
             if task_result is not None and task_result.status in terminal:
                 if task_result.status == TaskStatus.COMPLETED:
+                    logger.debug("Task %s completed successfully", self._task_id)
                     return task_result.result or {}
                 if task_result.status == TaskStatus.CANCELLED:
+                    logger.info("Task %s was cancelled", self._task_id)
                     msg = f"Task {self._task_id} was cancelled"
                     raise RuntimeError(msg)
                 # FAILED
+                logger.error(
+                    "Task %s failed: %s", self._task_id, task_result.error or "unknown error"
+                )
                 msg = f"Task {self._task_id} failed: {task_result.error or 'unknown error'}"
                 raise RuntimeError(msg)
             await asyncio.sleep(poll_interval)
@@ -95,6 +128,7 @@ class TaskHandle:
 
     async def cancel(self) -> None:
         """Cancel the running task."""
+        logger.info("TaskHandle requesting cancellation of task %s", self._task_id)
         await self._broker.cancel(self._task_id)
 
     async def status(self) -> TaskResult | None:
@@ -143,6 +177,9 @@ async def distributed(
         )
         raise ValueError(msg)
 
+    agent_name = getattr(agent, "name", "")
+    logger.debug("distributed() submitting task (agent=%s)", agent_name)
+
     broker = TaskBroker(url)
     store = TaskStore(url)
     subscriber = EventSubscriber(url)
@@ -158,8 +195,6 @@ async def distributed(
     propagator.inject(carrier)
     if carrier.headers:
         task_metadata["trace_context"] = carrier.headers
-
-    agent_name = getattr(agent, "name", "")
 
     payload = TaskPayload(
         agent_config=agent.to_dict(),
@@ -180,6 +215,12 @@ async def distributed(
     ):
         await broker.submit(payload)
 
+    logger.info(
+        "distributed() task %s submitted (agent=%s, timeout=%.0fs)",
+        payload.task_id,
+        agent_name,
+        timeout,
+    )
     return TaskHandle(
         payload.task_id,
         broker=broker,

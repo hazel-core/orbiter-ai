@@ -25,6 +25,7 @@ from orbiter._internal.call_runner import call_runner
 from orbiter._internal.message_builder import build_messages
 from orbiter._internal.output_parser import parse_tool_arguments
 from orbiter.hooks import HookPoint
+from orbiter.observability.logging import get_logger  # pyright: ignore[reportMissingImports]
 from orbiter.observability.metrics import (  # pyright: ignore[reportMissingImports]
     HAS_OTEL,
     _collector,
@@ -50,6 +51,9 @@ from orbiter.types import (
     UsageEvent,
     UserMessage,
 )
+
+
+_log = get_logger(__name__)
 
 
 async def run(
@@ -84,6 +88,7 @@ async def run(
         usage stats, and step count.
     """
     resolved_provider = provider or _resolve_provider(agent)
+    _log.debug("run() starting agent='%s' provider=%s", getattr(agent, "name", "?"), type(resolved_provider).__name__ if resolved_provider else None)
 
     # Detect Swarm: delegate to its own run() method
     if hasattr(agent, "flow_order"):
@@ -200,19 +205,24 @@ async def _stream(
             events_emitted[event.type] = events_emitted.get(event.type, 0) + 1
         return passes
 
+    # Hoist OTel counter creation out of the per-step recording function (L-13)
+    _otel_counter = None
+    if HAS_OTEL:
+        meter = _get_meter()
+        _otel_counter = meter.create_counter(
+            name=METRIC_STREAM_EVENTS_EMITTED,
+            unit="1",
+            description="Number of streaming events emitted",
+        )
+
     def _record_stream_metrics() -> None:
         """Record total events emitted during this stream run."""
         if not detailed or not events_emitted:
             return
         for evt_type, count in events_emitted.items():
             attrs: dict[str, str] = {STREAM_EVENT_TYPE: evt_type}
-            if HAS_OTEL:
-                meter = _get_meter()
-                meter.create_counter(
-                    name=METRIC_STREAM_EVENTS_EMITTED,
-                    unit="1",
-                    description="Number of streaming events emitted",
-                ).add(count, attrs)
+            if _otel_counter is not None:
+                _otel_counter.add(count, attrs)
             else:
                 _collector.add_counter(METRIC_STREAM_EVENTS_EMITTED, float(count), attrs)
 
@@ -236,11 +246,15 @@ async def _stream(
 
     steps = max_steps if max_steps is not None else agent.max_steps
 
-    # Resolve instructions
+    # Resolve instructions (may be async callable)
     instr: str = ""
     raw_instr = agent.instructions
     if callable(raw_instr):
-        instr = str(raw_instr(agent.name))
+        result_instr = raw_instr(agent.name)
+        if asyncio.iscoroutine(result_instr):
+            instr = str(await result_instr)
+        else:
+            instr = str(result_instr)
     elif raw_instr:
         instr = str(raw_instr)
 
@@ -252,6 +266,9 @@ async def _stream(
     tool_schemas = agent.get_tool_schemas() or None
 
     model_name = getattr(agent, "model", "") or ""
+
+    # Fire START hook (parity with run() path)
+    await agent.hook_manager.run(HookPoint.START, agent=agent, input=input)
 
     if detailed:
         _ev = StatusEvent(
@@ -368,6 +385,10 @@ async def _stream(
                     )
                     if _passes_filter(_ev):
                         yield _ev
+                # Fire FINISHED hook (parity with run() path)
+                await agent.hook_manager.run(
+                    HookPoint.FINISHED, agent=agent, output=full_text
+                )
                 _record_stream_metrics()
                 return
 
@@ -441,6 +462,8 @@ async def _stream(
                 )
                 if _passes_filter(_ev):
                     yield _ev
+            # Fire ERROR hook (parity with run() path)
+            await agent.hook_manager.run(HookPoint.ERROR, agent=agent, error=exc)
             _record_stream_metrics()
             raise
 
@@ -455,9 +478,6 @@ def _resolve_provider(agent: Any) -> Any:
     Returns ``None`` if auto-resolution fails (call_runner will then
     let Agent.run() raise its own error for missing provider).
     """
-    import logging
-
-    log = logging.getLogger(__name__)
     try:
         from orbiter.models.provider import get_provider  # pyright: ignore[reportMissingImports]
 
@@ -475,8 +495,10 @@ def _resolve_provider(agent: Any) -> Any:
             return None
         return get_provider(model)
     except Exception as exc:
-        log.warning(
-            "Failed to auto-resolve provider for model '%s': %s", getattr(agent, "model", "?"), exc
+        _log.warning(
+            "Failed to auto-resolve provider for model '%s': %s",
+            getattr(agent, "model", "?"),
+            exc,
         )
         return None
 

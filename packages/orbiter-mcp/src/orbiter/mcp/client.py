@@ -200,6 +200,7 @@ class MCPServerConnection:
     async def connect(self) -> None:
         """Open transport and initialize the MCP session."""
         if self._session is not None:
+            logger.debug("Reusing existing connection to MCP server '%s'", self.name)
             return  # already connected
 
         self._config.validate()
@@ -216,6 +217,9 @@ class MCPServerConnection:
             )
             self._init_result = await session.initialize()
             self._session = session
+            logger.debug(
+                "Connected to MCP server '%s' (transport=%s)", self.name, self._config.transport
+            )
         except Exception as exc:
             logger.error("Error connecting to MCP server %r: %s", self.name, exc)
             await self.cleanup()
@@ -255,9 +259,13 @@ class MCPServerConnection:
         if not self._session:
             raise MCPClientError(f"Server '{self.name}' not connected. Call connect() first.")
         if self._config.cache_tools and not self._cache_dirty and self._tools_cache:
+            logger.debug(
+                "Tools cache hit for server '%s' (%d tools)", self.name, len(self._tools_cache)
+            )
             return self._tools_cache
         self._cache_dirty = False
         self._tools_cache = (await self._session.list_tools()).tools
+        logger.debug("Listed %d tools from server '%s'", len(self._tools_cache), self.name)
         return self._tools_cache
 
     def invalidate_tools_cache(self) -> None:
@@ -272,6 +280,7 @@ class MCPServerConnection:
         """Invoke a tool on the server."""
         if not self._session:
             raise MCPClientError(f"Server '{self.name}' not connected. Call connect() first.")
+        logger.debug("Calling tool '%s' on server '%s'", tool_name, self.name)
         return await self._session.call_tool(name=tool_name, arguments=arguments)
 
     async def cleanup(self) -> None:
@@ -346,6 +355,7 @@ class MCPClient:
     async def connect(self, name: str) -> MCPServerConnection:
         """Connect to a specific server. Re-uses cached connection if alive."""
         if name in self._connections and self._connections[name].is_connected:
+            logger.debug("Reusing connection to server '%s'", name)
             return self._connections[name]
         config = self._configs.get(name)
         if not config:
@@ -353,6 +363,7 @@ class MCPClient:
         conn = MCPServerConnection(config)
         await conn.connect()
         self._connections[name] = conn
+        logger.debug("Established new connection to server '%s'", name)
         return conn
 
     async def connect_all(self) -> None:
@@ -364,6 +375,7 @@ class MCPClient:
         """Disconnect a specific server."""
         conn = self._connections.pop(name, None)
         if conn:
+            logger.debug("Disconnecting from server '%s'", name)
             await conn.cleanup()
 
     async def disconnect_all(self) -> None:

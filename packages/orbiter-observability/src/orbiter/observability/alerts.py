@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import logging
 import threading
 import time
 from collections.abc import Awaitable, Callable
@@ -16,6 +17,8 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 class AlertSeverity(StrEnum):
@@ -91,12 +94,14 @@ class AlertManager:
         """Register an alert rule (overwrites if name exists)."""
         with self._lock:
             self._rules[rule.name] = rule
+        logger.debug("registered alert rule %r (metric=%s, %s %s)", rule.name, rule.metric_name, rule.comparator, rule.threshold)
 
     def unregister_rule(self, name: str) -> None:
         """Remove an alert rule by name."""
         with self._lock:
             self._rules.pop(name, None)
             self._last_fired.pop(name, None)
+        logger.debug("unregistered alert rule %r", name)
 
     def list_rules(self) -> list[AlertRule]:
         """Return all registered rules."""
@@ -109,6 +114,7 @@ class AlertManager:
         """Register a callback to be invoked when any alert fires."""
         with self._lock:
             self._callbacks.append(callback)
+        logger.debug("registered alert callback %r", callback)
 
     # -- Evaluation -----------------------------------------------------------
 
@@ -136,6 +142,7 @@ class AlertManager:
             with self._lock:
                 last = self._last_fired.get(rule.name, 0.0)
                 if now - last < rule.cooldown_seconds:
+                    logger.debug("alert rule %r in cooldown (%.1fs remaining)", rule.name, rule.cooldown_seconds - (now - last))
                     continue
                 self._last_fired[rule.name] = now
 
@@ -146,6 +153,7 @@ class AlertManager:
                 severity=rule.severity,
             )
             fired.append(alert)
+            logger.warning("alert fired: %r severity=%s value=%s threshold=%s", rule.name, rule.severity, value, rule.threshold)
 
             for cb in callbacks:
                 self._invoke_callback(cb, alert)
@@ -174,16 +182,19 @@ class AlertManager:
 
     def _invoke_callback(self, cb: AlertCallback, alert: Alert) -> None:
         """Invoke a callback, handling both sync and async."""
-        if inspect.iscoroutinefunction(cb):
-            try:
-                loop = asyncio.get_running_loop()
-                task = loop.create_task(cb(alert))  # type: ignore[arg-type]
-                self._background_tasks.add(task)
-                task.add_done_callback(self._background_tasks.discard)
-            except RuntimeError:
-                asyncio.run(cb(alert))  # type: ignore[arg-type]
-        else:
-            cb(alert)  # type: ignore[arg-type]
+        try:
+            if inspect.iscoroutinefunction(cb):
+                try:
+                    loop = asyncio.get_running_loop()
+                    task = loop.create_task(cb(alert))  # type: ignore[arg-type]
+                    self._background_tasks.add(task)
+                    task.add_done_callback(self._background_tasks.discard)
+                except RuntimeError:
+                    asyncio.run(cb(alert))  # type: ignore[arg-type]
+            else:
+                cb(alert)  # type: ignore[arg-type]
+        except Exception:
+            logger.error("alert callback %r failed for rule %r", cb, alert.rule_name, exc_info=True)
 
 
 # ---------------------------------------------------------------------------

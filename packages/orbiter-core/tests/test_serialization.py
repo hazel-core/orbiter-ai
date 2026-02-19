@@ -546,7 +546,7 @@ class TestMCPToolWrapperSerialization:
         # Reconstruct
         restored = Agent.from_dict(data)
         assert len(restored.tools) == 1
-        tool_name = list(restored.tools.keys())[0]
+        tool_name = next(iter(restored.tools.keys()))
         assert "search" in tool_name
 
     def test_agent_with_mixed_tools_round_trip(self) -> None:
@@ -573,3 +573,279 @@ class TestMCPToolWrapperSerialization:
 
         restored = Agent.from_dict(data)
         assert len(restored.tools) == 2
+
+
+# ---------------------------------------------------------------------------
+# Swarm + MCPToolWrapper serialization tests (SSE on distributed workers)
+# ---------------------------------------------------------------------------
+
+
+class TestSwarmMCPToolWrapperSerialization:
+    """Test that Swarms with SSE MCP tools survive the distributed serialization path.
+
+    When a Swarm is submitted to a distributed worker via ``distributed()``, the
+    full path is: Swarm.to_dict() → JSON → Swarm.from_dict() on the worker.
+    Each agent's MCPToolWrapper must preserve its server_config so the worker
+    can lazily reconnect to SSE MCP servers.
+    """
+
+    def _make_sse_config(self, name: str, port: int = 3001) -> Any:
+        from orbiter.mcp.client import MCPServerConfig
+
+        return MCPServerConfig(
+            name=name,
+            transport="sse",
+            url=f"http://localhost:{port}/sse",
+            headers={"Authorization": "Bearer test-token"},
+            timeout=30.0,
+            sse_read_timeout=300.0,
+        )
+
+    def _make_mcp_wrapper(
+        self, tool_name: str, server_name: str, server_config: Any = None
+    ) -> Any:
+        from unittest.mock import AsyncMock
+
+        from mcp.types import Tool as MCPTool
+
+        from orbiter.mcp.tools import MCPToolWrapper
+
+        mcp_tool = MCPTool(
+            name=tool_name,
+            description=f"MCP tool: {tool_name}",
+            inputSchema={
+                "type": "object",
+                "properties": {"input": {"type": "string"}},
+                "required": ["input"],
+            },
+        )
+        return MCPToolWrapper(
+            mcp_tool, server_name, AsyncMock(), server_config=server_config
+        )
+
+    def test_workflow_swarm_with_sse_mcp_tools(self) -> None:
+        """Workflow swarm with SSE MCP tools round-trips through to_dict/from_dict."""
+        from orbiter.mcp.tools import MCPToolWrapper
+
+        cfg = self._make_sse_config("tools-server")
+        researcher = Agent(
+            name="researcher",
+            model="openai:gpt-4o-mini",
+            tools=[self._make_mcp_wrapper("web_search", "tools-server", cfg)],
+        )
+        writer = Agent(
+            name="writer",
+            model="openai:gpt-4o-mini",
+            instructions="Write a summary from the research.",
+        )
+        swarm = Swarm(agents=[researcher, writer], flow="researcher >> writer")
+
+        data = swarm.to_dict()
+        restored = Swarm.from_dict(data)
+
+        assert restored.mode == "workflow"
+        assert restored.flow == "researcher >> writer"
+        assert len(restored.agents) == 2
+
+        # Researcher should have the MCP tool with SSE config preserved
+        r_tools = list(restored.agents["researcher"].tools.values())
+        assert len(r_tools) == 1
+        assert isinstance(r_tools[0], MCPToolWrapper)
+        assert r_tools[0]._server_config is not None
+        assert r_tools[0]._server_config.transport.value == "sse"
+        assert r_tools[0]._server_config.url == "http://localhost:3001/sse"
+        assert r_tools[0]._server_config.headers == {"Authorization": "Bearer test-token"}
+        assert r_tools[0]._call_fn is None  # lazy reconnection
+
+    def test_swarm_multiple_agents_with_different_sse_servers(self) -> None:
+        """Each agent's MCP tools preserve their own SSE server config."""
+        from orbiter.mcp.tools import MCPToolWrapper
+
+        cfg_a = self._make_sse_config("server-a", port=3001)
+        cfg_b = self._make_sse_config("server-b", port=3002)
+
+        agent_a = Agent(
+            name="fetcher",
+            tools=[self._make_mcp_wrapper("fetch", "server-a", cfg_a)],
+        )
+        agent_b = Agent(
+            name="analyzer",
+            tools=[self._make_mcp_wrapper("analyze", "server-b", cfg_b)],
+        )
+        swarm = Swarm(agents=[agent_a, agent_b], flow="fetcher >> analyzer")
+
+        data = swarm.to_dict()
+        restored = Swarm.from_dict(data)
+
+        tool_a = next(iter(restored.agents["fetcher"].tools.values()))
+        tool_b = next(iter(restored.agents["analyzer"].tools.values()))
+
+        assert isinstance(tool_a, MCPToolWrapper)
+        assert isinstance(tool_b, MCPToolWrapper)
+        assert tool_a._server_config.url == "http://localhost:3001/sse"
+        assert tool_b._server_config.url == "http://localhost:3002/sse"
+        assert tool_a._server_config.name == "server-a"
+        assert tool_b._server_config.name == "server-b"
+
+    def test_swarm_mixed_local_and_sse_mcp_tools(self) -> None:
+        """Agents with both local @tool functions and SSE MCP tools round-trip."""
+        from orbiter.mcp.tools import MCPToolWrapper
+
+        cfg = self._make_sse_config("sse-srv")
+        agent_with_both = Agent(
+            name="hybrid",
+            tools=[search, self._make_mcp_wrapper("remote_search", "sse-srv", cfg)],
+        )
+        agent_plain = Agent(name="summarizer", tools=[calculate])
+        swarm = Swarm(agents=[agent_with_both, agent_plain], flow="hybrid >> summarizer")
+
+        data = swarm.to_dict()
+
+        # Verify serialized structure
+        hybrid_tools = data["agents"][0]["tools"]
+        assert len(hybrid_tools) == 2
+        types = {type(t) for t in hybrid_tools}
+        assert str in types  # local tool
+        assert dict in types  # MCP tool
+
+        restored = Swarm.from_dict(data)
+        hybrid = restored.agents["hybrid"]
+        assert len(hybrid.tools) == 2
+
+        mcp_tools = [t for t in hybrid.tools.values() if isinstance(t, MCPToolWrapper)]
+        assert len(mcp_tools) == 1
+        assert mcp_tools[0]._server_config.transport.value == "sse"
+
+        # Plain agent's local tool should also survive
+        assert "calculate" in restored.agents["summarizer"].tools
+
+    def test_swarm_json_wire_round_trip(self) -> None:
+        """Swarm with SSE MCP tools survives full JSON wire round-trip.
+
+        This simulates what actually happens in distributed execution:
+        Swarm.to_dict() → json.dumps() → wire → json.loads() → Swarm.from_dict()
+        """
+        from orbiter.mcp.tools import MCPToolWrapper
+
+        cfg = self._make_sse_config("remote-tools", port=8080)
+        agent = Agent(
+            name="worker-agent",
+            model="openai:gpt-4o-mini",
+            tools=[
+                search,
+                self._make_mcp_wrapper("query_db", "remote-tools", cfg),
+                self._make_mcp_wrapper("read_file", "remote-tools", cfg),
+            ],
+        )
+        swarm = Swarm(agents=[agent, Agent(name="reviewer")], flow="worker-agent >> reviewer")
+
+        # Full JSON wire simulation
+        wire = json.dumps(swarm.to_dict())
+        restored = Swarm.from_dict(json.loads(wire))
+
+        worker = restored.agents["worker-agent"]
+        assert len(worker.tools) == 3
+
+        mcp_tools = [t for t in worker.tools.values() if isinstance(t, MCPToolWrapper)]
+        assert len(mcp_tools) == 2
+        for t in mcp_tools:
+            assert t._server_config is not None
+            assert t._server_config.url == "http://localhost:8080/sse"
+            assert t._server_config.transport.value == "sse"
+            assert t._call_fn is None  # ready for lazy reconnect on worker
+
+    def test_handoff_swarm_with_sse_mcp_tools(self) -> None:
+        """Handoff-mode swarm with SSE MCP tools round-trips correctly."""
+        from orbiter.mcp.tools import MCPToolWrapper
+
+        cfg = self._make_sse_config("sse-tools")
+        router = Agent(
+            name="router",
+            model="openai:gpt-4o-mini",
+            handoffs=[Agent(name="specialist")],
+        )
+        specialist = Agent(
+            name="specialist",
+            tools=[self._make_mcp_wrapper("deep_search", "sse-tools", cfg)],
+        )
+        swarm = Swarm(
+            agents=[router, specialist],
+            flow="router >> specialist",
+            mode="handoff",
+            max_handoffs=5,
+        )
+
+        data = swarm.to_dict()
+        restored = Swarm.from_dict(data)
+
+        assert restored.mode == "handoff"
+        assert restored.max_handoffs == 5
+
+        spec_tools = list(restored.agents["specialist"].tools.values())
+        assert len(spec_tools) == 1
+        assert isinstance(spec_tools[0], MCPToolWrapper)
+        assert spec_tools[0]._server_config.transport.value == "sse"
+
+    def test_team_swarm_with_sse_mcp_tools(self) -> None:
+        """Team-mode swarm with SSE MCP tools on workers round-trips correctly."""
+        from orbiter.mcp.tools import MCPToolWrapper
+
+        cfg = self._make_sse_config("team-tools")
+        lead = Agent(name="lead", model="openai:gpt-4o-mini")
+        worker_a = Agent(
+            name="data-worker",
+            tools=[self._make_mcp_wrapper("query", "team-tools", cfg)],
+        )
+        worker_b = Agent(
+            name="file-worker",
+            tools=[self._make_mcp_wrapper("read_file", "team-tools", cfg)],
+        )
+        swarm = Swarm(
+            agents=[lead, worker_a, worker_b],
+            flow="lead >> data-worker >> file-worker",
+            mode="team",
+        )
+
+        wire = json.dumps(swarm.to_dict())
+        restored = Swarm.from_dict(json.loads(wire))
+
+        assert restored.mode == "team"
+        assert len(restored.agents) == 3
+
+        for name in ("data-worker", "file-worker"):
+            tools = list(restored.agents[name].tools.values())
+            assert len(tools) == 1
+            assert isinstance(tools[0], MCPToolWrapper)
+            assert tools[0]._server_config.transport.value == "sse"
+            assert tools[0]._call_fn is None
+
+    def test_sse_config_fields_preserved(self) -> None:
+        """All SSE-specific config fields survive the swarm round-trip."""
+        from orbiter.mcp.client import MCPServerConfig
+
+        cfg = MCPServerConfig(
+            name="full-config",
+            transport="sse",
+            url="http://mcp.internal:9090/sse",
+            headers={"X-API-Key": "secret", "X-Org": "test"},
+            timeout=60.0,
+            sse_read_timeout=600.0,
+            cache_tools=True,
+            session_timeout=240.0,
+        )
+        agent = Agent(
+            name="agent",
+            tools=[self._make_mcp_wrapper("tool", "full-config", cfg)],
+        )
+        swarm = Swarm(agents=[agent], flow=None)
+
+        wire = json.dumps(swarm.to_dict())
+        restored = Swarm.from_dict(json.loads(wire))
+
+        rc = next(iter(restored.agents["agent"].tools.values()))._server_config
+        assert rc.url == "http://mcp.internal:9090/sse"
+        assert rc.headers == {"X-API-Key": "secret", "X-Org": "test"}
+        assert rc.timeout == 60.0
+        assert rc.sse_read_timeout == 600.0
+        assert rc.cache_tools is True
+        assert rc.session_timeout == 240.0

@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import time
 from collections.abc import AsyncIterator
 from typing import Any
 
 import redis.asyncio as aioredis
+
+logger = logging.getLogger(__name__)
 
 from orbiter.observability.metrics import (  # pyright: ignore[reportMissingImports]
     HAS_OTEL,
@@ -106,6 +109,7 @@ class EventPublisher:
 
     async def connect(self) -> None:
         """Connect to Redis."""
+        logger.debug("EventPublisher connecting to Redis")
         self._redis = aioredis.from_url(self._redis_url, decode_responses=True)
 
     async def disconnect(self) -> None:
@@ -113,6 +117,7 @@ class EventPublisher:
         if self._redis is not None:
             await self._redis.aclose()
             self._redis = None
+            logger.debug("EventPublisher disconnected")
 
     def _client(self) -> aioredis.Redis:
         if self._redis is None:
@@ -142,6 +147,12 @@ class EventPublisher:
         await r.expire(stream_key, self._stream_ttl_seconds)  # type: ignore[misc]
 
         duration = time.monotonic() - start
+        logger.debug(
+            "EventPublisher published %s event for task %s (%.3fs)",
+            event.type,
+            task_id,
+            duration,
+        )
         _record_event_published(event.type, duration)
 
 
@@ -163,6 +174,7 @@ class EventSubscriber:
 
     async def connect(self) -> None:
         """Connect to Redis."""
+        logger.debug("EventSubscriber connecting to Redis")
         self._redis = aioredis.from_url(self._redis_url, decode_responses=True)
 
     async def disconnect(self) -> None:
@@ -170,6 +182,7 @@ class EventSubscriber:
         if self._redis is not None:
             await self._redis.aclose()
             self._redis = None
+            logger.debug("EventSubscriber disconnected")
 
     def _client(self) -> aioredis.Redis:
         if self._redis is None:
@@ -189,6 +202,7 @@ class EventSubscriber:
         channel_name = f"orbiter:events:{task_id}"
         pubsub = r.pubsub()
         await pubsub.subscribe(channel_name)  # type: ignore[misc]
+        logger.debug("EventSubscriber subscribed to %s", channel_name)
         terminal_statuses = {"completed", "error", "cancelled"}
         try:
             while True:
@@ -208,6 +222,11 @@ class EventSubscriber:
                     isinstance(event, StatusEvent)
                     and event.status in terminal_statuses
                 ):
+                    logger.debug(
+                        "EventSubscriber received terminal event for task %s (status=%s)",
+                        task_id,
+                        event.status,
+                    )
                     break
         finally:
             await pubsub.unsubscribe(channel_name)
@@ -224,6 +243,12 @@ class EventSubscriber:
         r = self._client()
         stream_key = f"orbiter:stream:{task_id}"
         entries = await r.xrange(stream_key, min=from_id)
+        logger.debug(
+            "EventSubscriber replaying %d events for task %s from %s",
+            len(entries),
+            task_id,
+            from_id,
+        )
         for _msg_id, fields in entries:
             data = json.loads(fields["event"])
             yield _deserialize_event(data)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from typing import Any
@@ -170,6 +171,7 @@ class MCPToolWrapper(Tool):
         "_call_fn",
         "_connection",
         "_original_name",
+        "_reconnect_lock",
         "_server_config",
         "_server_name",
         "description",
@@ -191,6 +193,7 @@ class MCPToolWrapper(Tool):
         self._call_fn = call_fn
         self._server_config = server_config
         self._connection = None
+        self._reconnect_lock = asyncio.Lock()
         self.name = namespace_tool_name(mcp_tool.name, server_name, namespace=namespace)
         self.description = mcp_tool.description or f"MCP tool: {mcp_tool.name}"
         self.parameters = extract_schema(mcp_tool)
@@ -247,6 +250,7 @@ class MCPToolWrapper(Tool):
         wrapper._server_name = data["server_name"]
         wrapper._call_fn = None
         wrapper._connection = None
+        wrapper._reconnect_lock = asyncio.Lock()
         if "server_config" in data:
             wrapper._server_config = MCPServerConfig.from_dict(data["server_config"])
         else:
@@ -269,22 +273,37 @@ class MCPToolWrapper(Tool):
             MCPToolError: If execution fails or the result indicates an error.
         """
         if self._call_fn is None:
-            if self._server_config is not None:
-                from orbiter.mcp.client import MCPServerConnection
+            async with self._reconnect_lock:
+                if self._call_fn is None:  # double-check after acquiring lock
+                    if self._server_config is not None:
+                        from orbiter.mcp.client import MCPServerConnection
 
-                conn = MCPServerConnection(self._server_config)
-                await conn.connect()
-                self._connection = conn
-                self._call_fn = conn.call_tool
-            else:
-                raise MCPToolError(
-                    f"MCP tool '{self._original_name}' has no call function and no server config "
-                    "for reconnection. Cannot execute."
-                )
+                        logger.debug(
+                            "Lazy reconnecting MCP tool '%s' on server '%s'",
+                            self._original_name,
+                            self._server_name,
+                        )
+                        conn = MCPServerConnection(self._server_config)
+                        await conn.connect()
+                        self._connection = conn
+                        self._call_fn = conn.call_tool
+                    else:
+                        raise MCPToolError(
+                            f"MCP tool '{self._original_name}' has no call function and no server config "
+                            "for reconnection. Cannot execute."
+                        )
 
+        logger.debug("Calling MCP tool '%s' on server '%s'", self._original_name, self._server_name)
         try:
             result: CallToolResult = await self._call_fn(self._original_name, kwargs or None)
         except Exception as exc:
+            logger.error(
+                "MCP tool '%s' on server '%s' failed: %s",
+                self._original_name,
+                self._server_name,
+                exc,
+                exc_info=True,
+            )
             raise MCPToolError(
                 f"MCP tool '{self._original_name}' on server '{self._server_name}' failed: {exc}"
             ) from exc
@@ -298,9 +317,18 @@ class MCPToolWrapper(Tool):
     async def cleanup(self) -> None:
         """Close any owned connection created by lazy reconnection."""
         if self._connection is not None:
-            await self._connection.cleanup()
-            self._connection = None
-            self._call_fn = None
+            try:
+                await self._connection.cleanup()
+            except Exception:
+                logger.warning(
+                    "Failed to clean up MCP connection for tool '%s' on server '%s'",
+                    self._original_name,
+                    self._server_name,
+                    exc_info=True,
+                )
+            finally:
+                self._connection = None
+                self._call_fn = None
 
 
 # ---------------------------------------------------------------------------
@@ -366,7 +394,7 @@ async def load_tools_from_connection(
 
     server_config = getattr(connection, "config", None)
 
-    return convert_mcp_tools(
+    tools = convert_mcp_tools(
         mcp_tools,
         connection.name,
         connection.call_tool,
@@ -374,6 +402,8 @@ async def load_tools_from_connection(
         tool_filter=tool_filter,
         server_config=server_config,
     )
+    logger.debug("Loaded %d tools from server '%s'", len(tools), connection.name)
+    return tools
 
 
 async def load_tools_from_client(
@@ -401,4 +431,10 @@ async def load_tools_from_client(
         conn = await client.connect(server_name)
         tools = await load_tools_from_connection(conn, namespace=namespace, tool_filter=tool_filter)
         all_tools.extend(tools)
+        logger.debug("Server '%s': loaded %d tools", server_name, len(tools))
+    logger.debug(
+        "Total tools loaded from client: %d across %d servers",
+        len(all_tools),
+        len(client.server_names),
+    )
     return all_tools

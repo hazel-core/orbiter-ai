@@ -7,6 +7,7 @@ Wraps the ``anthropic`` SDK to implement ``ModelProvider.complete()`` and
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -32,6 +33,8 @@ from .types import (
     StreamChunk,
     ToolCallDelta,
 )
+
+logger = logging.getLogger(__name__)
 
 _DEFAULT_MAX_TOKENS = 4096
 
@@ -235,9 +238,21 @@ class AnthropicProvider(ModelProvider):
         kwargs = self._build_kwargs(
             messages, tools=tools, temperature=temperature, max_tokens=max_tokens
         )
+        logger.debug(
+            "anthropic complete: model=%s, messages=%d, tools=%d",
+            self.config.model_name,
+            len(messages),
+            len(tools or []),
+        )
         try:
             response = await self._client.messages.create(**kwargs)
         except anthropic.APIError as exc:
+            logger.error(
+                "anthropic complete failed: model=%s, error=%s",
+                self.config.model_name,
+                exc,
+                exc_info=True,
+            )
             raise ModelError(str(exc), model=f"anthropic:{self.config.model_name}") from exc
         return _parse_response(response, self.config.model_name)
 
@@ -268,6 +283,12 @@ class AnthropicProvider(ModelProvider):
         )
         kwargs["stream"] = True
         input_tokens = 0
+        logger.debug(
+            "anthropic stream: model=%s, messages=%d, tools=%d",
+            self.config.model_name,
+            len(messages),
+            len(tools or []),
+        )
         try:
             response = await self._client.messages.create(**kwargs)
             async for event in response:
@@ -316,6 +337,12 @@ class AnthropicProvider(ModelProvider):
                         ),
                     )
         except anthropic.APIError as exc:
+            logger.error(
+                "anthropic stream failed: model=%s, error=%s",
+                self.config.model_name,
+                exc,
+                exc_info=True,
+            )
             raise ModelError(str(exc), model=f"anthropic:{self.config.model_name}") from exc
 
     def _build_kwargs(

@@ -14,7 +14,10 @@ from enum import StrEnum
 from typing import Any
 
 from orbiter._internal.state import RunNodeStatus, RunState
+from orbiter.observability.logging import get_logger  # pyright: ignore[reportMissingImports]
 from orbiter.types import OrbiterError
+
+_log = get_logger(__name__)
 
 
 class BackgroundTaskError(OrbiterError):
@@ -170,6 +173,7 @@ class BackgroundTaskHandler:
         task = BackgroundTask(task_id, parent_task_id, payload=payload)
         task.start()
         self._tasks[task_id] = task
+        _log.debug("Background task '%s' submitted (parent='%s')", task_id, parent_task_id)
 
         if self._state is not None:
             node = self._state.new_node(agent_name=f"bg:{task_id}")
@@ -205,6 +209,11 @@ class BackgroundTaskHandler:
             raise BackgroundTaskError(f"Background task '{task_id}' not found")
 
         task.complete(result)
+        _log.debug(
+            "Background task '%s' completed → %s merge",
+            task_id,
+            "hot" if is_main_running else "wakeup",
+        )
 
         if self._state is not None:
             self._complete_node(task_id)
@@ -233,6 +242,7 @@ class BackgroundTaskHandler:
             raise BackgroundTaskError(f"Background task '{task_id}' not found")
 
         task.fail(error)
+        _log.warning("Background task '%s' failed: %s", task_id, error)
 
         if self._state is not None:
             for node in reversed(self._state.nodes):

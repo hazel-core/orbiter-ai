@@ -933,7 +933,7 @@ class TestRunStreamDetailedErrors:
 
         async def failing_stream(messages: Any, **kwargs: Any) -> AsyncIterator[Any]:
             raise RuntimeError("connection failed")
-            yield  # noqa: RUF027 — unreachable yield makes it async generator
+            yield
 
         mock = AsyncMock()
         mock.stream = failing_stream
@@ -957,7 +957,7 @@ class TestRunStreamDetailedErrors:
 
         async def failing_stream(messages: Any, **kwargs: Any) -> AsyncIterator[Any]:
             raise RuntimeError("oops")
-            yield  # noqa: RUF027
+            yield
 
         mock = AsyncMock()
         mock.stream = failing_stream
@@ -977,7 +977,7 @@ class TestRunStreamDetailedErrors:
 
         async def failing_stream(messages: Any, **kwargs: Any) -> AsyncIterator[Any]:
             raise ValueError("bad input")
-            yield  # noqa: RUF027
+            yield
 
         mock = AsyncMock()
         mock.stream = failing_stream
@@ -1205,7 +1205,7 @@ class TestRunStreamEventFiltering:
 
         async def failing_stream(messages: Any, **kwargs: Any) -> AsyncIterator[Any]:
             raise RuntimeError("connection failed")
-            yield  # noqa: RUF027
+            yield
 
         mock = AsyncMock()
         mock.stream = failing_stream
@@ -1227,7 +1227,7 @@ class TestRunStreamEventFiltering:
 
         async def failing_stream(messages: Any, **kwargs: Any) -> AsyncIterator[Any]:
             raise RuntimeError("connection failed")
-            yield  # noqa: RUF027
+            yield
 
         mock = AsyncMock()
         mock.stream = failing_stream

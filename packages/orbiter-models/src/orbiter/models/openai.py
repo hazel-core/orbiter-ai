@@ -6,6 +6,7 @@ Wraps the ``openai`` SDK to implement ``ModelProvider.complete()`` and
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -31,6 +32,8 @@ from .types import (
     StreamChunk,
     ToolCallDelta,
 )
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Finish reason mapping
@@ -248,9 +251,21 @@ class OpenAIProvider(ModelProvider):
         kwargs = self._build_kwargs(
             messages, tools=tools, temperature=temperature, max_tokens=max_tokens
         )
+        logger.debug(
+            "openai complete: model=%s, messages=%d, tools=%d",
+            self.config.model_name,
+            len(messages),
+            len(tools or []),
+        )
         try:
             response = await self._client.chat.completions.create(**kwargs)
         except openai.APIError as exc:
+            logger.error(
+                "openai complete failed: model=%s, error=%s",
+                self.config.model_name,
+                exc,
+                exc_info=True,
+            )
             raise ModelError(str(exc), model=f"openai:{self.config.model_name}") from exc
         return _parse_response(response, self.config.model_name)
 
@@ -281,11 +296,23 @@ class OpenAIProvider(ModelProvider):
         )
         kwargs["stream"] = True
         kwargs["stream_options"] = {"include_usage": True}
+        logger.debug(
+            "openai stream: model=%s, messages=%d, tools=%d",
+            self.config.model_name,
+            len(messages),
+            len(tools or []),
+        )
         try:
             response = await self._client.chat.completions.create(**kwargs)
             async for chunk in response:
                 yield _parse_stream_chunk(chunk)
         except openai.APIError as exc:
+            logger.error(
+                "openai stream failed: model=%s, error=%s",
+                self.config.model_name,
+                exc,
+                exc_info=True,
+            )
             raise ModelError(str(exc), model=f"openai:{self.config.model_name}") from exc
 
     def _build_kwargs(

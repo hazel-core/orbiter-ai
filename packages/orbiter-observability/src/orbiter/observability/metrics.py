@@ -7,6 +7,7 @@ When it is **not** installed, metrics are collected in-memory via
 
 from __future__ import annotations
 
+import logging
 import threading
 import time
 from collections.abc import Iterator
@@ -26,6 +27,8 @@ from orbiter.observability.semconv import (  # pyright: ignore[reportMissingImpo
     TOOL_STEP_SUCCESS,
     USER_ID,
 )
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Optional OTel import
@@ -218,6 +221,7 @@ def record_agent_run(
     """
     attrs = dict(attributes) if attributes else {}
     attrs[AGENT_RUN_SUCCESS] = "1" if success else "0"
+    logger.debug("record_agent_run: duration=%.3fs success=%s tokens=%d+%d", duration, success, input_tokens, output_tokens)
 
     if HAS_OTEL:
         meter = _get_meter()
@@ -266,6 +270,7 @@ def record_tool_step(
     """
     attrs = dict(attributes) if attributes else {}
     attrs[TOOL_STEP_SUCCESS] = "1" if success else "0"
+    logger.debug("record_tool_step: duration=%.3fs success=%s", duration, success)
 
     if HAS_OTEL:
         meter = _get_meter()

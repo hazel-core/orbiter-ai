@@ -12,6 +12,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from orbiter.config import ModelConfig  # pyright: ignore[reportMissingImports]
+from orbiter.models.provider import model_registry  # pyright: ignore[reportMissingImports]
+from orbiter.models.types import ModelError  # pyright: ignore[reportMissingImports]
 from orbiter.models.vertex import (  # pyright: ignore[reportMissingImports]
     VertexProvider,
     _build_config,
@@ -22,8 +24,6 @@ from orbiter.models.vertex import (  # pyright: ignore[reportMissingImports]
     _parse_stream_chunk,
     _to_google_contents,
 )
-from orbiter.models.provider import model_registry  # pyright: ignore[reportMissingImports]
-from orbiter.models.types import ModelError  # pyright: ignore[reportMissingImports]
 from orbiter.types import (  # pyright: ignore[reportMissingImports]
     AssistantMessage,
     SystemMessage,
@@ -399,9 +399,7 @@ class TestVertexProviderComplete:
         assert "tools" in call_kwargs["config"]
 
     @patch("orbiter.models.vertex.genai")
-    async def test_complete_with_temperature_and_max_tokens(
-        self, mock_genai: MagicMock
-    ) -> None:
+    async def test_complete_with_temperature_and_max_tokens(self, mock_genai: MagicMock) -> None:
         config = _make_config()
         provider = VertexProvider(config)
         raw = _make_response()
@@ -447,9 +445,7 @@ class TestVertexProviderComplete:
         config = _make_config()
         provider = VertexProvider(config)
         provider._client = MagicMock()
-        provider._client.aio.models.generate_content = AsyncMock(
-            side_effect=RuntimeError("fail")
-        )
+        provider._client.aio.models.generate_content = AsyncMock(side_effect=RuntimeError("fail"))
 
         with pytest.raises(ModelError) as exc_info:
             await provider.complete([UserMessage(content="hi")])
@@ -486,9 +482,7 @@ class TestVertexProviderStream:
             return gen()
 
         provider._client = MagicMock()
-        provider._client.aio.models.generate_content_stream = AsyncMock(
-            side_effect=mock_stream
-        )
+        provider._client.aio.models.generate_content_stream = AsyncMock(side_effect=mock_stream)
 
         collected = []
         async for chunk in provider.stream([UserMessage(content="hi")]):
@@ -581,15 +575,17 @@ class TestServiceAccountCredentials:
     def test_init_uses_service_account_from_env(self, mock_genai: MagicMock) -> None:
         encoded = base64.b64encode(json.dumps(_FAKE_SA_INFO).encode()).decode()
         mock_creds = MagicMock()
-        with patch.dict(os.environ, {"GOOGLE_SERVICE_ACCOUNT_BASE64": encoded}):
-            with patch(
+        with (
+            patch.dict(os.environ, {"GOOGLE_SERVICE_ACCOUNT_BASE64": encoded}),
+            patch(
                 "orbiter.models.vertex._credentials_from_base64", return_value=mock_creds
-            ) as mock_fn:
-                config = _make_config()
-                VertexProvider(config)
-                mock_fn.assert_called_once_with(encoded)
-                call_kwargs = mock_genai.Client.call_args[1]
-                assert call_kwargs["credentials"] is mock_creds
+            ) as mock_fn,
+        ):
+            config = _make_config()
+            VertexProvider(config)
+            mock_fn.assert_called_once_with(encoded)
+            call_kwargs = mock_genai.Client.call_args[1]
+            assert call_kwargs["credentials"] is mock_creds
 
     @patch("orbiter.models.vertex.genai")
     def test_init_no_credentials_when_nothing_set(self, mock_genai: MagicMock) -> None:
@@ -626,15 +622,17 @@ class TestVertexConfigParams:
         encoded = base64.b64encode(json.dumps(_FAKE_SA_INFO).encode()).decode()
         mock_creds = MagicMock()
         env = {k: v for k, v in os.environ.items() if k != "GOOGLE_SERVICE_ACCOUNT_BASE64"}
-        with patch.dict(os.environ, env, clear=True):
-            with patch(
+        with (
+            patch.dict(os.environ, env, clear=True),
+            patch(
                 "orbiter.models.vertex._credentials_from_base64", return_value=mock_creds
-            ) as mock_fn:
-                config = _make_config(google_service_account_base64=encoded)
-                VertexProvider(config)
-                mock_fn.assert_called_once_with(encoded)
-                call_kwargs = mock_genai.Client.call_args[1]
-                assert call_kwargs["credentials"] is mock_creds
+            ) as mock_fn,
+        ):
+            config = _make_config(google_service_account_base64=encoded)
+            VertexProvider(config)
+            mock_fn.assert_called_once_with(encoded)
+            call_kwargs = mock_genai.Client.call_args[1]
+            assert call_kwargs["credentials"] is mock_creds
 
     @patch("orbiter.models.vertex.genai")
     def test_config_takes_precedence_over_env(self, mock_genai: MagicMock) -> None:

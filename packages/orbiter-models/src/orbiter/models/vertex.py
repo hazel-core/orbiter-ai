@@ -14,9 +14,12 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import os
 from collections.abc import AsyncIterator
 from typing import Any
+
+from google import genai
 
 from orbiter.config import ModelConfig
 from orbiter.types import (
@@ -38,7 +41,7 @@ from .types import (
     ToolCallDelta,
 )
 
-from google import genai
+logger = logging.getLogger(__name__)
 
 _VERTEX_SCOPES = ["https://www.googleapis.com/auth/cloud-platform"]
 
@@ -57,9 +60,7 @@ def _credentials_from_base64(encoded: str) -> Any:
 
     raw_json = base64.b64decode(encoded)
     info = json.loads(raw_json)
-    return service_account.Credentials.from_service_account_info(
-        info, scopes=_VERTEX_SCOPES
-    )
+    return service_account.Credentials.from_service_account_info(info, scopes=_VERTEX_SCOPES)
 
 
 # ---------------------------------------------------------------------------
@@ -119,15 +120,19 @@ def _to_google_contents(messages: list[Message]) -> tuple[list[dict[str, Any]], 
             contents.append({"role": "model", "parts": parts})
         elif isinstance(msg, ToolResult):
             response_data = msg.error if msg.error else msg.content
-            contents.append({
-                "role": "user",
-                "parts": [{
-                    "function_response": {
-                        "name": msg.tool_name,
-                        "response": {"content": response_data},
-                    },
-                }],
-            })
+            contents.append(
+                {
+                    "role": "user",
+                    "parts": [
+                        {
+                            "function_response": {
+                                "name": msg.tool_name,
+                                "response": {"content": response_data},
+                            },
+                        }
+                    ],
+                }
+            )
 
     return contents, "\n".join(system_parts)
 
@@ -149,11 +154,13 @@ def _convert_tools(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
     declarations: list[dict[str, Any]] = []
     for t in tools:
         fn = t.get("function", {})
-        declarations.append({
-            "name": fn.get("name", ""),
-            "description": fn.get("description", ""),
-            "parameters": fn.get("parameters", {"type": "object", "properties": {}}),
-        })
+        declarations.append(
+            {
+                "name": fn.get("name", ""),
+                "description": fn.get("description", ""),
+                "parameters": fn.get("parameters", {"type": "object", "properties": {}}),
+            }
+        )
     return [{"function_declarations": declarations}] if declarations else []
 
 
@@ -376,6 +383,12 @@ class VertexProvider(ModelProvider):
         Raises:
             ModelError: If the API call fails.
         """
+        logger.debug(
+            "vertex complete: model=%s, messages=%d, tools=%d",
+            self.config.model_name,
+            len(messages),
+            len(tools or []),
+        )
         contents, system_instruction = _to_google_contents(messages)
         config = _build_config(tools, temperature, max_tokens, system_instruction)
         try:
@@ -385,6 +398,12 @@ class VertexProvider(ModelProvider):
                 config=config,
             )
         except Exception as exc:
+            logger.error(
+                "vertex complete failed: model=%s, error=%s",
+                self.config.model_name,
+                exc,
+                exc_info=True,
+            )
             raise ModelError(str(exc), model=f"vertex:{self.config.model_name}") from exc
         return _parse_response(response, self.config.model_name)
 
@@ -410,6 +429,12 @@ class VertexProvider(ModelProvider):
         Raises:
             ModelError: If the API call fails.
         """
+        logger.debug(
+            "vertex stream: model=%s, messages=%d, tools=%d",
+            self.config.model_name,
+            len(messages),
+            len(tools or []),
+        )
         contents, system_instruction = _to_google_contents(messages)
         config = _build_config(tools, temperature, max_tokens, system_instruction)
         try:
@@ -422,6 +447,12 @@ class VertexProvider(ModelProvider):
         except ModelError:
             raise
         except Exception as exc:
+            logger.error(
+                "vertex stream failed: model=%s, error=%s",
+                self.config.model_name,
+                exc,
+                exc_info=True,
+            )
             raise ModelError(str(exc), model=f"vertex:{self.config.model_name}") from exc
 
 

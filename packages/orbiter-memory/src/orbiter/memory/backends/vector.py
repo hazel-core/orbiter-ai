@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 import math
 from abc import ABC, abstractmethod
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from orbiter.memory.base import (  # pyright: ignore[reportMissingImports]
     MemoryItem,
@@ -137,6 +140,7 @@ class VectorMemoryStore:
         vec = await self._embeddings.aembed(item.content)
         self._items[item.id] = item
         self._vectors[item.id] = vec
+        logger.debug("added item id=%s dim=%d", item.id, len(vec))
 
     async def get(self, item_id: str) -> MemoryItem | None:
         """Retrieve a memory item by ID."""
@@ -178,10 +182,16 @@ class VectorMemoryStore:
                 if item.id in self._vectors
             ]
             scored.sort(key=lambda x: x[1], reverse=True)
-            return [item for item, _ in scored[:limit]]
+            results = scored[:limit]
+            logger.debug(
+                "semantic search query=%r results=%d top_score=%.4f",
+                query, len(results), results[0][1] if results else 0.0,
+            )
+            return [item for item, _ in results]
 
         # No query — return newest first
         candidates.sort(key=lambda c: c.created_at, reverse=True)
+        logger.debug("search query=%r results=%d", query, min(len(candidates), limit))
         return candidates[:limit]
 
     async def clear(
@@ -194,6 +204,7 @@ class VectorMemoryStore:
             count = len(self._items)
             self._items.clear()
             self._vectors.clear()
+            logger.debug("cleared all items count=%d", count)
             return count
 
         to_remove = [
@@ -202,6 +213,7 @@ class VectorMemoryStore:
         for item_id in to_remove:
             del self._items[item_id]
             self._vectors.pop(item_id, None)
+        logger.debug("cleared filtered items count=%d", len(to_remove))
         return len(to_remove)
 
     def __len__(self) -> int:

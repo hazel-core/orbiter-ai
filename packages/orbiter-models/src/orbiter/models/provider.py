@@ -7,6 +7,7 @@ provider instance from a ``"provider:model_name"`` string.
 
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from typing import Any
@@ -20,6 +21,8 @@ from .types import ModelError, ModelResponse, StreamChunk
 # ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
+
+logger = logging.getLogger(__name__)
 
 model_registry: Registry[type[ModelProvider]] = Registry("model_registry")
 """Global registry mapping provider names to ``ModelProvider`` subclasses."""
@@ -129,4 +132,6 @@ def get_provider(
         base_url=base_url,
         **kwargs,
     )
-    return cls(config)
+    provider = cls(config)
+    logger.debug("Resolved provider '%s' for model '%s'", provider_name, model_name)
+    return provider

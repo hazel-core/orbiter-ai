@@ -116,6 +116,7 @@ class KubernetesSandbox(Sandbox):
                 raise SandboxError(msg) from cfg_exc
 
         self._k8s_client = client.CoreV1Api()
+        logger.debug("Loaded Kubernetes client for sandbox %s", self._sandbox_id)
         return self._k8s_client
 
     def _pod_manifest(self) -> dict[str, Any]:
@@ -190,8 +191,13 @@ class KubernetesSandbox(Sandbox):
             logger.info("Created service %s (cluster_ip=%s)", self._service_name, self._cluster_ip)
         except SandboxError:
             raise
+        except asyncio.CancelledError:
+            logger.warning("Sandbox %s: start cancelled, cleaning up resources", self._sandbox_id)
+            await self._delete_resources()
+            raise
         except Exception as exc:
             self._status = SandboxStatus.ERROR
+            logger.error("Failed to start Kubernetes sandbox %s: %s", self._sandbox_id, exc)
             msg = f"Failed to start Kubernetes sandbox: {exc}"
             raise SandboxError(msg) from exc
 
@@ -236,6 +242,7 @@ class KubernetesSandbox(Sandbox):
         if self._status != SandboxStatus.RUNNING:
             msg = f"Sandbox must be running to call tools (status={self._status!r})"
             raise SandboxError(msg)
+        logger.debug("Sandbox %s: running tool %s on pod %s", self._sandbox_id, tool_name, self._pod_name)
         return {
             "tool": tool_name,
             "arguments": arguments,

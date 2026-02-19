@@ -9,7 +9,10 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from orbiter.observability.logging import get_logger  # pyright: ignore[reportMissingImports]
 from orbiter.types import Message, ToolCall, Usage
+
+_log = get_logger(__name__)
 
 
 class RunNodeStatus(StrEnum):
@@ -57,6 +60,7 @@ class RunNode(BaseModel):
         """Transition to RUNNING."""
         self.status = RunNodeStatus.RUNNING
         self.started_at = time.time()
+        _log.debug("Node[%d] '%s' → RUNNING", self.step_index, self.agent_name)
 
     def succeed(self, usage: Usage | None = None) -> None:
         """Transition to SUCCESS with optional usage stats."""
@@ -64,17 +68,25 @@ class RunNode(BaseModel):
         self.ended_at = time.time()
         if usage is not None:
             self.usage = usage
+        _log.debug(
+            "Node[%d] '%s' → SUCCESS (duration=%.3fs)",
+            self.step_index,
+            self.agent_name,
+            self.duration or 0,
+        )
 
     def fail(self, error: str) -> None:
         """Transition to FAILED with an error message."""
         self.status = RunNodeStatus.FAILED
         self.ended_at = time.time()
         self.error = error
+        _log.warning("Node[%d] '%s' → FAILED: %s", self.step_index, self.agent_name, error)
 
     def timeout(self) -> None:
         """Transition to TIMEOUT."""
         self.status = RunNodeStatus.TIMEOUT
         self.ended_at = time.time()
+        _log.warning("Node[%d] '%s' → TIMEOUT", self.step_index, self.agent_name)
 
     @property
     def duration(self) -> float | None:
@@ -105,6 +117,7 @@ class RunState:
     def start(self) -> None:
         """Mark the run as started."""
         self.status = RunNodeStatus.RUNNING
+        _log.debug("Run '%s' started", self.agent_name)
 
     def add_message(self, message: Message) -> None:
         """Append a message to the run history."""
@@ -144,14 +157,22 @@ class RunState:
     def succeed(self) -> None:
         """Mark the run as successful."""
         self.status = RunNodeStatus.SUCCESS
+        _log.debug(
+            "Run '%s' succeeded (%d steps, %d tokens)",
+            self.agent_name,
+            len(self.nodes),
+            self.total_usage.total_tokens,
+        )
 
     def fail(self, error: str | None = None) -> None:
         """Mark the run as failed."""
         self.status = RunNodeStatus.FAILED
+        _log.warning("Run '%s' failed: %s", self.agent_name, error or "(no message)")
 
     def timeout(self) -> None:
         """Mark the run as timed out."""
         self.status = RunNodeStatus.TIMEOUT
+        _log.warning("Run '%s' timed out", self.agent_name)
 
     @property
     def current_node(self) -> RunNode | None:
