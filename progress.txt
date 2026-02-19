@@ -2,6 +2,30 @@
 Started: Thu Feb 19 11:52:28 PM IST 2026
 ---
 
+## 2026-02-20 - US-029
+- Added `MCPProgressEvent` import to `runner.py` (from `orbiter.types`)
+- Added progress queue draining block in `_stream()` immediately after `tool_results = await agent._execute_tools(actions)`: iterates over `actions`, looks up each tool in `agent.tools`, checks for `progress_queue` attribute, drains all queued `MCPProgressEvent` items via `q.get_nowait()`, stamps `agent_name` when missing, and yields through `_passes_filter()`
+- Draining happens BEFORE `ToolResultEvent` emission so progress events appear between `ToolCallEvent` and `ToolResultEvent` (or before the next `TextEvent`)
+- `MCPProgressEvent` items are NOT yielded in `agent.run()` — they accumulate in wrapper's `progress_queue` and are not surfaced via the run path
+- Added `TestMCPProgressEventInStream` class (6 tests) to `test_progress.py`:
+  - `test_stream_yields_progress_events_from_mcp_tool`: 2 progress notifications appear in stream after tool call
+  - `test_stream_progress_events_have_agent_name`: agent name is stamped onto yielded events
+  - `test_stream_no_progress_when_tool_emits_none`: no MCPProgressEvent when tool fires no notifications
+  - `test_run_does_not_yield_progress_events`: run() does not surface progress events (queue holds them)
+  - `test_progress_events_come_before_final_text`: progress events appear before the final TextEvent
+  - `test_stream_progress_queue_drained_after_each_tool_call_round`: queue fully drained after each round
+- All 186 orbiter-mcp tests pass + all 931 orbiter-core tests pass; 0 pyright errors in runner.py
+- Files changed:
+  - packages/orbiter-core/src/orbiter/runner.py (MCPProgressEvent import + progress queue draining in _stream)
+  - packages/orbiter-mcp/tests/test_progress.py (added TestMCPProgressEventInStream with 6 tests)
+- **Learnings for future iterations:**
+  - `MCPProgressEvent` is frozen (Pydantic model_config frozen=True) — cannot mutate `agent_name` in place; must create a new instance with `MCPProgressEvent(...)` when stamping the agent name
+  - The progress queue is drained AFTER all tools in the batch have executed (since `_execute_tools` uses TaskGroup for parallel execution); draining order follows the order of `actions` (not necessarily the parallel execution order)
+  - `q.get_nowait()` with a bare `except Exception: break` is the safest drain pattern — `asyncio.Queue.get_nowait()` raises `asyncio.QueueEmpty` when empty, but we break instead of looping past the end
+  - Progress events pass through the `_passes_filter()` check so they respect the `event_types` filter argument (callers can filter them out)
+  - The `_stream()` helper function also now imports `MCPProgressEvent` at module level (top of `runner.py`) — consistent with other StreamEvent types already imported there
+---
+
 ## 2026-02-20 - US-027
 - Added `large_output_tools: list[str] = []` parameter to `MCPServerConfig.__init__` in `orbiter-mcp/client.py`; added `"large_output_tools"` to `__slots__`; serialized in `to_dict()` and restored in `from_dict()`
 - Added `"large_output"` to `MCPToolWrapper.__slots__`; set `self.large_output = mcp_tool.name in large_output_tools` (from `server_config.large_output_tools`) in `__init__`; included in `to_dict()` + `from_dict()`
