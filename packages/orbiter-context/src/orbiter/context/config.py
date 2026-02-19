@@ -122,5 +122,5 @@ def make_config(mode: AutomationMode | str = "copilot", **overrides: Any) -> Con
     defaults = presets[mode]
     defaults.update(overrides)
     config = ContextConfig(mode=mode, **defaults)
-    logger.debug("created config: mode=%s overrides=%s", mode.value, list(overrides.keys()) or "none")
+    logger.debug("ContextConfig created mode=%s history_rounds=%d", mode.value, config.history_rounds)
     return config

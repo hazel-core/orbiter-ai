@@ -108,6 +108,14 @@ class TokenTracker:
             "token step recorded: agent=%r step=%d prompt=%d output=%d",
             agent_id, step_index, prompt_tokens, output_tokens,
         )
+        agent_used = sum(s.total_tokens for s in self._steps if s.agent_id == agent_id)
+        all_total = sum(s.total_tokens for s in self._steps)
+        logger.debug(
+            "TokenTracker: used=%d / total=%d (%.0f%%)",
+            agent_used,
+            all_total,
+            100.0 * agent_used / all_total if all_total > 0 else 0.0,
+        )
         return token_step
 
     def get_trajectory(self, agent_id: str) -> list[TokenStep]:

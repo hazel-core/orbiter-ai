@@ -132,7 +132,7 @@ class ProcessorPipeline:
         data = payload if payload is not None else {}
         processors = self._processors.get(event, [])
         if processors:
-            logger.debug("firing event %r with %d processor(s)", event, len(processors))
+            logger.debug("Processing context with %d neurons", len(processors))
         for proc in processors:
             logger.debug("running processor %r for event %r", proc.name, event)
             await proc.process(ctx, data)
@@ -263,6 +263,6 @@ class ToolResultOffloader(ContextProcessor):
         )
         payload["tool_result"] = reference
         logger.debug(
-            "offloaded tool result: tool=%r size=%d chars (max=%d)",
-            tool_name, len(content), self._max_size,
+            "ToolResultOffloader: offloading tool=%s size=%d bytes",
+            tool_name, len(content),
         )
