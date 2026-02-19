@@ -2,6 +2,33 @@
 Started: Thu Feb 19 11:52:28 PM IST 2026
 ---
 
+## 2026-02-20 - US-021
+- Added `EmbeddingProvider` as a `@runtime_checkable Protocol` with `async def embed(self, text: str) -> list[float]` to `orbiter-memory/src/orbiter/memory/backends/vector.py`
+- Added `OpenAIEmbeddingProvider` class: reads `OPENAI_API_KEY` from env (or explicit kwarg), uses `text-embedding-3-small`, runs sync openai call in `asyncio.to_thread()`
+- Added `SentenceTransformerEmbeddingProvider` class: lazy-imports `sentence_transformers`, uses `all-MiniLM-L6-v2` by default, runs `encode()` in `asyncio.to_thread()`
+- Added `ChromaVectorMemoryStore` class with ChromaDB backend: `add()`, `get()`, `search()`, `clear()`, `get_recent()` methods
+  - Lazy-imports `chromadb` in `_ensure_collection()` (optional dep, `# pyright: ignore[reportMissingImports]`)
+  - `search(query=...)` uses `collection.query()` with embedding similarity; `search()` with no query uses `collection.get()` sorted by `created_at`
+  - `clear(metadata=None)` drops + recreates the entire collection; `clear(metadata=...)` uses `collection.delete(ids=[...])`
+  - `_to_chroma_metadata()` and `_from_chroma_row()` helpers for serialization/reconstruction
+  - `_build_where_filter()` builds ChromaDB `where` filter with `$and` for multiple clauses
+- Updated `chromadb>=0.5` → `chromadb>=0.6` in `pyproject.toml`
+- Updated backends `__init__.py` docstring to mention new exports
+- Added 32 new tests in `test_vector.py`: `TestEmbeddingProvider` (3), `TestOpenAIEmbeddingProvider` (5), `TestSentenceTransformerEmbeddingProvider` (3), `TestBuildWhereFilter` (7), `TestChromaVectorMemoryStore` (14) — all using mocked modules (no real chromadb/openai/sentence-transformers needed)
+- All 349 orbiter-memory tests pass (6 skipped); 0 pyright errors
+- Files changed:
+  - `packages/orbiter-memory/src/orbiter/memory/backends/vector.py` (added protocol + providers + ChromaVectorMemoryStore + helpers)
+  - `packages/orbiter-memory/src/orbiter/memory/backends/__init__.py` (updated docstring)
+  - `packages/orbiter-memory/pyproject.toml` (chromadb version bump)
+  - `packages/orbiter-memory/tests/test_vector.py` (new imports + 5 new test classes)
+- **Learnings for future iterations:**
+  - `@runtime_checkable Protocol` only checks attribute *existence* at runtime, not signature — `isinstance(SyncOnly(), EmbeddingProvider)` returns True if `SyncOnly` has `embed` method even if sync
+  - ChromaDB `query()` result shape: `{"ids": [[...]], "documents": [[...]], "metadatas": [[...]]}` (list of lists, one per query vector); `get()` result: `{"ids": [...], "documents": [...], "metadatas": [...]}`
+  - For `clear(all)` in ChromaDB: call `client.delete_collection(name)` then `client.get_or_create_collection(name, ...)` to reset — cheaper than iterating IDs
+  - In tests, mock `get_or_create_collection` with `side_effect=[first_collection, new_collection]` when the code calls it twice (init + after delete_collection); don't set `return_value` after `_make_chroma_mock` or it overwrites the initial mock
+  - `asyncio.to_thread()` works correctly with `MagicMock` synchronous functions in tests — no special threading setup needed
+---
+
 ## 2026-02-20 - US-020
 - Verified PostgresMemoryStore already has complete implementations of `add()`, `get()`, `search()`, `clear()`, `count()`, `_row_to_item()`, `_extra_fields()` using asyncpg
 - Added `get_recent(n, *, metadata)` method to PostgresMemoryStore — returns N most recently created items (newest first), supports optional metadata filter (user_id, session_id, task_id, agent_id)
