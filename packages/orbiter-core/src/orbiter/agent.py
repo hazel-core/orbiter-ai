@@ -420,6 +420,9 @@ class Agent:
             for agent in handoffs:
                 self._register_handoff(agent)
 
+        # Lock for asyncio-safe runtime mutations (add_tool, add_mcp_server, add_handoff)
+        self._tools_lock: asyncio.Lock = asyncio.Lock()
+
         # Lifecycle hooks
         self.hook_manager = HookManager()
         self._has_user_hooks: bool = bool(hooks)  # tracks explicitly-provided hooks only
@@ -456,6 +459,94 @@ class Agent:
         if agent.name in self.handoffs:
             raise AgentError(f"Duplicate handoff agent '{agent.name}' on agent '{self.name}'")
         self.handoffs[agent.name] = agent
+
+    # -----------------------------------------------------------------------
+    # Runtime mutation API — asyncio-safe via _tools_lock
+    # -----------------------------------------------------------------------
+
+    async def add_tool(self, tool: Tool) -> None:
+        """Append a single tool at runtime, asyncio-safe.
+
+        Uses ``_tools_lock`` to prevent concurrent registrations from
+        interfering with each other.
+
+        Args:
+            tool: The tool to register.
+
+        Raises:
+            AgentError: If a tool with the same name is already registered.
+        """
+        async with self._tools_lock:
+            self._register_tool(tool)
+
+    def remove_tool(self, tool_name: str) -> None:
+        """Unregister a tool by name.
+
+        Safe to call without holding the lock — dict.pop() is atomic in
+        CPython's single-threaded asyncio event loop (no await between
+        check and removal).
+
+        Args:
+            tool_name: Name of the tool to remove.
+
+        Raises:
+            AgentError: If no tool with that name is registered.
+        """
+        if tool_name not in self.tools:
+            raise AgentError(f"Tool '{tool_name}' is not registered on agent '{self.name}'")
+        del self.tools[tool_name]
+
+    async def add_handoff(self, target: Agent) -> None:
+        """Register a target agent as a handoff destination at runtime.
+
+        Args:
+            target: The agent to delegate to.
+
+        Raises:
+            AgentError: If a handoff with the same name is already registered.
+        """
+        async with self._tools_lock:
+            self._register_handoff(target)
+
+    async def add_mcp_server(self, config: Any) -> None:
+        """Connect an MCP server and append its tools to this agent at runtime.
+
+        Requires the ``orbiter-mcp`` package.  Creates a new
+        ``MCPServerConnection``, connects to the server, lists its tools,
+        and registers each one via :meth:`add_tool`.
+
+        Args:
+            config: An ``MCPServerConfig`` instance describing the server.
+
+        Raises:
+            AgentError: If ``orbiter-mcp`` is not installed or the connection
+                fails.
+        """
+        try:
+            from orbiter.mcp.client import MCPServerConnection  # pyright: ignore[reportMissingImports]
+            from orbiter.mcp.tools import load_tools_from_connection  # pyright: ignore[reportMissingImports]
+        except ImportError as exc:
+            raise AgentError("orbiter-mcp is required for add_mcp_server()") from exc
+
+        try:
+            conn = MCPServerConnection(config)
+            await conn.connect()
+        except Exception as exc:
+            raise AgentError(f"Failed to connect MCP server '{getattr(config, 'name', config)}': {exc}") from exc
+
+        mcp_tools = await load_tools_from_connection(conn)
+        async with self._tools_lock:
+            for tool in mcp_tools:
+                self._register_tool(tool)
+
+        _log.info(
+            "add_mcp_server: agent=%s server=%s tools_added=%d",
+            self.name,
+            getattr(config, "name", config),
+            len(mcp_tools),
+        )
+
+    # -----------------------------------------------------------------------
 
     def _attach_memory_persistence(self, memory: Any) -> None:
         """Auto-attach MemoryPersistence hooks if orbiter-memory is installed.
@@ -597,9 +688,6 @@ class Agent:
             msg_list = await _inject_long_term_knowledge(self.memory, input, msg_list)
         # ---- end Long-term memory ----
 
-        # Tool schemas
-        tool_schemas = self.get_tool_schemas() or None
-
         # ---- Token tracking: init per-run tracker and look up context window ----
         _context_window_tokens = _get_context_window_tokens(self.model_name)
         _token_tracker: Any = None
@@ -614,6 +702,10 @@ class Agent:
 
         # Tool loop — iterate up to max_steps
         for _step in range(self.max_steps):
+            # Re-enumerate tool schemas each step so dynamically added/removed
+            # tools (via add_tool/remove_tool) take effect without restarting.
+            tool_schemas = self.get_tool_schemas() or None
+
             # Augment system message with token context info from previous step
             if _token_tracker is not None and _context_window_tokens:
                 _trajectory = _token_tracker.get_trajectory(self.name)

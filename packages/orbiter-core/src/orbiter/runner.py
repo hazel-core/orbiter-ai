@@ -312,8 +312,6 @@ async def _stream(
             pass
     # ---- end Long-term memory ----
 
-    tool_schemas = agent.get_tool_schemas() or None
-
     model_name = getattr(agent, "model", "") or ""
 
     # ---- Token tracking: init per-stream tracker and look up context window ----
@@ -348,6 +346,10 @@ async def _stream(
 
     for step_num in range(steps):
         step_started_at = time.time()
+
+        # Re-enumerate tool schemas each step so dynamically added/removed
+        # tools (via add_tool/remove_tool) take effect without restarting.
+        tool_schemas = agent.get_tool_schemas() or None
 
         # Augment system message with token context info from previous step
         if _stream_token_tracker is not None and _stream_context_window:
