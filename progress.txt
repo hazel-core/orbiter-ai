@@ -368,6 +368,30 @@ Started: Thu Feb 19 11:52:28 PM IST 2026
   - `EXPECTED_ALL` in `test_models_integration.py` is sorted and checked with `sorted(models.__all__) == EXPECTED_ALL` — update alphabetically when adding exports
 ---
 
+## 2026-02-20 - US-026
+- Added `large_output: bool = False` parameter to `FunctionTool.__init__` and the `@tool` decorator in `orbiter-core/src/orbiter/tool.py`
+- Added `self._workspace: Any = None` lazy workspace attribute to `Agent.__init__`
+- Added `_register_retrieve_artifact()` private method to `Agent`: creates a closure capturing `agent_ref = self`, registers `retrieve_artifact` tool directly in `self.tools` dict (bypasses `_register_tool` to avoid recursion and duplicate checks)
+- Updated `_register_tool()` to auto-register `retrieve_artifact` when first `large_output=True` tool is added (checks `"retrieve_artifact" not in self.tools`)
+- Added `_offload_large_result(tool_name, content) -> str` async method: generates `artifact_id = f"tool_result_{tool_name}_{uuid.uuid4().hex[:8]}"`, lazily creates `Workspace(workspace_id=f"agent_{self.name}")`, calls `await self._workspace.write(artifact_id, content)`, emits `_log.debug("ToolResultOffloader: offloading %s result size=%d bytes artifact_id=%s", ...)`, returns `[Result stored as artifact '{artifact_id}'. Call retrieve_artifact('{artifact_id}') to access.]`; falls back to returning content unchanged when orbiter-context is not installed
+- Updated `_execute_tools()` in `agent.py`: after `tool.execute()`, checks `getattr(tool, "large_output", False)` and calls `_offload_large_result()` before creating ToolResult
+- Updated `ToolResultOffloader.process()` in `processor.py`: added `large_output: bool = bool(payload.get("large_output", False))` check — offloads when `large_output=True` regardless of content size; supports `artifact_id` in payload for pointer-format replacement; updated log to `"ToolResultOffloader: offloading %s result size=%d bytes artifact_id=%s"` format
+- Created `packages/orbiter-core/tests/test_large_tool_results.py` with 24 tests: `TestFunctionToolLargeOutput` (5), `TestRetrieveArtifactAutoRegister` (5), `TestOffloadLargeResult` (5), `TestLargeOutputEndToEnd` (5), `TestToolResultOffloaderLargeOutputFlag` (4)
+- All 918 orbiter-core + 465 orbiter-context tests pass; only pre-existing pyright error at agent.py:1330 (MCPToolWrapper.to_dict) unrelated to changes
+- Files changed:
+  - packages/orbiter-core/src/orbiter/tool.py (added large_output param to FunctionTool + @tool)
+  - packages/orbiter-core/src/orbiter/agent.py (added _workspace attr, _register_retrieve_artifact, _offload_large_result, updated _register_tool and _execute_tools)
+  - packages/orbiter-context/src/orbiter/context/processor.py (updated ToolResultOffloader to support large_output flag + artifact_id + updated log format)
+  - packages/orbiter-core/tests/test_large_tool_results.py (new file with 24 tests)
+- **Learnings for future iterations:**
+  - `_register_retrieve_artifact()` must insert directly into `self.tools["retrieve_artifact"] = FunctionTool(...)` — calling `_register_tool()` would trigger the auto-registration check again (infinite recursion) and also might hit duplicate-name errors
+  - `_offload_large_result()` uses `uuid.uuid4().hex[:8]` suffix so artifact IDs are collision-resistant but human-readable; artifact ID format: `tool_result_{tool_name}_{8hex}`
+  - `Workspace` must be imported lazily inside `_offload_large_result()` since orbiter-context is an optional dependency; use `ImportError` fallback that returns content unchanged
+  - `ToolResultOffloader` in processor.py uses `ctx.state` (not workspace) — the log `artifact_id` can be None when no workspace is provided to the processor
+  - `retrieve_artifact` closure captures `agent_ref = self` so it always accesses the live `_workspace` attribute (set lazily)
+  - `ModelResponse(content="", tool_calls=[tc], ...)` — content must be `""` not `None` for tool-calling responses
+---
+
 ## Codebase Patterns
 - Context windowing helper `_apply_context_windowing(msg_list, context, provider)` lives in `agent.py`; lazy-imported in `runner.py` — use same pattern for any future context-related helpers
 - orbiter-web tests are in packages/orbiter-web/tests/ (not src/)
