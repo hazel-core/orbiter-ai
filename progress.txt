@@ -14,6 +14,27 @@ Started: Thu Feb 19 11:52:28 PM IST 2026
 
 ---
 
+## 2026-02-20 - US-009
+- Added `import logging` and `logger = logging.getLogger(__name__)` to orbiter-a2a/server.py and client.py
+- orbiter-a2a/server.py: added logger.info at run start and complete in execute_task() and _generate() stream, logger.error with exc_info=True on failure in both
+- orbiter-a2a/client.py: added logger.debug in RemoteAgent.run() and RemoteAgent.describe()
+- orbiter-cli/main.py: added `import logging` and logger; added logger.debug('CLI command=%s args=%r') at start of run, start_worker, task_status, task_cancel, task_list, worker_list
+- orbiter-distributed/client.py: upgraded TaskHandle.result() completed path from logger.debug to logger.info (task result received)
+- orbiter-distributed/worker.py: added exc_info=True to the _execute_task error log
+- orbiter-distributed/broker.py: already had full logger.debug on enqueue (submit) and dequeue (claim) — no changes needed
+- Files changed:
+  - packages/orbiter-a2a/src/orbiter/a2a/server.py
+  - packages/orbiter-a2a/src/orbiter/a2a/client.py
+  - packages/orbiter-cli/src/orbiter_cli/main.py
+  - packages/orbiter-distributed/src/orbiter/distributed/client.py
+  - packages/orbiter-distributed/src/orbiter/distributed/worker.py
+- All 373 orbiter-a2a + orbiter-distributed tests pass; 267 orbiter-cli tests pass; 0 new type errors
+- **Learnings for future iterations:**
+  - orbiter-distributed/broker.py, client.py, and worker.py already had extensive logging — only client.py "received" and worker.py exc_info needed updating
+  - orbiter-a2a files had no logging at all — needed full import + logger setup
+  - orbiter-cli commands are Typer decorated functions — logger.debug at top of each command body works fine
+---
+
 ## 2026-02-20 - US-008
 - Updated orbiter-context/config.py: changed make_config() log to include history_rounds: `ContextConfig created mode=%s history_rounds=%d`
 - Updated orbiter-context/processor.py: changed fire() log to `Processing context with %d neurons`; updated ToolResultOffloader log to `ToolResultOffloader: offloading tool=%s size=%d bytes`
