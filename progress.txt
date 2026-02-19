@@ -2,6 +2,28 @@
 Started: Thu Feb 19 11:52:28 PM IST 2026
 ---
 
+## 2026-02-20 - US-013
+- Added `load_history(agent_name: str, conversation_id: str, rounds: int) -> list[Message]` to `MemoryPersistence` in `orbiter-memory/src/orbiter/memory/persistence.py`
+- `load_history` queries `self.store` scoped to `agent_id=agent_name` and `task_id=conversation_id`, sorts results chronologically, applies round windowing, then converts MemoryItems → `orbiter.types.Message` objects
+- `HumanMemory` → `UserMessage`, `AIMemory` → `AssistantMessage` (with ToolCall list), `SystemMemory` → `SystemMessage`, `ToolMemory` → `ToolResult` (error field set from content when `is_error=True`)
+- Changed `SQLiteMemoryStore.__init__` default from `":memory:"` to `None`; when `None`, calls `_default_db_path()` which reads `ORBITER_MEMORY_PATH` env var (default: `~/.orbiter/memory.db`, `os.path.expanduser` applied)
+- Added `import os` and `_default_db_path()` helper function to `sqlite.py`
+- Added 7 tests to `TestLoadHistory` in `test_memory_persistence.py` covering: empty store, human+AI conversion, system memory, tool result, error tool result, windowing, and scoping
+- Added 5 tests to `TestDefaultPath` in `test_sqlite.py` covering: default home path, env var override, tilde expansion, store with no args uses env var, explicit path overrides env var
+- Files changed:
+  - packages/orbiter-memory/src/orbiter/memory/persistence.py
+  - packages/orbiter-memory/src/orbiter/memory/backends/sqlite.py
+  - packages/orbiter-memory/tests/test_memory_persistence.py
+  - packages/orbiter-memory/tests/test_sqlite.py
+- All 311 orbiter-memory tests pass (6 skipped); 0 new type errors in modified source files
+- **Learnings for future iterations:**
+  - `SQLiteMemoryStore.search()` returns items `ORDER BY created_at DESC` (newest-first); `ShortTermMemory.search()` returns items in insertion order (oldest-first); always `sorted(items, key=lambda x: x.created_at)` after fetching to normalise
+  - `conversation_id` maps to `metadata.task_id`; `agent_name` maps to `metadata.agent_id` — this is the canonical scoping convention for per-agent, per-conversation filtering
+  - `ToolMemory.is_error=True` means `content` holds the error message; convert to `ToolResult(content="", error=item.content)` when reconstructing
+  - `_default_db_path()` is exported so tests can call it directly with `monkeypatch.setenv()` + `_default_db_path()` to verify env-var behaviour without instantiating a store
+  - The pre-existing `len(rows)` type error in `sqlite.py:197` (Iterable[Row] vs Sized) is unrelated to US-013 changes
+---
+
 ## 2026-02-20 - US-012
 - Added `AgentMemory` dataclass to `orbiter-memory/src/orbiter/memory/base.py` with fields `short_term: MemoryStore` and `long_term: MemoryStore`; also imported `dataclass` and `field` from `dataclasses`
 - Extended `MemoryStore` Protocol's `search()` from abstract (`...`) to a concrete default implementation that filters `self._items` by keyword, memory_type, status, and metadata fields
