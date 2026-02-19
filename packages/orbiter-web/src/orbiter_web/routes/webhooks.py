@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hmac
 import json
 import logging
 import secrets
@@ -148,6 +149,7 @@ async def trigger_webhook(
     workflow_id: str,
     hook_id: str,
     request: Request,
+    url_token: str | None = Query(default=None),
 ) -> dict[str, Any]:
     """Receive an incoming webhook POST and trigger workflow execution.
 
@@ -175,6 +177,12 @@ async def trigger_webhook(
         raise HTTPException(status_code=404, detail="Webhook not found")
 
     webhook = dict(webhook)
+
+    # Validate url_token using constant-time comparison to prevent timing attacks.
+    stored_token: str = webhook.get("url_token") or ""
+    if not url_token or not hmac.compare_digest(url_token, stored_token):
+        await _append_request_log(webhook["id"], payload, "rejected_invalid_token", 403)
+        raise HTTPException(status_code=403, detail="Invalid token")
 
     if not webhook["enabled"]:
         await _append_request_log(webhook["id"], payload, "rejected_disabled", 403)
