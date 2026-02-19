@@ -21,6 +21,10 @@
 - Streaming API: `run.stream(agent, prompt, provider=provider, detailed=True)` from `orbiter.runner`; `detailed=True` enables StepEvent, UsageEvent, ToolResultEvent, StatusEvent; use `event_types={"text","usage"}` filter so UsageEvent is last in no-tool case
 - Gemini parallel tool calls: Vertex/Gemini API requires ALL function responses for a multi-tool step to be in a single turn; orbiter sends them as separate ToolResult messages which can trigger `400 INVALID_ARGUMENT`; avoid by using chained tools (sequential) instead of prompting for parallel independent calls
 
+- Web app REST API: implement auth and agent endpoints in `tests/integration/helpers/web_app.py`; use `secrets.token_urlsafe(32)` as opaque Bearer token (no JWT library needed); suppress ruff B008 with `# noqa: B008` on FastAPI `Depends()` in default args; in-memory `_users`, `_tokens`, `_agents` dicts at module level persist across requests within same process
+- Web app agent run endpoint: `get_provider(model_str)` + `Agent(name, model, instructions)` + `await agent.run(input, provider=provider)` → returns `{"output": result.text, "usage": {...}}`; imports inside endpoint function body are fine (ruff doesn't select PLC rules)
+- `http_client` fixture has 30s default timeout; pass `timeout=55.0` per-request to override for LLM calls; uvicorn subprocess inherits env vars so GOOGLE_CLOUD_PROJECT/GOOGLE_CLOUD_LOCATION available to web app
+
 ---
 
 # Ralph Progress Log
@@ -311,4 +315,20 @@ Started: Fri Feb 20 03:26:33 AM IST 2026
   - `parse_structured_output(result.text, TravelReport)` works correctly after two sequential tool calls — the LLM reliably emits JSON at the end if instructed clearly in system prompt + prompt
   - `assert len(result.tool_calls) == 2` is a reliable check when tools are chained; no extra tool calls are added
   - Timeout of 30s (PRD spec) is sufficient for 2 sequential tool calls + structured output (Vertex is fast)
+---
+---
+
+## 2026-02-20 - US-INT-022
+- What was implemented: Web API agent run via REST integration tests; extended web_app.py helper with auth and agent management endpoints
+- Files changed:
+  - `tests/integration/helpers/web_app.py` (extended with /api/auth/register, /api/auth/login, /api/agents, /api/agents/{id}/run)
+  - `tests/integration/test_web_api_agent.py` (new, 2 tests)
+- **Learnings for future iterations:**
+  - The existing orbiter-server has no auth system or /api/agents/{id}/run pattern — REST API endpoints were added to web_app.py helper instead
+  - Use `secrets.token_urlsafe(32)` as opaque Bearer token (no JWT library needed); store token→username in module-level dict
+  - FastAPI Depends() in function default args triggers ruff B008; suppress with `# noqa: B008` (standard FastAPI pattern)
+  - Lazy imports (inside endpoint body) are fine — ruff does not select PLC pylint rules
+  - `http_client` fixture has 30s timeout; pass `timeout=55.0` per-request to override for LLM calls
+  - Tests skip correctly when GOOGLE_CLOUD_PROJECT/GOOGLE_CLOUD_LOCATION absent (via vertex_model fixture)
+  - Uvicorn subprocess inherits parent env vars, so Vertex AI creds are available to the web app at runtime
 ---
