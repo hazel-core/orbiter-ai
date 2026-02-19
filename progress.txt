@@ -14,6 +14,29 @@ Started: Thu Feb 19 11:52:28 PM IST 2026
 
 ---
 
+## 2026-02-20 - US-008
+- Updated orbiter-context/config.py: changed make_config() log to include history_rounds: `ContextConfig created mode=%s history_rounds=%d`
+- Updated orbiter-context/processor.py: changed fire() log to `Processing context with %d neurons`; updated ToolResultOffloader log to `ToolResultOffloader: offloading tool=%s size=%d bytes`
+- Updated orbiter-context/token_tracker.py: added `TokenTracker: used=%d / total=%d (%.0f%%)` log after each add_step() call
+- Updated orbiter-context/workspace.py: changed write() logs to `Artifact stored: id=%s size=%d bytes`; added read() log `Artifact retrieved: id=%s`
+- Updated orbiter-memory/summary.py: changed check_trigger() logs from debug to info with format `Summarization triggered: threshold=%d messages=%d`; changed generate_summary() log to `Summary generated length=%d`
+- Updated orbiter-memory/long_term.py: changed submit() log from debug to info: `long-term extraction triggered: items=%d types=%d`
+- Files changed:
+  - packages/orbiter-context/src/orbiter/context/config.py
+  - packages/orbiter-context/src/orbiter/context/processor.py
+  - packages/orbiter-context/src/orbiter/context/token_tracker.py
+  - packages/orbiter-context/src/orbiter/context/workspace.py
+  - packages/orbiter-memory/src/orbiter/memory/summary.py
+  - packages/orbiter-memory/src/orbiter/memory/long_term.py
+- All 731 tests pass (6 skipped); 0 new type errors in modified files
+- **Learnings for future iterations:**
+  - Most orbiter-context and orbiter-memory files already had `import logging` and `logger = logging.getLogger(__name__)` — only log message content/level needed updating
+  - `orbiter-context/summary.py` does NOT exist — summary logic is in `orbiter-memory/summary.py`
+  - The pre-existing sqlite.py type error (`len(rows)` on `Iterable[Row]`) is unrelated to logging changes; ignore for this story
+  - "neurons" in processor.py context refers to the count of registered processors for the event
+  - TokenTracker: used=%d is per-agent accumulated, total=%d is all-agent accumulated
+---
+
 ## 2026-02-20 - US-007
 - Added `import os` and `_ENV_FORMAT = '%(asctime)s %(levelname)-8s %(name)s  %(message)s'` to `logging.py`
 - Added `_configure_from_env()` function that reads `ORBITER_DEBUG` and `ORBITER_LOG_LEVEL` env vars, sets root `orbiter` logger level, and adds a handler with the standard format when env vars are present
