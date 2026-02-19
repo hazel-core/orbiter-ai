@@ -216,3 +216,20 @@ Started: Fri Feb 20 03:26:33 AM IST 2026
   - Use timeout(60) not timeout(30) — each spawn_self call adds a full LLM round-trip
   - Prompt must instruct SEQUENTIAL spawns to avoid Gemini parallel-tool-call INVALID_ARGUMENT error
 ---
+
+## 2026-02-20 - US-INT-015
+- What was implemented: MCP large output workspace offload integration tests — verifies that a 15 KB MCP tool result triggers workspace offload, retrieve_artifact is called, and the keyword in the dataset is correctly identified
+- Files changed:
+  - `tests/integration/helpers/mcp_test_server.py` (added `get_large_dataset(topic: str)` method to TestServer)
+  - `tests/integration/test_mcp_large_output.py` (new, 2 tests + DataSummary model)
+- **Learnings for future iterations:**
+  - Large output offloading: `MCPServerConfig(large_output_tools=['tool_name'])` marks a tool as large_output=True; any result (regardless of size) is offloaded to workspace via `_offload_large_result()`; the 10 KB threshold (`_get_large_output_threshold()`) also triggers offload for ANY tool
+  - `agent._workspace` is `None` until first offload; after offload it's a `Workspace` object; `agent._workspace.list()` returns `list[Artifact]`
+  - `Workspace.list()` returns all `Artifact` objects in memory; no `await` needed (sync method)
+  - `retrieve_artifact` tool is auto-registered on ALL agents (even without tools); it retrieves artifacts from `agent._workspace` by artifact_id
+  - The pointer string format: `"[Result stored as artifact 'ARTIFACT_ID'. Call retrieve_artifact('ARTIFACT_ID') to access.]"` — LLM must be instructed to call retrieve_artifact when it sees this pattern
+  - Tool output: `get_large_dataset` generates >= 15 KB with keyword in header; trimmed at UTF-8 boundary to avoid corruption
+  - Use timeout(60) (not timeout(30)) for MCP large-output tests — subprocess spawn + LLM + retrieve_artifact LLM call adds overhead
+  - `DataSummary(contains_keyword: bool)` → parse via `parse_structured_output(result.text, DataSummary)` following established pattern
+  - Ruff I001: import blocks inside functions must be alphabetically sorted (orbiter._internal.output_parser before orbiter.agent before orbiter.mcp before orbiter.models)
+---
