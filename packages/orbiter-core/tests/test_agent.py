@@ -56,7 +56,13 @@ class TestAgentCreation:
         assert agent.max_steps == 10
         assert agent.temperature == 1.0
         assert agent.max_tokens is None
-        assert agent.memory is None
+        # memory is auto-created (AgentMemory) when orbiter-memory is installed, else None
+        try:
+            from orbiter.memory.base import AgentMemory  # pyright: ignore[reportMissingImports]
+            assert isinstance(agent.memory, AgentMemory)
+        except ImportError:
+            assert agent.memory is None
+        assert agent.conversation_id is None
         assert agent.context is None
 
     def test_full_config(self) -> None:
@@ -956,3 +962,78 @@ class TestAgentEdgeCases:
         second_call_msgs = provider.complete.call_args_list[1][0][0]
         tool_msgs = [m for m in second_call_msgs if m.role == "tool"]
         assert "pong" in tool_msgs[0].content
+
+
+# ---------------------------------------------------------------------------
+# Agent memory defaults (US-014)
+# ---------------------------------------------------------------------------
+
+
+class TestAgentMemoryDefaults:
+    def test_default_memory_auto_created(self) -> None:
+        """Agent() auto-creates AgentMemory when orbiter-memory is installed."""
+        try:
+            from orbiter.memory.base import AgentMemory  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-memory not installed")
+
+        agent = Agent(name="bot")
+        assert isinstance(agent.memory, AgentMemory)
+
+    def test_default_memory_has_short_and_long_term(self) -> None:
+        """Auto-created AgentMemory contains ShortTermMemory and SQLiteMemoryStore."""
+        try:
+            from orbiter.memory.backends.sqlite import SQLiteMemoryStore  # pyright: ignore[reportMissingImports]
+            from orbiter.memory.base import AgentMemory  # pyright: ignore[reportMissingImports]
+            from orbiter.memory.short_term import ShortTermMemory  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-memory not installed")
+
+        agent = Agent(name="bot")
+        assert isinstance(agent.memory, AgentMemory)
+        assert isinstance(agent.memory.short_term, ShortTermMemory)
+        assert isinstance(agent.memory.long_term, SQLiteMemoryStore)
+
+    def test_explicit_none_disables_memory(self) -> None:
+        """Agent(memory=None) fully disables memory — no persistence."""
+        agent = Agent(name="bot", memory=None)
+        assert agent.memory is None
+        assert agent._memory_persistence is None
+
+    def test_explicit_agent_memory_used(self) -> None:
+        """Agent(memory=AgentMemory(...)) uses the provided backends."""
+        try:
+            from orbiter.memory.base import AgentMemory  # pyright: ignore[reportMissingImports]
+            from orbiter.memory.short_term import ShortTermMemory  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-memory not installed")
+
+        short = ShortTermMemory()
+        long_store = ShortTermMemory()
+        custom = AgentMemory(short_term=short, long_term=long_store)
+        agent = Agent(name="bot", memory=custom)
+        assert agent.memory is custom
+        assert agent.memory.short_term is short
+        assert agent.memory.long_term is long_store
+
+    def test_conversation_id_initially_none(self) -> None:
+        """Agent has conversation_id=None on creation."""
+        agent = Agent(name="bot")
+        assert agent.conversation_id is None
+
+    def test_auto_created_memory_attaches_persistence(self) -> None:
+        """Auto-created AgentMemory wires up MemoryPersistence hooks."""
+        try:
+            from orbiter.memory.base import AgentMemory  # pyright: ignore[reportMissingImports]
+            from orbiter.memory.persistence import MemoryPersistence  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-memory not installed")
+
+        agent = Agent(name="bot")
+        assert isinstance(agent.memory, AgentMemory)
+        assert isinstance(agent._memory_persistence, MemoryPersistence)
+
+    def test_explicit_none_memory_conversation_id_still_none(self) -> None:
+        """Agent(memory=None) still has conversation_id=None."""
+        agent = Agent(name="bot", memory=None)
+        assert agent.conversation_id is None

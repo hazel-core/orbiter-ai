@@ -26,6 +26,21 @@ from orbiter.types import (
 
 _log = get_logger(__name__)
 
+# Sentinel: distinguishes "not provided" (auto-create) from explicit None (disable)
+_MEMORY_UNSET: Any = object()
+
+
+def _make_default_memory() -> Any:
+    """Try to create a default AgentMemory. Returns None if orbiter-memory is not installed."""
+    try:
+        from orbiter.memory.backends.sqlite import SQLiteMemoryStore  # pyright: ignore[reportMissingImports]
+        from orbiter.memory.base import AgentMemory  # pyright: ignore[reportMissingImports]
+        from orbiter.memory.short_term import ShortTermMemory  # pyright: ignore[reportMissingImports]
+
+        return AgentMemory(short_term=ShortTermMemory(), long_term=SQLiteMemoryStore())
+    except ImportError:
+        return None
+
 
 class AgentError(OrbiterError):
     """Raised for agent-level errors (duplicate tools, invalid config, etc.)."""
@@ -70,7 +85,7 @@ class Agent:
         max_steps: int = 10,
         temperature: float = 1.0,
         max_tokens: int | None = None,
-        memory: Any = None,
+        memory: Any = _MEMORY_UNSET,
         context: Any = None,
     ) -> None:
         if max_steps < 1:
@@ -83,7 +98,14 @@ class Agent:
         self.max_steps = max_steps
         self.temperature = temperature
         self.max_tokens = max_tokens
-        self.memory = memory
+        # Auto-create AgentMemory when not explicitly specified; None disables memory
+        if memory is _MEMORY_UNSET:
+            memory = _make_default_memory()
+            self._memory_is_auto: bool = True
+        else:
+            self._memory_is_auto = False
+        self.memory: Any = memory
+        self.conversation_id: str | None = None
         self.context = context
         self._memory_persistence: Any = None
 
@@ -101,6 +123,7 @@ class Agent:
 
         # Lifecycle hooks
         self.hook_manager = HookManager()
+        self._has_user_hooks: bool = bool(hooks)  # tracks explicitly-provided hooks only
         if hooks:
             for point, hook in hooks:
                 self.hook_manager.add(point, hook)
@@ -138,18 +161,23 @@ class Agent:
     def _attach_memory_persistence(self, memory: Any) -> None:
         """Auto-attach MemoryPersistence hooks if orbiter-memory is installed.
 
-        Only attaches if ``memory`` satisfies the ``MemoryStore`` protocol.
-        If the orbiter-memory package is not installed, this is a no-op.
+        Handles both ``AgentMemory`` (uses ``short_term`` store) and plain
+        ``MemoryStore`` objects.  If the orbiter-memory package is not
+        installed, this is a no-op.
         """
         try:
-            from orbiter.memory.base import MemoryStore  # pyright: ignore[reportMissingImports]
+            from orbiter.memory.base import AgentMemory, MemoryStore  # pyright: ignore[reportMissingImports]
             from orbiter.memory.persistence import (  # pyright: ignore[reportMissingImports]
                 MemoryPersistence,
             )
         except ImportError:
             return
 
-        if isinstance(memory, MemoryStore):
+        if isinstance(memory, AgentMemory):
+            persistence = MemoryPersistence(memory.short_term)
+            persistence.attach(self)
+            self._memory_persistence = persistence
+        elif isinstance(memory, MemoryStore):
             persistence = MemoryPersistence(memory)
             persistence.attach(self)
             self._memory_persistence = persistence
@@ -375,13 +403,11 @@ class Agent:
                 f"Agent '{self.name}' has callable instructions which cannot be serialized. "
                 "Use a string instruction instead."
             )
-        if self.memory is not None:
+        if self.memory is not None and not self._memory_is_auto:
             raise ValueError(
                 f"Agent '{self.name}' has a memory store which cannot be serialized."
             )
-        if self.hook_manager.has_hooks(HookPoint.START) or any(
-            self.hook_manager.has_hooks(hp) for hp in HookPoint
-        ):
+        if self._has_user_hooks:
             raise ValueError(
                 f"Agent '{self.name}' has hooks which cannot be serialized."
             )

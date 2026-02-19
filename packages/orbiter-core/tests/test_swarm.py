@@ -1310,3 +1310,29 @@ class TestSwarmStreamViaRun:
         text_events = [e for e in events if isinstance(e, TextEvent)]
         assert len(text_events) == 1
         assert text_events[0].text == "via run.stream"
+
+
+# ---------------------------------------------------------------------------
+# Swarm memory defaults (US-014)
+# ---------------------------------------------------------------------------
+
+
+class TestSwarmMemoryDefaults:
+    def test_lead_agent_has_auto_created_memory(self) -> None:
+        """Swarm lead agent has auto-created AgentMemory when not explicitly set."""
+        try:
+            from orbiter.memory.base import AgentMemory  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-memory not installed")
+
+        lead = Agent(name="lead")
+        worker = Agent(name="worker")
+        swarm = Swarm(agents=[lead, worker], mode="team")
+        assert isinstance(swarm.agents["lead"].memory, AgentMemory)
+
+    def test_lead_agent_with_disabled_memory_propagates(self) -> None:
+        """Swarm lead agent with memory=None keeps memory disabled."""
+        lead = Agent(name="lead", memory=None)
+        worker = Agent(name="worker", memory=None)
+        swarm = Swarm(agents=[lead, worker], mode="team")
+        assert swarm.agents["lead"].memory is None

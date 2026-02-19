@@ -20,10 +20,10 @@ from orbiter.types import AssistantMessage, SystemMessage, ToolResult, UserMessa
 
 
 def _make_agent() -> Any:
-    """Create a minimal Agent for testing."""
+    """Create a minimal Agent for testing (memory=None to avoid auto-attached hooks)."""
     from orbiter.agent import Agent
 
-    return Agent(name="test-agent")
+    return Agent(name="test-agent", memory=None)
 
 
 def _make_response(
