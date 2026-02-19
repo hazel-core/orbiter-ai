@@ -208,8 +208,9 @@ class ToolResultOffloader(ContextProcessor):
     """Offloads large tool results to workspace.
 
     Fires on ``"post_tool_call"``.  When a tool result's content exceeds
-    ``max_size`` characters, replaces it with a reference placeholder
-    and stores the full content under ``offloaded_results`` in state.
+    ``max_size`` characters, or when ``payload["large_output"]`` is ``True``,
+    replaces it with a reference placeholder and stores the full content under
+    ``offloaded_results`` in state.
 
     Parameters
     ----------
@@ -236,13 +237,16 @@ class ToolResultOffloader(ContextProcessor):
             return
 
         content = str(tool_result)
-        if len(content) <= self._max_size:
+        large_output: bool = bool(payload.get("large_output", False))
+
+        if not large_output and len(content) <= self._max_size:
             return
 
         # Store full content in offloaded results
         offloaded: list[dict[str, Any]] = ctx.state.get("offloaded_results") or []
         tool_name = payload.get("tool_name", "unknown")
         tool_call_id = payload.get("tool_call_id", "unknown")
+        artifact_id: str | None = payload.get("artifact_id")
 
         offloaded.append(
             {
@@ -250,19 +254,26 @@ class ToolResultOffloader(ContextProcessor):
                 "tool_call_id": tool_call_id,
                 "content": content,
                 "size": len(content),
+                "artifact_id": artifact_id,
             }
         )
         ctx.state.set("offloaded_results", offloaded)
 
         # Replace tool result content with a reference
-        truncated = content[: self._max_size // 2]
-        reference = (
-            f"{truncated}...\n\n"
-            f"[Result truncated — full content offloaded to workspace "
-            f"({len(content)} chars)]"
-        )
+        if artifact_id is not None:
+            reference = (
+                f"[Result stored as artifact '{artifact_id}'. "
+                f"Call retrieve_artifact('{artifact_id}') to access.]"
+            )
+        else:
+            truncated = content[: self._max_size // 2]
+            reference = (
+                f"{truncated}...\n\n"
+                f"[Result truncated — full content offloaded to workspace "
+                f"({len(content)} chars)]"
+            )
         payload["tool_result"] = reference
         logger.debug(
-            "ToolResultOffloader: offloading tool=%s size=%d bytes",
-            tool_name, len(content),
+            "ToolResultOffloader: offloading %s result size=%d bytes artifact_id=%s",
+            tool_name, len(content), artifact_id,
         )

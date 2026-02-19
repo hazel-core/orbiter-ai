@@ -421,6 +421,8 @@ class Agent:
             self.context = _make_default_context()
             self._context_is_auto = True
         self._memory_persistence: Any = None
+        # Workspace for large-output tool result offloading (lazy-created on first use)
+        self._workspace: Any = None
 
         # Tools indexed by name for O(1) lookup during execution
         self.tools: dict[str, Tool] = {}
@@ -455,6 +457,10 @@ class Agent:
     def _register_tool(self, t: Tool) -> None:
         """Add a tool, raising on duplicate names.
 
+        When a ``large_output=True`` tool is registered and ``retrieve_artifact``
+        is not yet present, auto-registers the ``retrieve_artifact`` tool so the
+        LLM can access offloaded results.
+
         Args:
             t: The tool to register.
 
@@ -464,6 +470,9 @@ class Agent:
         if t.name in self.tools:
             raise AgentError(f"Duplicate tool name '{t.name}' on agent '{self.name}'")
         self.tools[t.name] = t
+        # Auto-register retrieve_artifact when the first large_output=True tool is added
+        if getattr(t, "large_output", False) and "retrieve_artifact" not in self.tools:
+            self._register_retrieve_artifact()
 
     def _register_handoff(self, agent: Agent) -> None:
         """Add a handoff target, raising on duplicate names.
@@ -477,6 +486,80 @@ class Agent:
         if agent.name in self.handoffs:
             raise AgentError(f"Duplicate handoff agent '{agent.name}' on agent '{self.name}'")
         self.handoffs[agent.name] = agent
+
+    def _register_retrieve_artifact(self) -> None:
+        """Auto-register the ``retrieve_artifact`` tool for workspace access.
+
+        Called automatically by :meth:`_register_tool` when the first
+        ``large_output=True`` tool is registered on this agent.
+        """
+        agent_ref = self
+
+        async def retrieve_artifact(id: str) -> str:
+            """Retrieve the content of a large tool result stored as an artifact.
+
+            Args:
+                id: The artifact ID returned in the pointer string from a
+                    large_output tool.
+
+            Returns:
+                The full content of the stored artifact, or an error message
+                if the artifact is not found.
+            """
+            if agent_ref._workspace is None:
+                return "[Error: No workspace available — no artifacts have been stored yet]"
+            content = agent_ref._workspace.read(id)
+            if content is None:
+                return f"[Error: Artifact '{id}' not found in workspace]"
+            return content
+
+        # Direct dict insertion avoids triggering the duplicate check in _register_tool
+        # and the large_output auto-registration loop.
+        self.tools["retrieve_artifact"] = FunctionTool(
+            retrieve_artifact, name="retrieve_artifact"
+        )
+
+    async def _offload_large_result(self, tool_name: str, content: str) -> str:
+        """Store a large tool result in the workspace and return a pointer string.
+
+        Lazily creates the agent's :class:`~orbiter.context.workspace.Workspace`
+        on first use.  Falls back to returning the content unchanged when
+        ``orbiter-context`` is not installed.
+
+        Args:
+            tool_name: Name of the tool that produced the result (used in the artifact ID).
+            content: The full tool result string to offload.
+
+        Returns:
+            A pointer string referencing the stored artifact, or the original
+            *content* when the workspace is unavailable.
+        """
+        artifact_id = f"tool_result_{tool_name}_{uuid.uuid4().hex[:8]}"
+
+        # Lazy-create workspace when first needed
+        if self._workspace is None:
+            try:
+                from orbiter.context.workspace import Workspace  # pyright: ignore[reportMissingImports]
+
+                self._workspace = Workspace(workspace_id=f"agent_{self.name}")
+            except ImportError:
+                _log.debug(
+                    "ToolResultOffloader: orbiter-context not installed, skipping offload for %s",
+                    tool_name,
+                )
+                return content
+
+        await self._workspace.write(artifact_id, content)
+        _log.debug(
+            "ToolResultOffloader: offloading %s result size=%d bytes artifact_id=%s",
+            tool_name,
+            len(content),
+            artifact_id,
+        )
+        return (
+            f"[Result stored as artifact '{artifact_id}'. "
+            f"Call retrieve_artifact('{artifact_id}') to access.]"
+        )
 
     def _make_spawn_self_tool(self) -> Tool:
         """Create the ``spawn_self`` FunctionTool closure for this agent.
@@ -1075,6 +1158,9 @@ class Agent:
                 try:
                     output = await tool.execute(**action.arguments)
                     content = output if isinstance(output, str) else str(output)
+                    # Large-output offloading: store in workspace and inject pointer
+                    if getattr(tool, "large_output", False):
+                        content = await self._offload_large_result(action.tool_name, content)
                     result = ToolResult(
                         tool_call_id=action.tool_call_id,
                         tool_name=action.tool_name,
