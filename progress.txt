@@ -40,6 +40,20 @@ Started: Thu Feb 19 11:52:28 PM IST 2026
   - `_append_request_log` makes additional `get_db()` calls that need to be included in the mock row sequence
 ---
 
+## 2026-02-20 - US-004
+- Removed the log line that emitted the raw password reset token (`logger.info("Password reset token for %s: %s", body.email, token)`) from `forgot_password()` in `routes/auth.py:389`
+- Replaced with `logger.debug("Password reset email sent to %s", body.email)` — email only, no token
+- Grepped entire orbiter-web package for other logger calls emitting tokens, session IDs, or raw credentials — no others found
+- Created `packages/orbiter-web/tests/test_auth_reset.py` with 2 tests: token absent from logs, email present in debug log
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/routes/auth.py (line 388-389: remove token log, add email-only debug)
+  - packages/orbiter-web/tests/test_auth_reset.py (new file)
+- **Learnings for future iterations:**
+  - `caplog.at_level(logging.DEBUG, logger="orbiter_web")` captures debug logs for the `orbiter_web` logger in tests
+  - Use `re.compile(UUID_PATTERN).search(record.message)` to assert no UUID token appears in any log record
+  - The `forgot_password` route makes 2 `get_db()` calls: SELECT user by email, then INSERT password_resets
+---
+
 ## 2026-02-19 - US-001
 - Replaced manual `.replace()`-based escaping in `_build_runner_script()` with `repr()` serialization of the user code string
 - The repr() approach handles \r, \t, \0, null bytes, \u0041, embedded triple-quotes, and any other special characters safely
