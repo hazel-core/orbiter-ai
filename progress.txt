@@ -1,5 +1,8 @@
 ## Codebase Patterns
 - SQLiteMemoryStore: import from `orbiter.memory.backends.sqlite`, needs `await store.init()` before use
+- Context summarization: `_apply_context_windowing()` in `orbiter.agent` creates a transient `SystemMessage("[Conversation Summary]...")` — NOT persisted to SQLiteMemoryStore; only HumanMemory + AIMemory are persisted; summarization fires when non-system msg_count >= summary_threshold (including loaded history + new user message)
+- summary_threshold=4 means summarization fires at turn 3 (turn 1=2 stored items, turn 2=4 stored → 4+1 new=5 >= 4, fires); keep_recent = max(2, summary_threshold//2) = 2
+- token_budget_trigger only fires INSIDE the tool loop (when tool calls happen), not between turns — set summary_threshold to test summarization in non-tool scenarios
 - `agent.run()` returns `AgentOutput(text, tool_calls, usage)` — NO `output` field; for structured output, use `parse_structured_output(result.text, MyModel)` from `orbiter._internal.output_parser`
 - `output_type` on Agent is stored but NOT auto-applied; instruct LLM to return JSON in system prompt and parse manually
 - Agent memory persistence: pass `memory=SQLiteMemoryStore(db_path=...)` directly (not AgentMemory) for simple per-store persistence; agent_id and task_id are auto-set; user_id is NOT auto-set
@@ -115,6 +118,21 @@ Started: Fri Feb 20 03:26:33 AM IST 2026
   - `search(metadata=MemoryMetadata(user_id="..."))` filters by user_id — user isolation works correctly
   - `memory_store` fixture (from conftest.py) yields an already-init'd SQLiteMemoryStore backed by a temp file — no need to call `await store.init()` again
   - Tests that only exercise SQLiteMemoryStore directly (no LLM needed) run in ~0.2s total — very fast
+---
+
+## 2026-02-20 - US-INT-009
+- What was implemented: Context summarization trigger tests — verifies summarization pipeline works without errors through 6 turns and that input_tokens are bounded after compression
+- Files changed:
+  - `tests/integration/test_context_summarization.py` (new)
+- **Learnings for future iterations:**
+  - SummaryMemory does NOT exist as a persistent class; summarization creates transient SystemMessages only (not saved to SQLiteMemoryStore)
+  - MemoryPersistence hooks only save HumanMemory (before LLM call) and AIMemory/ToolMemory (via POST_LLM_CALL/POST_TOOL_CALL hooks)
+  - SystemMemory items from load_history() CAN be reconstructed IF written to store manually, but the summarization pipeline never writes them
+  - token_budget_trigger fires only during the tool loop (lines 964-982 in agent.py) — not between turns; set summary_threshold for turn-to-turn summarization tests
+  - summary_threshold=4 means first summarization fires at turn 3 (4 stored messages + 1 new = 5 >= 4)
+  - generate_summary() uses the provider to make an extra LLM call for the summary — add extra time budget (~2-3s per summarization event); use timeout(90) not timeout(30)
+  - Adapted test_summarization_shortens_context to compare usage.input_tokens (proxy for context length) since AgentOutput has no messages field
+  - Adapted test_token_budget_triggers_summarization to verify >= 12 items in store (all 6 turns completed) since SummaryMemory is not persisted
 ---
 
 ## 2026-02-20 - US-INT-008
