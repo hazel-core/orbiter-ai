@@ -15,6 +15,8 @@
 - pyproject.toml testpaths uses glob pattern `"packages/*/tests"` for package tests
 - `asyncio_mode = "auto"` in pytest config means all async test/fixture functions auto-detected
 - Integration test branch: `ralph/orbiter-integration-tests`
+- Streaming API: `run.stream(agent, prompt, provider=provider, detailed=True)` from `orbiter.runner`; `detailed=True` enables StepEvent, UsageEvent, ToolResultEvent, StatusEvent; use `event_types={"text","usage"}` filter so UsageEvent is last in no-tool case
+- Gemini parallel tool calls: Vertex/Gemini API requires ALL function responses for a multi-tool step to be in a single turn; orbiter sends them as separate ToolResult messages which can trigger `400 INVALID_ARGUMENT`; avoid by using chained tools (sequential) instead of prompting for parallel independent calls
 
 ---
 
@@ -53,6 +55,19 @@ Started: Fri Feb 20 03:26:33 AM IST 2026
   - Two agents sharing a SQLiteMemoryStore with same `name` and `conversation_id` will load each other's history via `load_history()` in `MemoryPersistence`
   - `MemoryMetadata(user_id=...)` scoping works correctly in SQLiteMemoryStore; querying by user_id only returns items with that user_id
   - `test_memory_metadata_scoping` tests SQLiteMemoryStore metadata isolation directly (no LLM needed)
+---
+
+## 2026-02-20 - US-INT-004
+- What was implemented: Agent streaming event ordering tests
+- Files changed:
+  - `tests/integration/test_agent_streaming.py` (new)
+- **Learnings for future iterations:**
+  - `run.stream()` lives in `orbiter.runner`; `run.stream` is attached to the `run` callable as `run.stream = _stream`; use `# type: ignore[attr-defined]` at call site
+  - `detailed=True` enables StepEvent, UsageEvent, ToolResultEvent, StatusEvent; without it only TextEvent and ToolCallEvent are emitted
+  - Use `event_types={"text","usage"}` filter to make UsageEvent the last event in a no-tool stream (StepEvent/StatusEvent are filtered out)
+  - Use `event_types={"text","tool_call","tool_result","usage"}` filter for tool call ordering tests
+  - Gemini/Vertex API requires ALL function responses for a parallel multi-tool step to be in a SINGLE user turn; orbiter sends separate ToolResult messages which triggers `400 INVALID_ARGUMENT: number of function response parts must equal function call parts`; avoid by using CHAINED tools (sequential dependency) rather than prompting for parallel independent calls
+  - StepEvent count: any single tool call creates >= 2 steps (tool step + final response step) → >= 4 StepEvents (started+completed each); chained 2-tool test gives >= 6 StepEvents
 ---
 
 ## 2026-02-20 - US-INT-003
