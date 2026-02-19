@@ -62,6 +62,14 @@ class ContextConfig(BaseModel, frozen=True):
         description="Names of neurons to include in prompt building",
     )
 
+    # Token budget trigger for early summarization
+    token_budget_trigger: float = Field(
+        default=0.8,
+        ge=0.0,
+        le=1.0,
+        description="Token fill ratio (0–1) above which summarization triggers early",
+    )
+
     # Extensible metadata
     extra: dict[str, Any] = Field(
         default_factory=dict,

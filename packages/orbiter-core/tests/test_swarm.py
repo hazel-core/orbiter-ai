@@ -1336,3 +1336,49 @@ class TestSwarmMemoryDefaults:
         worker = Agent(name="worker", memory=None)
         swarm = Swarm(agents=[lead, worker], mode="team")
         assert swarm.agents["lead"].memory is None
+
+
+# ---------------------------------------------------------------------------
+# Swarm context_mode propagation (US-016)
+# ---------------------------------------------------------------------------
+
+
+class TestSwarmContextMode:
+    def test_swarm_propagates_context_mode_to_agents(self) -> None:
+        """Swarm(context_mode='pilot') propagates ContextConfig(mode='pilot') to all agents."""
+        try:
+            from orbiter.context.config import AutomationMode, ContextConfig  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-context not installed")
+
+        lead = Agent(name="lead")
+        worker = Agent(name="worker")
+        swarm = Swarm(agents=[lead, worker], context_mode="pilot")
+
+        assert isinstance(swarm.agents["lead"].context, ContextConfig)
+        assert swarm.agents["lead"].context.mode == AutomationMode.PILOT
+        assert isinstance(swarm.agents["worker"].context, ContextConfig)
+        assert swarm.agents["worker"].context.mode == AutomationMode.PILOT
+
+    def test_swarm_context_mode_none_disables_context(self) -> None:
+        """Swarm(context_mode=None) disables context on all agents."""
+        lead = Agent(name="lead")
+        worker = Agent(name="worker")
+        swarm = Swarm(agents=[lead, worker], context_mode=None)
+
+        assert swarm.agents["lead"].context is None
+        assert swarm.agents["worker"].context is None
+
+    def test_swarm_without_context_mode_agents_keep_defaults(self) -> None:
+        """Swarm without context_mode leaves agent contexts unchanged."""
+        try:
+            from orbiter.context.config import ContextConfig  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-context not installed")
+
+        lead = Agent(name="lead")
+        worker = Agent(name="worker")
+        # Both agents should retain their auto-created copilot context
+        swarm = Swarm(agents=[lead, worker])
+        assert isinstance(swarm.agents["lead"].context, ContextConfig)
+        assert isinstance(swarm.agents["worker"].context, ContextConfig)

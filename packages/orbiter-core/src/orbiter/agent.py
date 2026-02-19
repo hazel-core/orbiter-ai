@@ -27,8 +27,9 @@ from orbiter.types import (
 
 _log = get_logger(__name__)
 
-# Sentinel: distinguishes "not provided" (auto-create) from explicit None (disable)
+# Sentinels: distinguish "not provided" (auto-create) from explicit None (disable)
 _MEMORY_UNSET: Any = object()
+_CONTEXT_UNSET: Any = object()
 
 
 def _make_default_memory() -> Any:
@@ -39,6 +40,29 @@ def _make_default_memory() -> Any:
         from orbiter.memory.short_term import ShortTermMemory  # pyright: ignore[reportMissingImports]
 
         return AgentMemory(short_term=ShortTermMemory(), long_term=SQLiteMemoryStore())
+    except ImportError:
+        return None
+
+
+def _make_default_context() -> Any:
+    """Try to create a default ContextConfig(mode='copilot'). Returns None if not installed."""
+    try:
+        from orbiter.context.config import make_config  # pyright: ignore[reportMissingImports]
+
+        return make_config("copilot")
+    except ImportError:
+        return None
+
+
+def _make_context_from_mode(mode: Any) -> Any:
+    """Create a ContextConfig from a mode string or AutomationMode enum.
+
+    Returns None if orbiter-context is not installed.
+    """
+    try:
+        from orbiter.context.config import make_config  # pyright: ignore[reportMissingImports]
+
+        return make_config(mode)
     except ImportError:
         return None
 
@@ -87,7 +111,8 @@ class Agent:
         temperature: float = 1.0,
         max_tokens: int | None = None,
         memory: Any = _MEMORY_UNSET,
-        context: Any = None,
+        context_mode: Any = _CONTEXT_UNSET,
+        context: Any = _CONTEXT_UNSET,
     ) -> None:
         if max_steps < 1:
             raise AgentError(f"max_steps must be >= 1, got {max_steps}")
@@ -107,7 +132,17 @@ class Agent:
             self._memory_is_auto = False
         self.memory: Any = memory
         self.conversation_id: str | None = None
-        self.context = context
+        # Resolve context: explicit context takes precedence over context_mode; both
+        # unset triggers auto-creation of ContextConfig(mode='copilot').
+        if context is not _CONTEXT_UNSET:
+            self.context = context
+            self._context_is_auto: bool = False
+        elif context_mode is not _CONTEXT_UNSET:
+            self.context = None if context_mode is None else _make_context_from_mode(context_mode)
+            self._context_is_auto = False
+        else:
+            self.context = _make_default_context()
+            self._context_is_auto = True
         self._memory_persistence: Any = None
 
         # Tools indexed by name for O(1) lookup during execution
@@ -446,7 +481,7 @@ class Agent:
             raise ValueError(
                 f"Agent '{self.name}' has hooks which cannot be serialized."
             )
-        if self.context is not None:
+        if self.context is not None and not self._context_is_auto:
             raise ValueError(
                 f"Agent '{self.name}' has a context engine which cannot be serialized."
             )

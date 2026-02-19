@@ -449,11 +449,15 @@ class TestAgentContextWiring:
         agent = Agent(name="test", context=ctx)
         assert agent.context is ctx
 
-    def test_agent_context_default_none(self) -> None:
+    def test_agent_context_default_auto_created(self) -> None:
+        """Agent without explicit context auto-creates ContextConfig(mode='copilot')."""
         from orbiter.agent import Agent
+        from orbiter.context.config import AutomationMode, ContextConfig  # pyright: ignore[reportMissingImports]
 
         agent = Agent(name="test")
-        assert agent.context is None
+        assert isinstance(agent.context, ContextConfig)
+        assert agent.context.mode == AutomationMode.COPILOT
+        assert agent._context_is_auto is True
 
     def test_agent_describe_does_not_include_context(self) -> None:
         from orbiter.agent import Agent

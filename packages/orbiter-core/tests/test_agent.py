@@ -63,7 +63,12 @@ class TestAgentCreation:
         except ImportError:
             assert agent.memory is None
         assert agent.conversation_id is None
-        assert agent.context is None
+        # context is auto-created (ContextConfig copilot) when orbiter-context is installed
+        try:
+            from orbiter.context.config import ContextConfig  # pyright: ignore[reportMissingImports]
+            assert isinstance(agent.context, ContextConfig)
+        except ImportError:
+            assert agent.context is None
 
     def test_full_config(self) -> None:
         """Agent accepts all configuration parameters."""
@@ -1177,3 +1182,100 @@ class TestAgentHistoryPersistence:
         user_msgs = [m for m in captured_messages if m.role == "user"]
         assert len(user_msgs) == 1
         assert user_msgs[0].content == "Hello"
+
+
+# ---------------------------------------------------------------------------
+# Context defaults (US-016)
+# ---------------------------------------------------------------------------
+
+
+class TestAgentContextDefaults:
+    def test_auto_creates_copilot_context(self) -> None:
+        """Agent with no context params auto-creates ContextConfig(mode='copilot')."""
+        try:
+            from orbiter.context.config import AutomationMode, ContextConfig  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-context not installed")
+
+        agent = Agent(name="bot")
+        assert isinstance(agent.context, ContextConfig)
+        assert agent.context.mode == AutomationMode.COPILOT
+        assert agent._context_is_auto is True
+
+    def test_context_none_disables_context(self) -> None:
+        """Agent(context=None) fully disables the context engine."""
+        agent = Agent(name="bot", context=None)
+        assert agent.context is None
+        assert agent._context_is_auto is False
+
+    def test_context_mode_none_disables_context(self) -> None:
+        """Agent(context_mode=None) fully disables the context engine."""
+        agent = Agent(name="bot", context_mode=None)
+        assert agent.context is None
+        assert agent._context_is_auto is False
+
+    def test_context_mode_pilot(self) -> None:
+        """Agent(context_mode='pilot') creates ContextConfig(mode='pilot')."""
+        try:
+            from orbiter.context.config import AutomationMode, ContextConfig  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-context not installed")
+
+        agent = Agent(name="bot", context_mode="pilot")
+        assert isinstance(agent.context, ContextConfig)
+        assert agent.context.mode == AutomationMode.PILOT
+        assert agent._context_is_auto is False
+
+    def test_context_mode_navigator(self) -> None:
+        """Agent(context_mode='navigator') creates ContextConfig(mode='navigator')."""
+        try:
+            from orbiter.context.config import AutomationMode, ContextConfig  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-context not installed")
+
+        agent = Agent(name="bot", context_mode="navigator")
+        assert isinstance(agent.context, ContextConfig)
+        assert agent.context.mode == AutomationMode.NAVIGATOR
+
+    def test_explicit_context_takes_precedence_over_context_mode(self) -> None:
+        """When context= is given, it takes precedence over context_mode."""
+        try:
+            from orbiter.context.config import AutomationMode, ContextConfig, make_config  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-context not installed")
+
+        custom_ctx = make_config("navigator")
+        agent = Agent(name="bot", context=custom_ctx, context_mode="pilot")
+        assert isinstance(agent.context, ContextConfig)
+        assert agent.context.mode == AutomationMode.NAVIGATOR
+
+    def test_explicit_context_config_accepted(self) -> None:
+        """Agent(context=ContextConfig(...)) uses the provided config directly."""
+        try:
+            from orbiter.context.config import AutomationMode, ContextConfig  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-context not installed")
+
+        cfg = ContextConfig(mode="pilot", history_rounds=50)
+        agent = Agent(name="bot", context=cfg)
+        assert agent.context is cfg
+        assert agent.context.history_rounds == 50
+        assert agent._context_is_auto is False
+
+    def test_auto_context_not_raised_in_to_dict(self) -> None:
+        """Auto-created context does not prevent serialization."""
+        agent = Agent(name="bot")  # auto-creates context
+        # Should not raise even though context is set (it's auto-created)
+        d = agent.to_dict()
+        assert d["name"] == "bot"
+
+    def test_explicit_context_raises_in_to_dict(self) -> None:
+        """Explicitly provided ContextConfig raises ValueError in to_dict()."""
+        try:
+            from orbiter.context.config import ContextConfig  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-context not installed")
+
+        agent = Agent(name="bot", context=ContextConfig())
+        with pytest.raises(ValueError, match="context engine"):
+            agent.to_dict()

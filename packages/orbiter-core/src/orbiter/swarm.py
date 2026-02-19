@@ -28,6 +28,9 @@ from orbiter.types import Message, OrbiterError, RunResult, StatusEvent, StreamE
 
 _log = get_logger(__name__)
 
+# Sentinel to distinguish "not provided" from explicit None
+_SWARM_CONTEXT_UNSET: object = object()
+
 
 class SwarmError(OrbiterError):
     """Raised for swarm-level errors (invalid flow, missing agents, etc.)."""
@@ -59,6 +62,7 @@ class Swarm:
         flow: str | None = None,
         mode: str = "workflow",
         max_handoffs: int = 10,
+        context_mode: Any = _SWARM_CONTEXT_UNSET,
     ) -> None:
         if not agents:
             raise SwarmError("Swarm requires at least one agent")
@@ -97,6 +101,15 @@ class Swarm:
             self.flow_order = [a.name for a in agents]
 
         self.flow = flow
+
+        # Propagate context_mode to all member agents when explicitly provided
+        if context_mode is not _SWARM_CONTEXT_UNSET:
+            from orbiter.agent import _make_context_from_mode  # avoid circular at module level
+
+            ctx = None if context_mode is None else _make_context_from_mode(context_mode)
+            for agent in self.agents.values():
+                agent.context = ctx
+                agent._context_is_auto = False
 
         # Set name from the first agent for compatibility with runner
         self.name = f"swarm({self.flow_order[0]}...)"
