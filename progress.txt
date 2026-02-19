@@ -2,6 +2,34 @@
 Started: Thu Feb 19 11:52:28 PM IST 2026
 ---
 
+## 2026-02-20 - US-014
+- Added `_MEMORY_UNSET` sentinel + `_make_default_memory()` helper in `agent.py` to auto-create `AgentMemory(short_term=ShortTermMemory(), long_term=SQLiteMemoryStore())` when `memory` param is not supplied
+- Changed `Agent.__init__` `memory` parameter from `Any = None` to `Any = _MEMORY_UNSET`; when sentinel, calls `_make_default_memory()`; when `None`, stores None (disables memory)
+- Added `self._memory_is_auto: bool` flag to track auto-created memory vs explicitly provided
+- Added `self._has_user_hooks: bool = bool(hooks)` to track explicitly-provided hooks (vs auto-attached memory hooks)
+- Added `self.conversation_id: str | None = None` instance attribute
+- Updated `_attach_memory_persistence()` to handle `AgentMemory` (uses `memory.short_term` as `MemoryPersistence` store) in addition to raw `MemoryStore`
+- Updated `to_dict()` to skip ValueError for auto-created memory (`_memory_is_auto=True`) and to check `_has_user_hooks` instead of `hook_manager.has_hooks()` (avoids false positives from memory-auto-attached hooks)
+- Updated `test_agent.py::TestAgentCreation::test_minimal` to check for `AgentMemory` (with ImportError fallback) + assert `conversation_id is None`
+- Added `TestAgentMemoryDefaults` class (7 tests) covering: auto-created AgentMemory, short+long term types, `memory=None` disabled, explicit AgentMemory used, `conversation_id` initially None, persistence attached, `memory=None` still has `conversation_id=None`
+- Added `TestSwarmMemoryDefaults` class to `test_swarm.py` (2 tests) verifying lead agent has auto-created memory + memory=None propagates
+- Updated `test_memory_integration.py::test_agent_default_memory_none` → `test_agent_default_memory_auto_created` to match new behavior
+- Updated `test_memory_persistence.py::_make_agent()` to use `memory=None` (isolation for persistence tests)
+- Files changed:
+  - packages/orbiter-core/src/orbiter/agent.py
+  - packages/orbiter-core/tests/test_agent.py
+  - packages/orbiter-core/tests/test_swarm.py
+  - packages/orbiter-memory/tests/test_memory_integration.py
+  - packages/orbiter-memory/tests/test_memory_persistence.py
+- All 1130 orbiter-core + orbiter-memory tests pass (6 skipped); pre-existing pyright error at agent.py:524 unrelated to changes
+- **Learnings for future iterations:**
+  - Use `_MEMORY_UNSET = object()` sentinel to distinguish "not provided" from `None` in `__init__` kwargs; `memory: Any = _MEMORY_UNSET` in signature works cleanly
+  - Auto-attached hooks (from memory persistence) must not be counted as "user hooks" in `to_dict()` checks; use `_has_user_hooks: bool` flag set at init time from explicit `hooks` parameter
+  - `_memory_is_auto: bool` flag lets `to_dict()` silently skip auto-created memory (maintains serialization backward compatibility)
+  - `test_memory_persistence.py::_make_agent()` should use `memory=None` — the helper is for testing MemoryPersistence in isolation, not agent memory
+  - `_attach_memory_persistence()` checks `isinstance(memory, AgentMemory)` first, then `isinstance(memory, MemoryStore)` for legacy compatibility
+---
+
 ## 2026-02-20 - US-013
 - Added `load_history(agent_name: str, conversation_id: str, rounds: int) -> list[Message]` to `MemoryPersistence` in `orbiter-memory/src/orbiter/memory/persistence.py`
 - `load_history` queries `self.store` scoped to `agent_id=agent_name` and `task_id=conversation_id`, sorts results chronologically, applies round windowing, then converts MemoryItems → `orbiter.types.Message` objects
