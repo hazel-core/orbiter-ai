@@ -83,8 +83,9 @@ def _build_runner_script(
 ) -> str:
     """Build a self-contained Python script that runs user code in a restricted env."""
     allowed_json = json.dumps(allowed_libraries)
-    # Escape the user code for embedding as a string literal
-    escaped_code = code.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n")
+    # Use repr() to safely serialize the user code — handles \r, \t, \0, null bytes,
+    # embedded quotes, triple-quotes, and all other special characters without injection.
+    code_repr = repr(code)
 
     return textwrap.dedent(f"""\
         import builtins as _builtins
@@ -149,7 +150,7 @@ def _build_runner_script(
             pass
 
         # -- Execute user code --
-        _user_code = '{escaped_code}'
+        _user_code = {code_repr}
         exec(compile(_user_code, "<sandbox>", "exec"))
     """)
 
