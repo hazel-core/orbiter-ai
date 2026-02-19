@@ -2,6 +2,32 @@
 Started: Thu Feb 19 11:52:28 PM IST 2026
 ---
 
+## 2026-02-20 - US-027
+- Added `large_output_tools: list[str] = []` parameter to `MCPServerConfig.__init__` in `orbiter-mcp/client.py`; added `"large_output_tools"` to `__slots__`; serialized in `to_dict()` and restored in `from_dict()`
+- Added `"large_output"` to `MCPToolWrapper.__slots__`; set `self.large_output = mcp_tool.name in large_output_tools` (from `server_config.large_output_tools`) in `__init__`; included in `to_dict()` + `from_dict()`
+- Added `import os`, `_LARGE_OUTPUT_THRESHOLD_DEFAULT = 10240`, and `_get_large_output_threshold()` helper to `agent.py` that reads `ORBITER_LARGE_OUTPUT_THRESHOLD` env var (default 10240 bytes) with invalid-value fallback
+- Changed `_execute_tools()` offloading condition from `if getattr(tool, "large_output", False):` to `if getattr(tool, "large_output", False) or len(content.encode("utf-8")) > _get_large_output_threshold():`
+- Changed `Agent.__init__` to always call `_register_retrieve_artifact()` after the tools loop (unconditionally, not just when large_output tools are present); guarded with `if "retrieve_artifact" not in self.tools` to avoid clobbering user-provided tool of same name
+- Excluded `retrieve_artifact` from `to_dict()` serialization (it's always re-registered on reconstruction via `__init__`)
+- Updated tests in `test_large_tool_results.py`: replaced `test_no_large_output_tool_no_retrieve_artifact` with `test_retrieve_artifact_always_registered`; updated `test_add_tool_large_output_also_registers_retrieve_artifact`; added `TestThresholdBasedAutoOffload` (5 tests) and `TestMCPLargeOutputTools` (8 tests)
+- Updated several assertions in `test_agent.py`, `test_serialization.py`, `test_swarm.py` to account for `retrieve_artifact` always being present
+- All 931 orbiter-core tests pass + all 163 orbiter-mcp tests pass; only pre-existing pyright error at agent.py (MCPToolWrapper.to_dict) unrelated to changes
+- Files changed:
+  - packages/orbiter-mcp/src/orbiter/mcp/client.py (added large_output_tools to MCPServerConfig)
+  - packages/orbiter-mcp/src/orbiter/mcp/tools.py (added large_output attr to MCPToolWrapper)
+  - packages/orbiter-core/src/orbiter/agent.py (os import, _get_large_output_threshold, threshold check in _execute_tools, always-register retrieve_artifact, skip in to_dict)
+  - packages/orbiter-core/tests/test_large_tool_results.py (updated + new test classes)
+  - packages/orbiter-core/tests/test_agent.py (updated tool count assertions)
+  - packages/orbiter-core/tests/test_serialization.py (updated tool count assertions)
+  - packages/orbiter-core/tests/test_swarm.py (updated tool count assertion)
+- **Learnings for future iterations:**
+  - `retrieve_artifact` is a closure (`_register_retrieve_artifact.<locals>.retrieve_artifact`) — must be excluded from `to_dict()` serialization (cannot be imported by path) AND re-created on `Agent.__init__` (which already happens unconditionally)
+  - `len(content.encode("utf-8"))` is the correct byte count for threshold check (handles multi-byte chars); threshold is read per call so env var changes take effect without restart
+  - `MCPServerConfig` uses `__slots__` so new fields MUST be added there or `AttributeError` will be raised on assignment
+  - When always-registering `retrieve_artifact`, check `"retrieve_artifact" not in self.tools` first to avoid overwriting a user-provided tool with the same name
+  - The `_register_tool()` condition `if getattr(t, "large_output", False) and "retrieve_artifact" not in self.tools` becomes a no-op since retrieve_artifact is always registered before any `add_tool()` call — can safely remain for belt-and-suspenders
+---
+
 ## 2026-02-20 - US-025
 - Added `allow_self_spawn: bool = False` and `max_spawn_depth: int = 3` parameters to `Agent.__init__`
 - Added `self._spawn_depth: int = 0` and `self._current_provider: Any = None` internal attributes to `Agent.__init__`
