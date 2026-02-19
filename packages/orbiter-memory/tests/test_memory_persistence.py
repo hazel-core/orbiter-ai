@@ -90,6 +90,35 @@ class TestAttachDetach:
         persistence.detach(agent)
         persistence.detach(agent)  # should not raise
 
+    def test_attach_idempotent(self) -> None:
+        """Attaching twice registers hooks only once (second call is a no-op)."""
+        agent = _make_agent()
+        store = ShortTermMemory()
+        persistence = MemoryPersistence(store)
+
+        persistence.attach(agent)
+        hook_count_after_first = len(agent.hook_manager._hooks.get(HookPoint.POST_LLM_CALL, []))
+
+        persistence.attach(agent)  # second call should be a no-op
+        hook_count_after_second = len(agent.hook_manager._hooks.get(HookPoint.POST_LLM_CALL, []))
+
+        assert hook_count_after_first == hook_count_after_second
+
+    def test_attach_idempotent_different_agents(self) -> None:
+        """Two different agents can each be attached once."""
+        agent1 = _make_agent()
+        agent2 = _make_agent()
+        store = ShortTermMemory()
+        persistence = MemoryPersistence(store)
+
+        persistence.attach(agent1)
+        persistence.attach(agent2)
+        persistence.attach(agent1)  # no-op for agent1
+
+        # Both agents should have hooks registered exactly once
+        assert agent1.hook_manager.has_hooks(HookPoint.POST_LLM_CALL)
+        assert agent2.hook_manager.has_hooks(HookPoint.POST_LLM_CALL)
+
 
 # ---------------------------------------------------------------------------
 # POST_LLM_CALL → AIMemory

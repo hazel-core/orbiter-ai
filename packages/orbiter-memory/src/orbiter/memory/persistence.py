@@ -40,6 +40,7 @@ class MemoryPersistence:
     ) -> None:
         self.store = store
         self.metadata = metadata or MemoryMetadata()
+        self._attached_agent_ids: set[int] = set()
 
     async def _save_llm_response(self, *, agent: Any, response: Any, **_: Any) -> None:
         """POST_LLM_CALL hook — save an AIMemory item."""
@@ -72,13 +73,22 @@ class MemoryPersistence:
         logger.debug("persisted ToolMemory id=%s tool=%s is_error=%s", item.id, tool_name, item.is_error)
 
     def attach(self, agent: Any) -> None:
-        """Register persistence hooks on the given agent."""
+        """Register persistence hooks on the given agent.
+
+        Idempotent — a second call for the same agent object is a no-op.
+        """
+        agent_id = id(agent)
+        if agent_id in self._attached_agent_ids:
+            logger.debug("already attached to agent=%s, skipping", getattr(agent, "name", agent))
+            return
+        self._attached_agent_ids.add(agent_id)
         agent.hook_manager.add(HookPoint.POST_LLM_CALL, self._save_llm_response)
         agent.hook_manager.add(HookPoint.POST_TOOL_CALL, self._save_tool_result)
         logger.debug("attached memory persistence hooks to agent=%s", getattr(agent, "name", agent))
 
     def detach(self, agent: Any) -> None:
         """Remove persistence hooks from the given agent."""
+        self._attached_agent_ids.discard(id(agent))
         agent.hook_manager.remove(HookPoint.POST_LLM_CALL, self._save_llm_response)
         agent.hook_manager.remove(HookPoint.POST_TOOL_CALL, self._save_tool_result)
         logger.debug("detached memory persistence hooks from agent=%s", getattr(agent, "name", agent))

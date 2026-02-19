@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, Protocol, runtime_checkable
@@ -160,8 +161,30 @@ class MemoryStore(Protocol):
         status: MemoryStatus | None = None,
         limit: int = 10,
     ) -> list[MemoryItem]:
-        """Search memory items with optional filters."""
-        ...
+        """Search memory items with optional filters.
+
+        Default implementation performs keyword search over ``self._items``
+        when the backing store exposes that attribute.  Concrete backends
+        should override this with their native search.
+        """
+        items: list[MemoryItem] = list(getattr(self, "_items", []))
+        if query:
+            q = query.lower()
+            items = [i for i in items if q in i.content.lower()]
+        if memory_type:
+            items = [i for i in items if i.memory_type == memory_type]
+        if status:
+            items = [i for i in items if i.status == status]
+        if metadata:
+            if metadata.user_id:
+                items = [i for i in items if i.metadata.user_id == metadata.user_id]
+            if metadata.session_id:
+                items = [i for i in items if i.metadata.session_id == metadata.session_id]
+            if metadata.task_id:
+                items = [i for i in items if i.metadata.task_id == metadata.task_id]
+            if metadata.agent_id:
+                items = [i for i in items if i.metadata.agent_id == metadata.agent_id]
+        return items[:limit]
 
     async def clear(
         self,
@@ -170,3 +193,24 @@ class MemoryStore(Protocol):
     ) -> int:
         """Remove memory items matching the filter. Returns count removed."""
         ...
+
+
+# ---------------------------------------------------------------------------
+# AgentMemory — composite of short-term and long-term stores
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class AgentMemory:
+    """Composite memory object bundling short-term and long-term stores.
+
+    Pass an ``AgentMemory`` instance to ``Agent(memory=...)`` to configure
+    which backends are used for conversation history and persistent facts.
+
+    Attributes:
+        short_term: Fast in-process store for the current conversation.
+        long_term: Persistent store for cross-session knowledge.
+    """
+
+    short_term: MemoryStore
+    long_term: MemoryStore

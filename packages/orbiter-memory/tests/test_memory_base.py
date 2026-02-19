@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from orbiter.memory.base import (  # pyright: ignore[reportMissingImports]
     AIMemory,
+    AgentMemory,
     HumanMemory,
     MemoryError,
     MemoryItem,
@@ -345,3 +346,123 @@ class TestMemoryStoreProtocol:
         results = await store.search()
         assert len(results) == 1
         assert results[0].metadata.user_id == "u2"
+
+
+# ---------------------------------------------------------------------------
+# MemoryStore default keyword search (via _items attribute)
+# ---------------------------------------------------------------------------
+
+
+class MinimalStore:
+    """Minimal store that only implements add/get/clear; inherits default search."""
+
+    def __init__(self) -> None:
+        self._items: list[MemoryItem] = []
+
+    async def add(self, item: MemoryItem) -> None:
+        self._items.append(item)
+
+    async def get(self, item_id: str) -> MemoryItem | None:
+        for item in self._items:
+            if item.id == item_id:
+                return item
+        return None
+
+    async def clear(self, *, metadata: MemoryMetadata | None = None) -> int:
+        count = len(self._items)
+        self._items.clear()
+        return count
+
+    # Inherit default search from MemoryStore (via delegation below)
+    async def search(
+        self,
+        *,
+        query: str = "",
+        metadata: MemoryMetadata | None = None,
+        memory_type: str | None = None,
+        status: MemoryStatus | None = None,
+        limit: int = 10,
+    ) -> list[MemoryItem]:
+        return await MemoryStore.search(
+            self,  # type: ignore[arg-type]
+            query=query,
+            metadata=metadata,
+            memory_type=memory_type,
+            status=status,
+            limit=limit,
+        )
+
+
+class TestMemoryStoreDefaultSearch:
+    async def test_default_keyword_search_matches(self) -> None:
+        store = MinimalStore()
+        await store.add(HumanMemory(content="the cat sat on the mat"))
+        await store.add(HumanMemory(content="the dog chased the cat"))
+        await store.add(HumanMemory(content="the bird flew away"))
+        results = await store.search(query="cat")
+        assert len(results) == 2
+        assert all("cat" in r.content for r in results)
+
+    async def test_default_search_no_query_returns_all(self) -> None:
+        store = MinimalStore()
+        await store.add(HumanMemory(content="msg1"))
+        await store.add(HumanMemory(content="msg2"))
+        results = await store.search()
+        assert len(results) == 2
+
+    async def test_default_search_limit(self) -> None:
+        store = MinimalStore()
+        for i in range(15):
+            await store.add(HumanMemory(content=f"message {i}"))
+        results = await store.search(limit=5)
+        assert len(results) == 5
+
+    async def test_default_search_memory_type_filter(self) -> None:
+        store = MinimalStore()
+        await store.add(HumanMemory(content="human msg"))
+        await store.add(AIMemory(content="ai response"))
+        results = await store.search(memory_type="human")
+        assert len(results) == 1
+        assert results[0].memory_type == "human"
+
+    async def test_default_search_metadata_filter(self) -> None:
+        store = MinimalStore()
+        await store.add(HumanMemory(content="u1 msg", metadata=MemoryMetadata(user_id="u1")))
+        await store.add(HumanMemory(content="u2 msg", metadata=MemoryMetadata(user_id="u2")))
+        results = await store.search(metadata=MemoryMetadata(user_id="u1"))
+        assert len(results) == 1
+        assert results[0].content == "u1 msg"
+
+
+# ---------------------------------------------------------------------------
+# AgentMemory dataclass
+# ---------------------------------------------------------------------------
+
+
+class TestAgentMemory:
+    def test_creation(self) -> None:
+        from orbiter.memory.short_term import ShortTermMemory  # pyright: ignore[reportMissingImports]
+
+        st = ShortTermMemory()
+        lt = ShortTermMemory()
+        mem = AgentMemory(short_term=st, long_term=lt)
+        assert mem.short_term is st
+        assert mem.long_term is lt
+
+    def test_exported_from_package(self) -> None:
+        from orbiter.memory import AgentMemory as Exported  # pyright: ignore[reportMissingImports]
+
+        assert Exported is AgentMemory
+
+    def test_isinstance_check(self) -> None:
+        from orbiter.memory.short_term import ShortTermMemory  # pyright: ignore[reportMissingImports]
+
+        mem = AgentMemory(short_term=ShortTermMemory(), long_term=ShortTermMemory())
+        assert isinstance(mem, AgentMemory)
+
+    def test_fields_are_memory_stores(self) -> None:
+        from orbiter.memory.short_term import ShortTermMemory  # pyright: ignore[reportMissingImports]
+
+        mem = AgentMemory(short_term=ShortTermMemory(), long_term=ShortTermMemory())
+        assert isinstance(mem.short_term, MemoryStore)
+        assert isinstance(mem.long_term, MemoryStore)
