@@ -1,7 +1,7 @@
 """Orbiter Server: Web UI and API server."""
 
 from orbiter_server.agents import AgentInfo, WorkspaceFile, WorkspaceFileContent
-from orbiter_server.app import ChatRequest, ChatResponse, create_app, register_agent
+from orbiter_server.app import ChatRequest, ChatResponse, create_app, register_agent, serve
 from orbiter_server.sessions import (
     AppendMessageRequest,
     CreateSessionRequest,
@@ -25,4 +25,5 @@ __all__ = [
     "WorkspaceFileContent",
     "create_app",
     "register_agent",
+    "serve",
 ]
