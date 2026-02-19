@@ -385,8 +385,7 @@ async def forgot_password(body: ForgotPasswordRequest) -> dict[str, str]:
         )
         await db.commit()
 
-    # Log the token (email integration is future work).
-    logger.info("Password reset token for %s: %s", body.email, token)
+    logger.debug("Password reset email sent to %s", body.email)
 
     return {"message": "If that email exists, a reset link has been sent"}
 
