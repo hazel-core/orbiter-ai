@@ -15,7 +15,7 @@ from orbiter._internal.output_parser import parse_response, parse_tool_arguments
 from orbiter.config import parse_model_string
 from orbiter.hooks import Hook, HookManager, HookPoint
 from orbiter.observability.logging import get_logger  # pyright: ignore[reportMissingImports]
-from orbiter.tool import Tool, ToolError
+from orbiter.tool import FunctionTool, Tool, ToolError
 from orbiter.types import (
     AgentOutput,
     AssistantMessage,
@@ -358,6 +358,11 @@ class Agent:
         max_tokens: Maximum output tokens per LLM call.
         memory: Optional memory store for persistent memory across sessions.
         context: Optional context engine for hierarchical state and prompt building.
+        allow_self_spawn: When ``True``, automatically adds a ``spawn_self(task)``
+            tool that lets the agent spin up copies of itself for parallel sub-tasks.
+        max_spawn_depth: Maximum recursive spawn depth (default 3). When a spawned
+            agent's depth equals or exceeds this value, ``spawn_self`` returns an
+            error string instead of spawning.
     """
 
     def __init__(
@@ -376,6 +381,8 @@ class Agent:
         memory: Any = _MEMORY_UNSET,
         context_mode: Any = _CONTEXT_UNSET,
         context: Any = _CONTEXT_UNSET,
+        allow_self_spawn: bool = False,
+        max_spawn_depth: int = 3,
     ) -> None:
         if max_steps < 1:
             raise AgentError(f"max_steps must be >= 1, got {max_steps}")
@@ -387,6 +394,13 @@ class Agent:
         self.max_steps = max_steps
         self.temperature = temperature
         self.max_tokens = max_tokens
+        # Self-spawn: opt-in parallel sub-task spawning
+        self.allow_self_spawn: bool = allow_self_spawn
+        self.max_spawn_depth: int = max_spawn_depth
+        # Internal: spawn depth (0 for top-level agents; incremented for each spawn level)
+        self._spawn_depth: int = 0
+        # Internal: provider reference stored during run() for use by spawn_self tool
+        self._current_provider: Any = None
         # Auto-create AgentMemory when not explicitly specified; None disables memory
         if memory is _MEMORY_UNSET:
             memory = _make_default_memory()
@@ -422,6 +436,10 @@ class Agent:
 
         # Lock for asyncio-safe runtime mutations (add_tool, add_mcp_server, add_handoff)
         self._tools_lock: asyncio.Lock = asyncio.Lock()
+
+        # Auto-register spawn_self tool when opt-in self-spawn is enabled
+        if allow_self_spawn:
+            self._register_tool(self._make_spawn_self_tool())
 
         # Lifecycle hooks
         self.hook_manager = HookManager()
@@ -459,6 +477,89 @@ class Agent:
         if agent.name in self.handoffs:
             raise AgentError(f"Duplicate handoff agent '{agent.name}' on agent '{self.name}'")
         self.handoffs[agent.name] = agent
+
+    def _make_spawn_self_tool(self) -> Tool:
+        """Create the ``spawn_self`` FunctionTool closure for this agent.
+
+        The returned tool captures ``self`` as *parent* so it can access
+        ``_current_provider``, ``_spawn_depth``, ``max_spawn_depth``, and the
+        agent configuration needed to create child agents.
+        """
+        parent = self
+
+        async def spawn_self(task: str) -> str:
+            """Spawn a copy of the current agent to handle a parallel sub-task.
+
+            Creates a new agent with the same model, instructions, and tools
+            (but fresh short-term memory) and runs it on *task*.  The spawned
+            agent shares the parent's long-term memory store so knowledge
+            accumulates across spawns.
+
+            Args:
+                task: The sub-task for the spawned agent to complete.
+
+            Returns:
+                The text result of the spawned agent's run, or an error string
+                if the maximum spawn depth has been reached.
+            """
+            # Depth guard — return error string instead of raising
+            if parent._spawn_depth >= parent.max_spawn_depth:
+                return (
+                    f"[spawn_self error] Maximum spawn depth ({parent.max_spawn_depth}) "
+                    "reached. Cannot spawn further sub-agents."
+                )
+
+            provider = parent._current_provider
+            if provider is None:
+                return "[spawn_self error] No provider available for spawned agent."
+
+            # Build tools list for the child — exclude spawn_self to avoid
+            # accidentally re-registering it (child has allow_self_spawn=False)
+            child_tools = [t for name, t in parent.tools.items() if name != "spawn_self"]
+
+            # Build memory: fresh ShortTermMemory + shared LongTermMemory instance
+            child_memory: Any = _MEMORY_UNSET  # default: auto-create
+            if parent.memory is None:
+                child_memory = None  # explicitly disabled — propagate
+            elif parent.memory is not _MEMORY_UNSET:
+                # parent.memory is a resolved AgentMemory or MemoryStore
+                try:
+                    from orbiter.memory.base import AgentMemory  # pyright: ignore[reportMissingImports]
+                    from orbiter.memory.short_term import ShortTermMemory  # pyright: ignore[reportMissingImports]
+
+                    long_term = getattr(parent.memory, "long_term", None)
+                    child_memory = AgentMemory(
+                        short_term=ShortTermMemory(),
+                        long_term=long_term,
+                    )
+                except ImportError:
+                    child_memory = None
+
+            child_agent = Agent(
+                name=f"{parent.name}_spawn_{uuid.uuid4().hex[:8]}",
+                model=parent.model,
+                instructions=parent.instructions,
+                tools=child_tools,
+                max_steps=parent.max_steps,
+                temperature=parent.temperature,
+                max_tokens=parent.max_tokens,
+                memory=child_memory,
+                allow_self_spawn=False,
+            )
+            child_agent._spawn_depth = parent._spawn_depth + 1
+
+            _log.info(
+                "spawn_self: parent=%s child=%s depth=%d task_len=%d",
+                parent.name,
+                child_agent.name,
+                child_agent._spawn_depth,
+                len(task),
+            )
+
+            result = await child_agent.run(task, provider=provider)
+            return result.text or ""
+
+        return FunctionTool(spawn_self, name="spawn_self")
 
     # -----------------------------------------------------------------------
     # Runtime mutation API — asyncio-safe via _tools_lock
@@ -633,6 +734,30 @@ class Agent:
         if provider is None:
             raise AgentError(f"Agent '{self.name}' requires a provider for run()")
 
+        # Store provider reference so spawn_self tool can access it during execution.
+        # Always cleaned up in the finally block below.
+        self._current_provider = provider
+        try:
+            return await self._run_inner(
+                input,
+                messages=messages,
+                provider=provider,
+                max_retries=max_retries,
+                conversation_id=conversation_id,
+            )
+        finally:
+            self._current_provider = None
+
+    async def _run_inner(
+        self,
+        input: str,
+        *,
+        messages: Sequence[Message] | None = None,
+        provider: Any = None,
+        max_retries: int = 3,
+        conversation_id: str | None = None,
+    ) -> AgentOutput:
+        """Inner run implementation; called by :meth:`run` after provider setup."""
         # Resolve instructions (may be async callable)
         raw_instr = self.instructions
         if callable(raw_instr):
