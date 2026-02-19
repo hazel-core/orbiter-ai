@@ -7,6 +7,7 @@ runnable ``orbiter.Agent`` instances backed by real ``ModelProvider`` objects.
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -18,6 +19,9 @@ from orbiter.tool import FunctionTool
 from orbiter.types import Message, OrbiterError, TextEvent, Usage, UsageEvent, UserMessage
 from orbiter_web.crypto import decrypt_api_key
 from orbiter_web.database import get_db
+
+
+_log = logging.getLogger(__name__)
 
 
 class AgentRuntimeError(OrbiterError):
@@ -209,6 +213,7 @@ class AgentService:
         Raises:
             AgentRuntimeError: If the agent, provider, or model call fails.
         """
+        _log.info("run_agent start: agent=%s messages=%d", agent_id, len(messages))
         row = await _load_agent_row(agent_id)
         provider_type = row.get("model_provider", "")
         model_name = row.get("model_name", "")
@@ -236,9 +241,14 @@ class AgentService:
                 provider=provider,
             )
         except Exception as exc:
+            _log.error("run_agent failed for agent %s: %s", agent_id, exc, exc_info=True)
             raise AgentRuntimeError(
                 f"Model call failed for agent {agent_id}: {exc}"
             ) from exc
+
+        tool_call_count = len(output.tool_calls) if output.tool_calls else 0
+        if tool_call_count:
+            _log.debug("run_agent tool calls: agent=%s count=%d", agent_id, tool_call_count)
 
         return ModelResponse(
             content=output.text,
@@ -269,6 +279,7 @@ class AgentService:
         Raises:
             AgentRuntimeError: If the agent, provider, or model call fails.
         """
+        _log.info("stream_agent start: agent=%s messages=%d", agent_id, len(messages))
         row = await _load_agent_row(agent_id)
         provider_type = row.get("model_provider", "")
         model_name = row.get("model_name", "")
@@ -305,6 +316,7 @@ class AgentService:
                 elif isinstance(event, UsageEvent):
                     last_usage = event.usage
         except Exception as exc:
+            _log.error("stream_agent failed for agent %s: %s", agent_id, exc, exc_info=True)
             raise AgentRuntimeError(
                 f"Stream failed for agent {agent_id}: {exc}"
             ) from exc

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -22,6 +23,8 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+_log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -188,6 +191,7 @@ def execute_code(
     if config is None:
         config = SandboxConfig()
 
+    _log.debug("execute_code: code_len=%d timeout=%ds", len(code), config.timeout_seconds)
     start = time.monotonic()
     workspace = tempfile.mkdtemp(prefix="orbiter_sandbox_")
 
@@ -222,6 +226,7 @@ def execute_code(
             )
         except subprocess.TimeoutExpired:
             elapsed = (time.monotonic() - start) * 1000
+            _log.warning("execute_code: timed out after %ds", config.timeout_seconds)
             return SandboxResult(
                 success=False,
                 error=f"Execution timed out after {config.timeout_seconds}s",
