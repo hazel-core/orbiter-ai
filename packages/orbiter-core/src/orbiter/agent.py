@@ -83,6 +83,7 @@ class Agent:
         self.max_tokens = max_tokens
         self.memory = memory
         self.context = context
+        self._memory_persistence: Any = None
 
         # Tools indexed by name for O(1) lookup during execution
         self.tools: dict[str, Tool] = {}
@@ -101,6 +102,10 @@ class Agent:
         if hooks:
             for point, hook in hooks:
                 self.hook_manager.add(point, hook)
+
+        # Auto-attach memory persistence hooks when a MemoryStore is provided
+        if memory is not None:
+            self._attach_memory_persistence(memory)
 
     def _register_tool(self, t: Tool) -> None:
         """Add a tool, raising on duplicate names.
@@ -127,6 +132,25 @@ class Agent:
         if agent.name in self.handoffs:
             raise AgentError(f"Duplicate handoff agent '{agent.name}' on agent '{self.name}'")
         self.handoffs[agent.name] = agent
+
+    def _attach_memory_persistence(self, memory: Any) -> None:
+        """Auto-attach MemoryPersistence hooks if orbiter-memory is installed.
+
+        Only attaches if ``memory`` satisfies the ``MemoryStore`` protocol.
+        If the orbiter-memory package is not installed, this is a no-op.
+        """
+        try:
+            from orbiter.memory.base import MemoryStore  # pyright: ignore[reportMissingImports]
+            from orbiter.memory.persistence import (  # pyright: ignore[reportMissingImports]
+                MemoryPersistence,
+            )
+        except ImportError:
+            return
+
+        if isinstance(memory, MemoryStore):
+            persistence = MemoryPersistence(memory)
+            persistence.attach(self)
+            self._memory_persistence = persistence
 
     def get_tool_schemas(self) -> list[dict[str, Any]]:
         """Return OpenAI-format tool schemas for all registered tools.
@@ -342,15 +366,15 @@ class Agent:
                 f"Agent '{self.name}' has callable instructions which cannot be serialized. "
                 "Use a string instruction instead."
             )
+        if self.memory is not None:
+            raise ValueError(
+                f"Agent '{self.name}' has a memory store which cannot be serialized."
+            )
         if self.hook_manager.has_hooks(HookPoint.START) or any(
             self.hook_manager.has_hooks(hp) for hp in HookPoint
         ):
             raise ValueError(
                 f"Agent '{self.name}' has hooks which cannot be serialized."
-            )
-        if self.memory is not None:
-            raise ValueError(
-                f"Agent '{self.name}' has a memory store which cannot be serialized."
             )
         if self.context is not None:
             raise ValueError(

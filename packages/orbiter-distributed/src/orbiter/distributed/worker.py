@@ -173,17 +173,28 @@ class Worker:
         """
         self._started_at = time.time()
 
+        _log.info(
+            "Worker %s starting (concurrency=%d, executor=%s, queue=%s)",
+            self._worker_id,
+            self._concurrency,
+            self._executor_type,
+            self._queue_name,
+        )
+
         await self._broker.connect()
         await self._store.connect()
         await self._publisher.connect()
 
         if self._temporal_executor is not None:
             await self._temporal_executor.connect()
+            _log.info("Worker %s connected to Temporal", self._worker_id)
 
         # Register signal handlers for graceful shutdown
         loop = asyncio.get_running_loop()
         for sig in (signal.SIGINT, signal.SIGTERM):
             loop.add_signal_handler(sig, self._handle_signal)
+
+        _log.info("Worker %s ready, waiting for tasks", self._worker_id)
 
         try:
             # Start heartbeat in the background
@@ -196,6 +207,12 @@ class Worker:
             with contextlib.suppress(asyncio.CancelledError):
                 await heartbeat_task
         finally:
+            _log.info(
+                "Worker %s shutting down (processed=%d, failed=%d)",
+                self._worker_id,
+                self._tasks_processed,
+                self._tasks_failed,
+            )
             if self._temporal_executor is not None:
                 await self._temporal_executor.disconnect()
             await self._broker.disconnect()
@@ -208,6 +225,7 @@ class Worker:
 
     def _handle_signal(self) -> None:
         """Signal handler for SIGINT/SIGTERM."""
+        _log.info("Worker %s received shutdown signal", self._worker_id)
         self._shutdown_event.set()
 
     async def _heartbeat_loop(self) -> None:
@@ -242,6 +260,12 @@ class Worker:
 
     async def _execute_task(self, task: TaskPayload) -> None:
         """Execute a single task: reconstruct agent, stream, update status."""
+        _log.info(
+            "Worker %s claimed task %s (input=%.80s...)",
+            self._worker_id,
+            task.task_id,
+            task.input,
+        )
         self._current_task_id = task.task_id
         token = CancellationToken()
 
@@ -296,10 +320,21 @@ class Worker:
                 else:
                     # Local execution: reconstruct agent and stream directly
                     agent = self._reconstruct_agent(task.agent_config)
+                    _log.debug(
+                        "Task %s: reconstructed agent '%s' (model=%s)",
+                        task.task_id,
+                        getattr(agent, "name", "?"),
+                        getattr(agent, "model", "?"),
+                    )
 
                     # Memory hydration (Feature 4)
                     mem_config = task.metadata.get("memory")
                     if mem_config:
+                        _log.info(
+                            "Task %s: hydrating memory (backend=%s)",
+                            task.task_id,
+                            mem_config.get("backend", "short_term"),
+                        )
                         from orbiter.distributed.memory import (  # pyright: ignore[reportMissingImports]
                             create_memory_store,
                         )
@@ -313,6 +348,11 @@ class Worker:
 
                         persistence = MemoryPersistence(store, metadata=mem_metadata)
                         persistence.attach(agent)
+                        _log.debug(
+                            "Task %s: memory persistence attached (scope=%s)",
+                            task.task_id,
+                            mem_metadata,
+                        )
 
                         from orbiter.memory.base import (  # pyright: ignore[reportMissingImports]
                             HumanMemory,
@@ -327,6 +367,7 @@ class Worker:
 
                 if token.cancelled:
                     # Cancellation took effect during execution
+                    _log.info("Task %s cancelled after %.2fs", task.task_id, duration)
                     await self._store.set_status(
                         task.task_id,
                         TaskStatus.CANCELLED,
@@ -340,6 +381,12 @@ class Worker:
                     final_status = TaskStatus.CANCELLED
                 else:
                     # Mark as COMPLETED
+                    _log.info(
+                        "Task %s completed in %.2fs (output_len=%d)",
+                        task.task_id,
+                        duration,
+                        len(result_text),
+                    )
                     await self._store.set_status(
                         task.task_id,
                         TaskStatus.COMPLETED,
@@ -362,6 +409,12 @@ class Worker:
                 self._tasks_failed += 1
                 duration = time.time() - started_at
                 final_error = str(exc)
+                _log.error(
+                    "Task %s failed after %.2fs: %s",
+                    task.task_id,
+                    duration,
+                    exc,
+                )
                 await self._store.set_status(
                     task.task_id,
                     TaskStatus.FAILED,
@@ -378,6 +431,12 @@ class Worker:
                 status = await self._store.get_status(task.task_id)
                 retries = status.retries if status else 0
                 if retries < self._broker.max_retries:
+                    _log.info(
+                        "Task %s scheduling retry %d/%d",
+                        task.task_id,
+                        retries + 1,
+                        self._broker.max_retries,
+                    )
                     await self._store.set_status(
                         task.task_id,
                         TaskStatus.RETRYING,
@@ -385,12 +444,18 @@ class Worker:
                     )
                     await self._broker.nack(task.task_id)
                 else:
+                    _log.warning(
+                        "Task %s exhausted all %d retries",
+                        task.task_id,
+                        self._broker.max_retries,
+                    )
                     await self._broker.ack(task.task_id)
 
             finally:
                 # Tear down memory persistence
                 if persistence is not None and agent is not None:
                     persistence.detach(agent)
+                    _log.debug("Task %s: memory persistence detached", task.task_id)
                 if mem_result is not None:
                     from orbiter.distributed.memory import (  # pyright: ignore[reportMissingImports]
                         teardown_memory_store,
@@ -398,6 +463,7 @@ class Worker:
 
                     with contextlib.suppress(Exception):
                         await teardown_memory_store(mem_result[0])
+                    _log.debug("Task %s: memory store torn down", task.task_id)
 
                 self._current_task_id = None
                 cancel_task.cancel()
@@ -419,6 +485,7 @@ class Worker:
             while True:
                 msg = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
                 if msg is not None and msg["type"] == "message":
+                    _log.info("Task %s: cancel signal received", task_id)
                     token.cancel()
                     return
                 await asyncio.sleep(0.01)
@@ -493,10 +560,18 @@ class Worker:
                 if prior_items:
                     history = memory_items_to_messages(prior_items)
                     messages = history + (messages or [])
+                    _log.info(
+                        "Task %s: loaded %d prior memory items as conversation history",
+                        task.task_id,
+                        len(prior_items),
+                    )
+                else:
+                    _log.debug("Task %s: no prior memory items found", task.task_id)
             except Exception:
                 _log.warning(
                     "Failed to load conversation history for task %s",
                     task.task_id,
+                    exc_info=True,
                 )
 
         # Feature 5: Provider factory
@@ -505,7 +580,9 @@ class Worker:
             model = getattr(agent, "model", None) or task.model
             if model:
                 provider = self._provider_factory(model)
+                _log.debug("Task %s: resolved provider for model '%s'", task.task_id, model)
 
+        _log.debug("Task %s: starting agent stream", task.task_id)
         text_parts: list[str] = []
 
         async for event in run.stream(
