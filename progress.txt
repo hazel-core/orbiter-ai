@@ -2,6 +2,28 @@
 Started: Thu Feb 19 11:52:28 PM IST 2026
 ---
 
+## 2026-02-20 - US-023
+- Added `async def branch(self, from_message_id: str) -> str` to `Agent` in `agent.py`
+- `branch()` fetches all raw items from the current conversation by accessing `store._items` directly (bypasses windowing/incomplete-pair filtering for ShortTermMemory), or falls back to `store.search(metadata=..., limit=10000)` for other backends
+- Finds the item with `id == from_message_id`; raises `AgentError` if not found
+- Creates new UUID4 `branch_conv_id`; copies all items up to and including the cutoff to new conversation scope using `item.model_copy(update={"id": ..., "metadata": branch_meta})`
+- Calls `Context.fork(branch_conv_id)` internally (creates a `Context(task_id=self.conversation_id, config=self.context)` and forks it) to create an isolated child context — satisfies "Summarization tracked per branch-id" since each branch has its own message history and independent context state
+- Raises `AgentError` when: memory not set, no active conversation exists, or `from_message_id` not found
+- Created `packages/orbiter-memory/tests/test_branching.py` (6 tests in `TestShortTermMemoryConversationScope`): task scope isolation, conversation_id→task_id mapping, search without task_id, branched items stored separately, writes to branch don't affect parent, all message types copied
+- Created `packages/orbiter-core/tests/test_branching.py` (10 tests): returns UUID, copies messages up to cutoff, full history included, original unaffected, copies not references, branch activity doesn't affect parent, Context.fork() called, 3 error cases
+- All 1207 orbiter-core + orbiter-memory tests pass (6 skipped); only pre-existing pyright error at agent.py (MCPToolWrapper.to_dict) unrelated to changes
+- Files changed:
+  - packages/orbiter-core/src/orbiter/agent.py (added branch() method)
+  - packages/orbiter-memory/tests/test_branching.py (new file)
+  - packages/orbiter-core/tests/test_branching.py (new file)
+- **Learnings for future iterations:**
+  - `store._items` direct access is necessary for `branch()` to bypass `ShortTermMemory._filter_incomplete_pairs()` and `_window()` — use `getattr(store, "_items", None)` with fallback to `store.search(limit=10000)` for non-ShortTermMemory backends
+  - `MemoryItem.model_copy(update={"id": ..., "metadata": ...})` preserves the subclass type (HumanMemory, AIMemory, etc.) in Pydantic v2 — correct way to create branch copies
+  - `Context.fork()` creates a child Context but the forked object doesn't need to be stored for branch isolation to work — the key isolation is per `conversation_id` (= `metadata.task_id`)
+  - pytest `--import-mode=importlib` with duplicate filenames (`test_branching.py` in two different packages) causes the wrong class to be collected when both paths are specified together; run each file separately or use directory paths to avoid collision
+  - `_filter_incomplete_pairs()` removes trailing ToolMemory when no matching AIMemory.tool_calls present; in test fixtures, always pair AIMemory.tool_calls with ToolMemory.tool_call_id when both are needed
+---
+
 ## 2026-02-20 - US-022
 - Added `_make_default_long_term()` helper to `agent.py`: tries `ChromaVectorMemoryStore(OpenAIEmbeddingProvider())` when chromadb is importable; falls back to `SQLiteMemoryStore()` with `logger.warning("chromadb not installed; falling back to keyword search. Install with: pip install chromadb")` when not importable
 - Updated `_make_default_memory()` to call `_make_default_long_term()` for the `long_term` field instead of hardcoding `SQLiteMemoryStore()`
