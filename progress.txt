@@ -2,6 +2,24 @@
 Started: Thu Feb 19 11:52:28 PM IST 2026
 ---
 
+## 2026-02-20 - US-010
+- orbiter-eval/ralph/runner.py: added `import logging` + `logger`; added `logger.info` at start of `run()` with input_len/scorers count; replaced bare `except: pass` in `_analyze()` with `logger.warning("Scorer failed case=%s: %s", case_id, exc, exc_info=True)` (fixes audit C-10)
+- orbiter-eval/trajectory_scorers.py: added `import logging` + `logger`; added `logger.debug` per-case score in `TrajectoryValidator.score()` and `TimeCostScorer.score()`
+- orbiter-sandbox/base.py: already had logging; added `logger.info("Sandbox %s: starting/stopping", ...)` in `LocalSandbox.start()` and `stop()` (debug was on `_transition()` only)
+- orbiter-sandbox/tools.py: already had logging; added `logger.warning("TerminalTool: blocked command %r", base)` before raising ToolError in `_check_command()`
+- orbiter-server/app.py: added `import logging` + `logger`; added `serve(host, port)` function that calls `logger.info("Starting Orbiter Server on %s:%d", ...)` before uvicorn.run(); exported from `__init__.py`
+- orbiter-train/train/verl.py: already had logging; added `logger.warning("VeRLTrainer.train: STUB — no real training performed")` in `_run_verl_training()` (flags C-3)
+- orbiter-train/train/evolution.py: added `import logging` + `logger`; added `logger.info("Evolution epoch %d/%d starting/complete: ...")` per epoch + `logger.debug("Best epoch so far: ...")` after each epoch
+- Files changed: 8 files across 4 packages
+- All 705 tests pass (608 eval/sandbox/train + 97 server); 0 new type errors
+- **Learnings for future iterations:**
+  - orbiter-sandbox/base.py and tools.py already had full logging infrastructure — only needed targeted additions
+  - orbiter-eval has two runner files: `ralph/runner.py` (RalphRunner iteration loop) and no top-level runner.py; the "runner.py" in US-010 refers to ralph/runner.py
+  - orbiter-server has no `__main__.py` or CLI entry point; the "entry point" logging was added as a `serve()` helper function in app.py
+  - orbiter-train/verl.py already had extensive logging from prior work; only needed the STUB warning
+  - EvolutionPipeline epoch_idx is 0-based; log as epoch_idx+1 for human readability
+---
+
 ## Codebase Patterns
 - orbiter-web tests are in packages/orbiter-web/tests/ (not src/)
 - subprocess.run(text=True) applies universal newline translation (\r → \n), so don't assert literal \r in captured stdout
