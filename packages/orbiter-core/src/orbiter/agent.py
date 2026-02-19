@@ -68,6 +68,60 @@ def _make_context_from_mode(mode: Any) -> Any:
         return None
 
 
+def _get_context_window_tokens(model_name: str) -> int | None:
+    """Look up context window token count from the model registry.
+
+    Returns ``None`` if orbiter-models is not installed or the model is unknown.
+    """
+    try:
+        from orbiter.models.context_windows import MODEL_CONTEXT_WINDOWS  # pyright: ignore[reportMissingImports]
+
+        return MODEL_CONTEXT_WINDOWS.get(model_name)
+    except ImportError:
+        return None
+
+
+def _update_system_token_info(
+    msg_list: list[Message],
+    used: int,
+    total: int,
+) -> list[Message]:
+    """Insert/replace ``[Context: {used}/{total} tokens ({pct}% full)]`` in the system message.
+
+    If a :class:`SystemMessage` is present it is updated in-place (replacing
+    any prior context tag). If no system message is present a new one is
+    inserted at position 0 with just the tag.
+
+    Parameters
+    ----------
+    msg_list:
+        Current message list (not mutated — a new list is returned).
+    used:
+        Number of tokens currently used (last LLM call's input_tokens).
+    total:
+        Context window capacity in tokens.
+
+    Returns
+    -------
+    Updated message list with the context tag injected into the system message.
+    """
+    pct = round(100.0 * used / total) if total > 0 else 0
+    tag = f"[Context: {used}/{total} tokens ({pct}% full)]"
+    result: list[Message] = list(msg_list)
+    for i, msg in enumerate(result):
+        if isinstance(msg, SystemMessage):
+            # Strip any prior [Context: ...] tag line then append new one
+            lines = msg.content.splitlines()
+            lines = [ln for ln in lines if not ln.startswith("[Context:")]
+            base = "\n".join(lines).rstrip()
+            content = f"{base}\n{tag}" if base else tag
+            result[i] = SystemMessage(content=content)
+            return result
+    # No system message — insert one with just the tag
+    result.insert(0, SystemMessage(content=tag))
+    return result
+
+
 class _ProviderSummarizer:
     """Wraps a model provider for use with orbiter-memory's generate_summary()."""
 
@@ -93,14 +147,20 @@ async def _apply_context_windowing(
     msg_list: list[Message],
     context: Any,
     provider: Any,
+    *,
+    force_summarize: bool = False,
 ) -> list[Message]:
     """Apply ContextConfig windowing and optional summarization to msg_list.
 
     Called before the LLM call when context is set. Applies (in order):
 
     1. Offload threshold: when exceeded, aggressively trims to summary_threshold
-    2. Summary threshold: when exceeded, attempts LLM summarization via orbiter-memory
+    2. Summary threshold: when exceeded (or forced via *force_summarize*),
+       attempts LLM summarization via orbiter-memory
     3. History windowing: always applied last, keeps last history_rounds messages
+
+    When *force_summarize* is ``True``, summarization fires regardless of
+    message count threshold (used when token budget is exceeded).
 
     Falls back gracefully when orbiter-memory is not installed.
     """
@@ -122,8 +182,10 @@ async def _apply_context_windowing(
         non_system = non_system[-summary_threshold:]
         msg_count = len(non_system)
 
-    # 2. Summary threshold: attempt summarization via orbiter-memory
-    elif msg_count >= summary_threshold:
+    # 2. Summary threshold: attempt summarization via orbiter-memory.
+    # Also fires when force_summarize=True (token budget exceeded) as long as
+    # there are at least 2 messages to summarize.
+    elif msg_count >= summary_threshold or (force_summarize and msg_count >= 2):
         try:
             from orbiter.memory.base import (  # pyright: ignore[reportMissingImports]
                 AIMemory,
@@ -148,14 +210,22 @@ async def _apply_context_windowing(
                 else:
                     items.append(ToolMemory(content=content))
 
-            keep_recent = max(2, summary_threshold // 2)
+            # When force_summarize=True, use a tighter keep_recent so that even
+            # a small message list gets meaningfully compressed (keep half).
+            if force_summarize:
+                keep_recent = max(2, msg_count // 2)
+            else:
+                keep_recent = max(2, summary_threshold // 2)
             summary_cfg = SummaryConfig(
                 message_threshold=summary_threshold,
                 keep_recent=keep_recent,
             )
-            trigger = check_trigger(items, summary_cfg)
 
-            if trigger.triggered and provider is not None:
+            # Bypass check_trigger() when force_summarize is set — the token
+            # budget decision has already been made by the caller.
+            should_summarize = force_summarize or check_trigger(items, summary_cfg).triggered
+
+            if should_summarize and provider is not None:
                 summarizer = _ProviderSummarizer(provider)
                 result = await generate_summary(items, summary_cfg, summarizer)
                 if result.summaries:
@@ -450,9 +520,32 @@ class Agent:
         # Tool schemas
         tool_schemas = self.get_tool_schemas() or None
 
+        # ---- Token tracking: init per-run tracker and look up context window ----
+        _context_window_tokens = _get_context_window_tokens(self.model_name)
+        _token_tracker: Any = None
+        if self.context is not None:
+            try:
+                from orbiter.context.token_tracker import TokenTracker  # pyright: ignore[reportMissingImports]
+
+                _token_tracker = TokenTracker()
+            except ImportError:
+                pass
+        # ---- end Token tracking init ----
+
         # Tool loop — iterate up to max_steps
         for _step in range(self.max_steps):
+            # Augment system message with token context info from previous step
+            if _token_tracker is not None and _context_window_tokens:
+                _trajectory = _token_tracker.get_trajectory(self.name)
+                if _trajectory:
+                    _last_input = _trajectory[-1].prompt_tokens
+                    msg_list = _update_system_token_info(msg_list, _last_input, _context_window_tokens)
+
             output = await self._call_llm(msg_list, tool_schemas, provider, max_retries)
+
+            # Record token usage in tracker
+            if _token_tracker is not None and output.usage.total_tokens > 0:
+                _token_tracker.add_usage(self.name, output.usage)
 
             # No tool calls — return the final text response
             if not output.tool_calls:
@@ -465,6 +558,27 @@ class Agent:
             # Append assistant message (with tool calls) and results to history
             msg_list.append(AssistantMessage(content=output.text, tool_calls=output.tool_calls))
             msg_list.extend(tool_results)
+
+            # Check token budget trigger → force early summarization before next LLM call
+            if (
+                _token_tracker is not None
+                and _context_window_tokens
+                and self.context is not None
+                and output.usage.input_tokens > 0
+            ):
+                _fill_ratio = output.usage.input_tokens / _context_window_tokens
+                _trigger = getattr(self.context, "token_budget_trigger", 0.8)
+                if _fill_ratio > _trigger:
+                    _log.info(
+                        "token budget trigger: %.0f%% full (%d/%d tokens), forcing summarization on '%s'",
+                        100.0 * _fill_ratio,
+                        output.usage.input_tokens,
+                        _context_window_tokens,
+                        self.name,
+                    )
+                    msg_list = await _apply_context_windowing(
+                        msg_list, self.context, provider, force_summarize=True
+                    )
 
         # max_steps exhausted — return last output as-is
         return output

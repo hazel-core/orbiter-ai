@@ -306,6 +306,24 @@ async def _stream(
 
     model_name = getattr(agent, "model", "") or ""
 
+    # ---- Token tracking: init per-stream tracker and look up context window ----
+    _model_name_only = model_name.partition(":")[2] or model_name
+    _stream_context_window: int | None = None
+    _stream_token_tracker: Any = None
+    if _agent_context is not None:
+        try:
+            from orbiter.agent import (  # pyright: ignore[reportMissingImports]
+                _get_context_window_tokens,
+                _update_system_token_info,
+            )
+            from orbiter.context.token_tracker import TokenTracker  # pyright: ignore[reportMissingImports]
+
+            _stream_context_window = _get_context_window_tokens(_model_name_only)
+            _stream_token_tracker = TokenTracker()
+        except ImportError:
+            pass
+    # ---- end Token tracking init ----
+
     # Fire START hook (parity with run() path)
     await agent.hook_manager.run(HookPoint.START, agent=agent, input=input)
 
@@ -320,6 +338,13 @@ async def _stream(
 
     for step_num in range(steps):
         step_started_at = time.time()
+
+        # Augment system message with token context info from previous step
+        if _stream_token_tracker is not None and _stream_context_window:
+            _traj = _stream_token_tracker.get_trajectory(agent.name)
+            if _traj:
+                _last_input = _traj[-1].prompt_tokens
+                msg_list = _update_system_token_info(msg_list, _last_input, _stream_context_window)  # type: ignore[possibly-undefined]
 
         if detailed:
             _ev = StepEvent(
@@ -404,6 +429,10 @@ async def _stream(
             )
             await agent.hook_manager.run(HookPoint.POST_LLM_CALL, agent=agent, response=_synth)
 
+            # Record token usage in tracker
+            if _stream_token_tracker is not None and step_usage.total_tokens > 0:
+                _stream_token_tracker.add_usage(agent.name, step_usage)
+
             # No tool calls — done streaming
             if not tool_calls:
                 if detailed:
@@ -482,6 +511,26 @@ async def _stream(
             # Append assistant message + tool results to conversation
             msg_list.append(AssistantMessage(content=full_text, tool_calls=tool_calls))
             msg_list.extend(tool_results)
+
+            # Check token budget trigger → force early summarization before next step
+            if (
+                _stream_token_tracker is not None
+                and _stream_context_window
+                and _agent_context is not None
+                and step_usage.input_tokens > 0
+            ):
+                _fill_ratio = step_usage.input_tokens / _stream_context_window
+                _trigger = getattr(_agent_context, "token_budget_trigger", 0.8)
+                if _fill_ratio > _trigger:
+                    _log.info(
+                        "stream token budget trigger: %.0f%% full (%d/%d tokens) on '%s'",
+                        100.0 * _fill_ratio,
+                        step_usage.input_tokens,
+                        _stream_context_window,
+                        agent.name,
+                    )
+                    from orbiter.agent import _apply_context_windowing as _acw  # pyright: ignore[reportMissingImports]
+                    msg_list = await _acw(msg_list, _agent_context, resolved, force_summarize=True)
 
         except Exception as exc:
             _ev = ErrorEvent(

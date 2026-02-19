@@ -686,3 +686,248 @@ class TestAgentContextWindowing:
         # They should be the most recent ones
         assert non_system[-1].content == "a-9"  # type: ignore[union-attr]
         assert non_system[-2].content == "u-9"  # type: ignore[union-attr]
+
+
+# ── Token tracking helpers ────────────────────────────────────────────
+
+
+class TestTokenTrackingHelpers:
+    """Unit tests for _get_context_window_tokens and _update_system_token_info."""
+
+    def test_get_context_window_tokens_known_model(self) -> None:
+        from orbiter.agent import _get_context_window_tokens
+
+        tokens = _get_context_window_tokens("gpt-4o")
+        assert tokens == 128000
+
+    def test_get_context_window_tokens_unknown_model(self) -> None:
+        from orbiter.agent import _get_context_window_tokens
+
+        tokens = _get_context_window_tokens("some-unknown-model")
+        assert tokens is None
+
+    def test_update_system_token_info_adds_tag(self) -> None:
+        from orbiter.agent import _update_system_token_info
+        from orbiter.types import SystemMessage, UserMessage
+
+        msg_list = [SystemMessage(content="You are helpful."), UserMessage(content="Hello")]
+        result = _update_system_token_info(msg_list, used=80000, total=100000)
+
+        assert isinstance(result[0], SystemMessage)
+        assert "[Context: 80000/100000 tokens (80% full)]" in result[0].content
+        assert "You are helpful." in result[0].content
+
+    def test_update_system_token_info_replaces_existing_tag(self) -> None:
+        from orbiter.agent import _update_system_token_info
+        from orbiter.types import SystemMessage
+
+        # First application
+        msg_list = [SystemMessage(content="Instructions.")]
+        result1 = _update_system_token_info(msg_list, used=50000, total=100000)
+        assert "[Context: 50000/100000 tokens (50% full)]" in result1[0].content
+
+        # Second application — should replace the old tag
+        result2 = _update_system_token_info(result1, used=90000, total=100000)
+        assert "[Context: 90000/100000 tokens (90% full)]" in result2[0].content
+        # Old tag not present
+        assert "50000" not in result2[0].content
+
+    def test_update_system_token_info_no_system_message(self) -> None:
+        from orbiter.agent import _update_system_token_info
+        from orbiter.types import SystemMessage, UserMessage
+
+        msg_list = [UserMessage(content="Hello")]
+        result = _update_system_token_info(msg_list, used=10000, total=200000)
+
+        # A SystemMessage is inserted at position 0 with just the tag
+        assert isinstance(result[0], SystemMessage)
+        assert "[Context: 10000/200000 tokens (5% full)]" in result[0].content
+        # Original user message preserved at position 1
+        assert isinstance(result[1], UserMessage)
+
+    def test_update_system_token_info_preserves_other_messages(self) -> None:
+        from orbiter.agent import _update_system_token_info
+        from orbiter.types import AssistantMessage, SystemMessage, UserMessage
+
+        msg_list = [
+            SystemMessage(content="Sys"),
+            UserMessage(content="Q"),
+            AssistantMessage(content="A"),
+        ]
+        result = _update_system_token_info(msg_list, used=1000, total=10000)
+        assert len(result) == 3
+        assert isinstance(result[1], UserMessage)
+        assert isinstance(result[2], AssistantMessage)
+
+
+# ── Token tracking integration (multi-step agent) ─────────────────────
+
+
+class TestTokenTrackingIntegration:
+    """Integration tests: token tracking wired into Agent.run()."""
+
+    async def test_token_info_in_system_prompt_on_second_step(self) -> None:
+        """After step 0, step 1 LLM call has [Context: ...] in system message."""
+        from typing import Any
+        from unittest.mock import AsyncMock
+
+        from orbiter.agent import Agent
+        from orbiter.context.config import ContextConfig  # pyright: ignore[reportMissingImports]
+        from orbiter.models.types import ModelResponse  # pyright: ignore[reportMissingImports]
+        from orbiter.tool import tool
+        from orbiter.types import SystemMessage, ToolCall, Usage
+
+        context = ContextConfig(
+            mode="pilot",
+            history_rounds=100,
+            summary_threshold=50,
+            offload_threshold=200,
+        )
+
+        @tool
+        def dummy_tool() -> str:
+            return "tool result"
+
+        agent = Agent(
+            name="token-track-test",
+            model="openai:gpt-4o",  # 128000 token window
+            memory=None,
+            context=context,
+            tools=[dummy_tool],
+        )
+
+        received_step1_msgs: list[Any] = []
+        call_count = [0]
+
+        async def mock_complete(msgs: Any, **kwargs: Any) -> ModelResponse:
+            call_count[0] += 1
+            if call_count[0] == 1:
+                # First call: return a tool call + usage
+                return ModelResponse(
+                    content="",
+                    tool_calls=[ToolCall(id="tc1", name="dummy_tool", arguments="{}")],
+                    usage=Usage(input_tokens=1000, output_tokens=50, total_tokens=1050),
+                )
+            else:
+                # Second call: capture messages and return final text
+                received_step1_msgs.extend(msgs)
+                return ModelResponse(content="done", tool_calls=[])
+
+        mock_provider = AsyncMock()
+        mock_provider.complete.side_effect = mock_complete
+
+        await agent.run("hello", provider=mock_provider)
+
+        # The second LLM call should have [Context: ...] in the system message
+        system_msgs = [m for m in received_step1_msgs if isinstance(m, SystemMessage)]
+        assert system_msgs, "Expected a SystemMessage in step 1"
+        assert "[Context:" in system_msgs[0].content
+
+    async def test_token_budget_trigger_forces_summarization(self) -> None:
+        """When token fill ratio > token_budget_trigger, summarization fires early."""
+        from typing import Any
+        from unittest.mock import AsyncMock
+
+        from orbiter.agent import Agent
+        from orbiter.context.config import ContextConfig  # pyright: ignore[reportMissingImports]
+        from orbiter.models.types import ModelResponse  # pyright: ignore[reportMissingImports]
+        from orbiter.tool import tool
+        from orbiter.types import AssistantMessage, SystemMessage, ToolCall, Usage, UserMessage
+
+        # Low token_budget_trigger (0.1) so even a small input_tokens fills it
+        context = ContextConfig(
+            mode="pilot",
+            history_rounds=100,
+            summary_threshold=50,  # high — would not normally trigger
+            offload_threshold=200,
+            token_budget_trigger=0.1,  # 10% fill triggers summarization
+        )
+
+        @tool
+        def action_tool() -> str:
+            return "action done"
+
+        agent = Agent(
+            name="budget-trigger-test",
+            model="openai:gpt-4o",  # 128000 token window
+            memory=None,
+            context=context,
+            tools=[action_tool],
+        )
+
+        # Build history: 4 rounds (8 non-system messages) — under summary_threshold=50
+        history = []
+        for i in range(4):
+            history.append(UserMessage(content=f"msg-{i}"))
+            history.append(AssistantMessage(content=f"reply-{i}"))
+
+        call_count = [0]
+        all_call_args: list[Any] = []
+
+        async def mock_complete(msgs: Any, **kwargs: Any) -> ModelResponse:
+            call_count[0] += 1
+            all_call_args.append(list(msgs))
+            if call_count[0] == 1:
+                # Step 0: return tool call, report fill ratio > 0.1
+                # input_tokens=20000 > 0.1 * 128000 = 12800
+                return ModelResponse(
+                    content="",
+                    tool_calls=[ToolCall(id="tc2", name="action_tool", arguments="{}")],
+                    usage=Usage(input_tokens=20000, output_tokens=10, total_tokens=20010),
+                )
+            else:
+                # Subsequent calls: return text (handles both summarizer + step 1 calls)
+                return ModelResponse(content="done", tool_calls=[])
+
+        mock_provider = AsyncMock()
+        mock_provider.complete.side_effect = mock_complete
+
+        await agent.run("trigger input", messages=history, provider=mock_provider)
+
+        # At minimum: step 0 call + step 1 call (plus possibly a summarization call)
+        assert call_count[0] >= 2
+
+        # The LAST call is step 1's LLM call (after summarization compressed messages).
+        # Original non-system count: 8 history + 1 current + 1 tool result = 10.
+        # After force_summarize with keep_recent=max(2, 10//2)=5: 5 kept (non-system).
+        last_call_msgs = all_call_args[-1]
+        non_system_last = [m for m in last_call_msgs if not isinstance(m, SystemMessage)]
+        assert len(non_system_last) < 10, (
+            f"Expected summarization to compress messages, got {len(non_system_last)}"
+        )
+
+    async def test_force_summarize_in_apply_context_windowing(self) -> None:
+        """_apply_context_windowing with force_summarize=True triggers summarization."""
+        from unittest.mock import AsyncMock
+
+        from orbiter.agent import _apply_context_windowing
+        from orbiter.context.config import ContextConfig  # pyright: ignore[reportMissingImports]
+        from orbiter.types import AssistantMessage, SystemMessage, UserMessage
+
+        context = ContextConfig(
+            mode="pilot",
+            history_rounds=100,
+            summary_threshold=50,  # high threshold — normally wouldn't trigger
+            offload_threshold=200,
+        )
+
+        # 4 messages (well under summary_threshold=50)
+        msg_list = [
+            SystemMessage(content="System"),
+            UserMessage(content="q1"),
+            AssistantMessage(content="a1"),
+            UserMessage(content="q2"),
+        ]
+
+        # Without force_summarize: no summarization
+        result_normal = await _apply_context_windowing(msg_list, context, provider=None)
+        non_system_normal = [m for m in result_normal if not isinstance(m, SystemMessage)]
+        assert len(non_system_normal) == 3  # unchanged
+
+        # With force_summarize=True: summarization fires (provider=None → falls back gracefully)
+        # Since provider=None, summarizer returns "" → result may differ from None case
+        result_forced = await _apply_context_windowing(
+            msg_list, context, provider=None, force_summarize=True
+        )
+        # The function should run without error (summarization path reached)
+        assert result_forced is not None

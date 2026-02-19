@@ -228,3 +228,51 @@ class TestTokenTrackerAgentIds:
         usage = tracker.total_usage()
         assert usage.total_tokens == 150
         assert usage.step_count == 10
+
+
+# ── TokenTracker — add_usage ─────────────────────────────────────────
+
+
+class TestTokenTrackerAddUsage:
+    def test_add_usage_from_duck_typed_object(self) -> None:
+        """add_usage() accepts any object with input_tokens and output_tokens."""
+        from types import SimpleNamespace
+
+        tracker = TokenTracker()
+        usage = SimpleNamespace(input_tokens=100, output_tokens=50, total_tokens=150)
+        step = tracker.add_usage("agent-a", usage)
+        assert isinstance(step, TokenStep)
+        assert step.prompt_tokens == 100
+        assert step.output_tokens == 50
+        assert step.total_tokens == 150
+
+    def test_add_usage_from_orbiter_usage(self) -> None:
+        """add_usage() works with orbiter.types.Usage."""
+        from orbiter.types import Usage  # pyright: ignore[reportMissingImports]
+
+        tracker = TokenTracker()
+        usage = Usage(input_tokens=200, output_tokens=80, total_tokens=280)
+        step = tracker.add_usage("agent-b", usage)
+        assert step.prompt_tokens == 200
+        assert step.output_tokens == 80
+
+    def test_add_usage_increments_step_count(self) -> None:
+        from types import SimpleNamespace
+
+        tracker = TokenTracker()
+        u1 = SimpleNamespace(input_tokens=100, output_tokens=40, total_tokens=140)
+        u2 = SimpleNamespace(input_tokens=120, output_tokens=60, total_tokens=180)
+        tracker.add_usage("agent-a", u1)
+        tracker.add_usage("agent-a", u2)
+        assert len(tracker) == 2
+        assert tracker.agent_usage("agent-a").total_tokens == 320
+
+    def test_add_usage_missing_fields_defaults_to_zero(self) -> None:
+        """Gracefully handles objects without expected fields."""
+        from types import SimpleNamespace
+
+        tracker = TokenTracker()
+        usage = SimpleNamespace()  # no input_tokens / output_tokens
+        step = tracker.add_usage("agent-a", usage)
+        assert step.prompt_tokens == 0
+        assert step.output_tokens == 0
