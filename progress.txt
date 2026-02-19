@@ -2,6 +2,34 @@
 Started: Thu Feb 19 11:52:28 PM IST 2026
 ---
 
+## 2026-02-20 - US-019
+- Added `add_usage(agent_id, usage)` method to `TokenTracker` in `orbiter-context/token_tracker.py` — accepts any object with `input_tokens`/`output_tokens` attributes (duck typing; works with `orbiter.types.Usage`)
+- Added `_get_context_window_tokens(model_name)` helper to `agent.py` — looks up `MODEL_CONTEXT_WINDOWS` from orbiter-models (returns None if not installed/unknown)
+- Added `_update_system_token_info(msg_list, used, total)` helper to `agent.py` — inserts/replaces `[Context: {used}/{total} tokens ({pct}% full)]` in the first SystemMessage (or inserts a new SystemMessage if none exists); idempotent (strips prior tag before adding new one)
+- Added `force_summarize: bool = False` keyword parameter to `_apply_context_windowing()` — when True, bypasses `check_trigger()` and uses `keep_recent=max(2, msg_count//2)` for tighter compression; condition: `msg_count >= summary_threshold or (force_summarize and msg_count >= 2)`
+- Wired token tracking into `Agent.run()` loop:
+  - Initializes `_token_tracker` (TokenTracker) and `_context_window_tokens` before the loop (when `context is not None`)
+  - At start of each step: calls `_update_system_token_info()` with last step's `prompt_tokens` (input_tokens from last call) if tracker has data
+  - After `_call_llm()`: calls `_token_tracker.add_usage(self.name, output.usage)` when `total_tokens > 0`
+  - After appending tool results: checks fill ratio `input_tokens / context_window_tokens > token_budget_trigger` → calls `_apply_context_windowing(..., force_summarize=True)` for next iteration
+- Wired same token tracking into `runner.py _stream()` loop (uses local `_stream_token_tracker`, `_stream_context_window`, and `_update_system_token_info` imported from `orbiter.agent`)
+- Added `TestTokenTrackerAddUsage` (4 tests) to `test_token_tracker.py`
+- Added `TestTokenTrackingHelpers` (5 tests) and `TestTokenTrackingIntegration` (3 tests) to `test_context_integration.py`
+- All 1304 orbiter-core + orbiter-context tests pass; only pre-existing pyright error at agent.py:831 (MCPToolWrapper.to_dict) unrelated to changes
+- Files changed:
+  - packages/orbiter-context/src/orbiter/context/token_tracker.py (added Any import, add_usage())
+  - packages/orbiter-core/src/orbiter/agent.py (added _get_context_window_tokens, _update_system_token_info, force_summarize to _apply_context_windowing, token tracking in run() loop)
+  - packages/orbiter-core/src/orbiter/runner.py (token tracking in _stream() loop)
+  - packages/orbiter-context/tests/test_token_tracker.py (TestTokenTrackerAddUsage)
+  - packages/orbiter-context/tests/test_context_integration.py (TestTokenTrackingHelpers, TestTokenTrackingIntegration)
+- **Learnings for future iterations:**
+  - `_get_context_window_tokens()` and `_update_system_token_info()` are in `agent.py` — import them lazily in `runner.py` inside the token-tracking init block to avoid circular imports
+  - `force_summarize=True` must ALSO bypass `check_trigger()` (not just enter the elif block) — use a `should_summarize` variable: `should_summarize = force_summarize or check_trigger(...).triggered`
+  - When `force_summarize=True`, use `keep_recent=max(2, msg_count//2)` (not `summary_threshold//2`) to ensure meaningful compression even with few messages
+  - The `_ProviderSummarizer.summarize()` calls `provider.complete()` — in tests, this counts as an extra mock call BETWEEN the tool-call LLM step and the final step; use `all_call_args[-1]` to get the final LLM call's messages
+  - `SystemMessage` objects are frozen Pydantic models — replacement requires `list(msg_list)` copy + index replacement (not in-place mutation)
+---
+
 ## 2026-02-20 - US-017
 - Added `_ProviderSummarizer` class to `agent.py` — wraps a model provider with `async summarize(prompt) -> str` for use with orbiter-memory's `generate_summary()`
 - Added `_apply_context_windowing(msg_list, context, provider)` helper to `agent.py`:
