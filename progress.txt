@@ -54,6 +54,23 @@ Started: Thu Feb 19 11:52:28 PM IST 2026
   - The `forgot_password` route makes 2 `get_db()` calls: SELECT user by email, then INSERT password_resets
 ---
 
+## 2026-02-20 - US-005
+- Rewrote `AgentService.stream_agent()` in `orbiter-web/services/agent_runtime.py` to use `orbiter_run.stream()` (from `orbiter.runner`) instead of calling `provider.stream()` directly
+- The full agent tool loop now runs during streaming: LLM tool calls are executed and results fed back before re-streaming
+- Added `from orbiter.runner import run as orbiter_run` and `TextEvent, Usage, UsageEvent` imports at module level
+- Yields `StreamChunk` objects for backward compat: `TextEvent` → `StreamChunk(delta=...)`, final chunk has `finish_reason="stop"` + accumulated usage
+- Updated `test_stream_agent` to mock `orbiter_run.stream` via `patch("orbiter_web.services.agent_runtime.orbiter_run", mock_run)`
+- Added `test_stream_agent_executes_tools`: real Agent with a real tool + mock provider that first returns tool_call_deltas, then text; asserts tool was invoked
+- Files changed:
+  - packages/orbiter-web/src/orbiter_web/services/agent_runtime.py (stream_agent rewrite + new imports)
+  - packages/orbiter-web/tests/test_agent_runtime.py (updated test_stream_agent, added test_stream_agent_executes_tools)
+- **Learnings for future iterations:**
+  - `orbiter.runner.run.stream` is the high-level streaming API; it handles tool loop, hooks, and event emission
+  - Patch `orbiter_web.services.agent_runtime.orbiter_run` to mock `run.stream` in tests (it's imported as `orbiter_run` at module level)
+  - `run.stream(detailed=True)` emits `UsageEvent` — without `detailed=True`, no usage is available
+  - `StreamChunk(tool_call_deltas=[...])` chunks accumulate in `_stream()`; absence of `tc_acc` entries means no tool loop iteration
+---
+
 ## 2026-02-19 - US-001
 - Replaced manual `.replace()`-based escaping in `_build_runner_script()` with `repr()` serialization of the user code string
 - The repr() approach handles \r, \t, \0, null bytes, \u0041, embedded triple-quotes, and any other special characters safely
