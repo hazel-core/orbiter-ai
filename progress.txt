@@ -301,3 +301,14 @@ Started: Fri Feb 20 03:26:33 AM IST 2026
   - The test uses two distinct Agent instances (different names and conversation_ids) on the same shared store to simulate child agent isolation
   - Isolation works by default without any special configuration; task_id is auto-set to conversation_id on every agent run
 ---
+
+## 2026-02-20 - US-INT-021
+- What was implemented: Structured output with multi-tool chain test — verifies TravelReport is correctly populated after get_distance and get_travel_tip are both called sequentially before the JSON output
+- Files changed:
+  - `tests/integration/test_structured_with_tools.py` (new, 1 test)
+- **Learnings for future iterations:**
+  - Sequential chained tools (get_distance → get_travel_tip where tip uses the destination from the distance call) reliably avoids Gemini parallel-tool-call INVALID_ARGUMENT; both tools end up in `result.tool_calls` in order
+  - `parse_structured_output(result.text, TravelReport)` works correctly after two sequential tool calls — the LLM reliably emits JSON at the end if instructed clearly in system prompt + prompt
+  - `assert len(result.tool_calls) == 2` is a reliable check when tools are chained; no extra tool calls are added
+  - Timeout of 30s (PRD spec) is sufficient for 2 sequential tool calls + structured output (Vertex is fast)
+---
