@@ -160,3 +160,17 @@ Started: Fri Feb 20 03:26:33 AM IST 2026
   - For sequential MCP tool calls, chain them so second depends on first (avoids Gemini parallel-tool-call INVALID_ARGUMENT)
   - Use timeout(60) not timeout(30) for MCP tests — subprocess spawn + LLM call needs extra headroom
 ---
+
+## 2026-02-20 - US-INT-011
+- What was implemented: Agent handoffs integration tests — verifies Swarm handoff mode routes between agents and final output reflects target agent's work
+- Files changed:
+  - `tests/integration/test_handoffs.py` (new)
+- **Learnings for future iterations:**
+  - Orbiter handoffs use output-based routing (NOT tool calls): Agent A must output EXACTLY the target agent's name (stripped) to trigger handoff via `_detect_handoff` in swarm.py
+  - Use `Swarm(agents=[router, specialist, ...], mode="handoff")` and call `swarm.run(prompt, provider=provider)` for handoff tests
+  - `RunResult.messages` from the final agent includes accumulated history from all agents in the chain; check for `AssistantMessage(content="target_name")` to detect handoff occurred
+  - For structured output from the target agent, use `parse_structured_output(result.output, Model)` — `RunResult.output` is a str, not auto-parsed
+  - The next agent after handoff receives `current_input = result.output` (the routing word) as the new human input, plus all prior messages; instruct specialist to look at conversation history for the original question
+  - Router instructions must be very explicit: "Your entire response must be exactly the single word: poet" — model may add punctuation otherwise
+  - No HandoffEvent or ToolCall is emitted for handoffs in Orbiter; only the routing output ("poet") appears as an AssistantMessage in messages
+---
