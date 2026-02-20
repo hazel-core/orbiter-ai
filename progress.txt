@@ -332,3 +332,17 @@ Started: Fri Feb 20 03:26:33 AM IST 2026
   - Tests skip correctly when GOOGLE_CLOUD_PROJECT/GOOGLE_CLOUD_LOCATION absent (via vertex_model fixture)
   - Uvicorn subprocess inherits parent env vars, so Vertex AI creds are available to the web app at runtime
 ---
+
+## 2026-02-20 - US-INT-023
+- What was implemented: Web API SSE streaming integration tests; extended web_app.py with /api/agents/{id}/stream endpoint and CreateAgentRequest.tools field
+- Files changed:
+  - `tests/integration/helpers/web_app.py` (added StreamingResponse import, tools field to CreateAgentRequest, StreamAgentRequest model, /api/agents/{id}/stream SSE endpoint with get_greeting built-in tool)
+  - `tests/integration/test_web_streaming.py` (new, 2 tests)
+- **Learnings for future iterations:**
+  - `StreamingResponse` from `fastapi.responses` supports async generators; return `StreamingResponse(_event_generator(), media_type="text/event-stream")` from an endpoint
+  - SSE format: each event is `f"data: {event.model_dump_json()}\n\n"`; httpx `response.aiter_lines()` yields lines without newlines; filter with `line.startswith("data: ")`
+  - `run.stream()` with `event_types={"text", "tool_call", "usage"}` makes UsageEvent the last event in a tool-call flow: TextEvent(s), UsageEvent(step1), ToolCallEvent, TextEvent(s), UsageEvent(final)
+  - Tools in web app endpoints: define tools inside `async def _event_generator()` with lazy `@tool` import; annotate `agent_tools: list = [...]` to satisfy pyright invariant list type check
+  - httpx async streaming uses `async with http_client.stream("POST", ..., timeout=55.0) as response:` + `async for line in response.aiter_lines():`
+  - Helper functions in test files (e.g., `_auth_and_create_streaming_agent`, `_consume_sse_stream`) reduce duplication between tests that share auth + stream flow
+---
