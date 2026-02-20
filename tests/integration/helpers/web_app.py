@@ -26,7 +26,7 @@ _users: dict[str, dict] = {}  # username → {"id": str, "password": str}
 _tokens: dict[str, str] = {}  # token → username
 _agents: dict[str, dict] = {}  # agent_id → config dict
 
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 
 
 # ---------------------------------------------------------------------------
@@ -34,8 +34,15 @@ security = HTTPBearer()
 # ---------------------------------------------------------------------------
 
 
-def _require_auth(credentials: HTTPAuthorizationCredentials = Depends(security)) -> str:  # noqa: B008
-    """Validate Bearer token and return username."""
+def _require_auth(
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),  # noqa: B008
+) -> str:
+    """Validate Bearer token and return username.
+
+    Returns 401 for both missing Authorization header and invalid tokens.
+    """
+    if not credentials:
+        raise HTTPException(status_code=401, detail="Missing authentication token")
     username = _tokens.get(credentials.credentials)
     if not username:
         raise HTTPException(status_code=401, detail="Invalid or missing token")
