@@ -1,3 +1,19 @@
+## 2026-02-20 - US-INT-025
+- What was implemented: Distributed worker with Redis integration tests — verifies Worker picks up a task from Redis Streams queue, runs the agent, and stores result back in Redis; also verifies failure path with invalid model config
+- Files changed:
+  - `tests/integration/test_distributed_worker.py` (new, 2 tests)
+- **Learnings for future iterations:**
+  - `Worker` creates its own `TaskBroker` internally in `__init__`; set `worker._broker._max_retries = 0` to prevent retries in tests (faster failure path)
+  - `Worker.start()` is a blocking coroutine — run it with `asyncio.create_task(worker.start())`, call `await worker.stop()` to set shutdown event, then `asyncio.wait_for(worker_task, 5.0)` to await clean exit
+  - The test's submission `TaskBroker` and the Worker's internal broker both connect to the same Redis queue; the BUSYGROUP error on duplicate consumer group create is handled gracefully
+  - `TaskStore.get_status()` returns `None` until the worker has processed the task; poll with `asyncio.wait_for(_wait(), timeout)` pattern
+  - Terminal statuses as strings: "completed", "failed", "cancelled"; `TaskStatus` is a `StrEnum` so `str(result.status)` works for comparison
+  - `result.result` on a COMPLETED task is `{"output": "<text>"}` — check `result.result.get("output", "")`
+  - Failure test: invalid model string (e.g. `"invalid_provider:nonexistent-model"`) causes worker to fail at provider resolution; with `max_retries=0` it goes directly to FAILED status
+  - Both tests use lazy imports inside test bodies with `# pyright: ignore[reportMissingImports]` (ruff I001 applies: imports must be alphabetically sorted)
+  - Import order for ruff I001: broker < models < store < worker (alphabetical within `orbiter.distributed.*`)
+---
+
 ## 2026-02-20 - US-INT-024
 - What was implemented: Web API authentication flow tests — valid token grants access, invalid/missing tokens return 401, wrong password rejected
 - Files changed:
