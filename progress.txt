@@ -1,3 +1,19 @@
+## 2026-02-20 - US-INT-026
+- What was implemented: Evaluation framework integration tests — trajectory capture, LLM-as-judge scoring, and rule-based exact-match scoring
+- Files changed:
+  - `tests/integration/test_eval_framework.py` (new, 3 tests)
+- **Learnings for future iterations:**
+  - `TrajectoryDataset` (from `orbiter.train.trajectory`) captures agent runs; `dataset.from_messages([...])` builds a `TrajectoryItem` with `input`, `output`, `tool_calls` fields from message dicts
+  - `TrajectoryItem` has `input` (str), `output` (str), `tool_calls` (tuple) — all fields always present; `tool_calls` may be an empty tuple when no tools are called
+  - `LLMAsJudgeScorer` (from `orbiter.eval.llm_scorer`) takes `judge: async (str) -> str` callable and `system_prompt` (rubric); `build_prompt()` embeds the system_prompt + input/output into the judge prompt; the judge callable receives the full formatted prompt
+  - For LLM judge callable: create a second `Agent(instructions="You are an evaluator...")` and call `agent.run(prompt, provider=provider)` — no extra setup needed
+  - `ScorerResult.score` is always a float in [0.0, 1.0] (clamped by `parse_response()`)
+  - Define `ExactMatchScorer` locally in the test as a `Scorer` subclass; use `case_id: str, input: Any, output: Any` signature (matches `Scorer.score` ABC)
+  - `from __future__ import annotations` + module-level `from typing import Any` allows `Any` in annotations of classes defined inside test function bodies (pyright resolves it correctly)
+  - `orbiter-eval` and `orbiter-train` are both in the workspace dev dependencies — importable via `uv run python`
+  - Import order within test functions (ruff I001): `orbiter.agent` < `orbiter.eval.*` < `orbiter.models` < `orbiter.train.*`
+---
+
 ## 2026-02-20 - US-INT-025
 - What was implemented: Distributed worker with Redis integration tests — verifies Worker picks up a task from Redis Streams queue, runs the agent, and stores result back in Redis; also verifies failure path with invalid model config
 - Files changed:
