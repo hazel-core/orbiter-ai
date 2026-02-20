@@ -1,3 +1,15 @@
+## 2026-02-20 - US-INT-031
+- What was implemented: Marathon learning agent across two runs — verifies Run 1 agent stores 5 obscure fictional facts into ChromaVectorMemoryStore via sequential learn_fact tool calls; Run 2 fresh agent with AgentMemory(long_term=Chroma) uses _inject_long_term_knowledge() to retrieve and verify all 5 facts, producing a FactCheckResult with at least 4/5 correct.
+- Files changed:
+  - `tests/integration/test_learning_agent.py` (new, 1 marathon test with FactCheckResult model)
+- **Learnings for future iterations:**
+  - Async tool as closure: `@tool async def learn_fact(fact: str) -> str: await chroma_store.add(...)` — `FunctionTool` detects `asyncio.iscoroutinefunction(fn)` and awaits it; closure over `chroma_store` works correctly in the test's event loop
+  - For learning agent pattern: Run 1 stores exactly N facts → Run 2 searches Chroma with limit=N; since N items exist in the collection, all N are returned regardless of relevance ordering — guarantees full injection via KnowledgeNeuron
+  - Recall prompt explicitly names key terms from all 5 stored facts so the single vector search query `_inject_long_term_knowledge(query=user_input, limit=5)` retrieves all 5 items semantically
+  - FactCheckResult verification approach: include the claimed fact statements directly in the recall_prompt; the LLM compares them against the `<knowledge>` block content and outputs true/false for each — avoids relying on the LLM to recall answers from memory (it can ONLY verify against injected knowledge)
+  - `learn_fact.name` check after `@tool`: the decorated function is a `FunctionTool` named `"learn_fact"` — filter `result.tool_calls` by `tc.name == "learn_fact"` to count only that tool's calls
+---
+
 ## 2026-02-20 - US-INT-030
 - What was implemented: Marathon platform end-to-end test — exercises the full platform stack: Web API → agent with MCP tool (large output) → workspace offload → retrieve_artifact → vector memory → structured REST response. Extended web_app.py helper to support MCP server config and vector memory in the run_agent endpoint.
 - Files changed:
