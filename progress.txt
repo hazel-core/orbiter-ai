@@ -1,3 +1,20 @@
+## 2026-02-20 - US-INT-030
+- What was implemented: Marathon platform end-to-end test — exercises the full platform stack: Web API → agent with MCP tool (large output) → workspace offload → retrieve_artifact → vector memory → structured REST response. Extended web_app.py helper to support MCP server config and vector memory in the run_agent endpoint.
+- Files changed:
+  - `tests/integration/helpers/web_app.py` (extended CreateAgentRequest with mcp_server_script, mcp_large_output_tools, vector_memory_path; extended run_agent endpoint to attach MCP server, collect workspace artifact count, save agent output to Chroma, return tool_calls/workspace_artifact_count/vector_memory_count in response)
+  - `tests/integration/test_platform_marathon.py` (new, 1 marathon test)
+- **Learnings for future iterations:**
+  - Web app MCP config pattern: pass `mcp_server_script` (path string) + `mcp_large_output_tools` in CreateAgentRequest; in the endpoint, create MCPServerConfig with `command=sys.executable, args=[script_path], large_output_tools=[...]` and call `await agent.add_mcp_server(mcp_config)` before `agent.run()`
+  - Web app vector memory pattern: pass `vector_memory_path` (dir path string) in CreateAgentRequest; in the endpoint, create ChromaVectorMemoryStore at that path, call `await chroma_store.add(AIMemory(content=result.text))` after the run, then search to get count for response
+  - Extended run_agent response includes `tool_calls`, `workspace_artifact_count`, `vector_memory_count` — all extra fields; existing callers still work because they only access `output` and `usage`
+  - `agent._workspace` is None until first offload; after `large_output_tools` triggers offload it becomes a Workspace object; `agent._workspace.list()` is sync (no await)
+  - `os.makedirs(vmp, exist_ok=True)` needed before creating ChromaVectorMemoryStore at a new path
+  - Import order after ruff fix: `import os` / `import sys` (stdlib), then `from orbiter.agent` < `from orbiter.mcp` < `from orbiter.memory.backends.vector` < `from orbiter.memory.base` < `from orbiter.models` (note: mcp < memory alphabetically)
+  - `# noqa: PLC0415` is not needed (PLC0415 is not enabled in this ruff config); `RUF100` will flag it as unused
+  - Test uses `tmp_path` (pytest built-in function-scoped fixture) for vector_memory_path — creates a unique dir per test, accessible by both test process and uvicorn subprocess (same machine)
+  - `mcp_server_process.args[0]` gives the MCP server script path from the session-scoped fixture
+---
+
 ## 2026-02-20 - US-INT-029
 - What was implemented: Marathon multi-agent team test — verifies a 3-agent Swarm in team mode (coordinator + worker_a + worker_b) streams all event types, delegates geography and math tasks via delegate_to_worker_a/delegate_to_worker_b tool calls, and produces a structured TeamReport with all fields populated. All 3 agents share a single SQLiteMemoryStore and their contributions are verified by agent_id metadata query.
 - Files changed:
