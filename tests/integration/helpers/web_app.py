@@ -12,6 +12,7 @@ import secrets
 import uuid
 
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
@@ -60,9 +61,15 @@ class CreateAgentRequest(BaseModel):
     model: str
     name: str = ""
     instructions: str = ""
+    tools: list[str] = []
 
 
 class RunAgentRequest(BaseModel):
+    input: str
+    conversation_id: str = ""
+
+
+class StreamAgentRequest(BaseModel):
     input: str
     conversation_id: str = ""
 
@@ -128,6 +135,7 @@ async def create_agent(
         "name": agent_name,
         "instructions": req.instructions,
         "owner": username,
+        "tools": req.tools,
     }
     return _agents[agent_id]
 
@@ -169,3 +177,62 @@ async def run_agent(
             "total_tokens": result.usage.total_tokens,
         },
     }
+
+
+@app.post("/api/agents/{agent_id}/stream")
+async def stream_agent(
+    agent_id: str,
+    req: StreamAgentRequest,
+    username: str = Depends(_require_auth),
+) -> StreamingResponse:
+    """Stream an agent run as Server-Sent Events (SSE).
+
+    Each event is emitted as ``data: {json}\\n\\n``.  Event JSON has a
+    ``type`` field matching the orbiter stream event types: ``text``,
+    ``tool_call``, ``usage``.
+    """
+    agent_config = _agents.get(agent_id)
+    if not agent_config:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if agent_config["owner"] != username:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    async def _event_generator():
+        from orbiter.agent import Agent  # pyright: ignore[reportMissingImports]
+        from orbiter.models import get_provider  # pyright: ignore[reportMissingImports]
+        from orbiter.runner import run  # pyright: ignore[reportMissingImports]
+        from orbiter.tool import tool  # pyright: ignore[reportMissingImports]
+
+        @tool
+        def get_greeting(name: str) -> str:
+            """Return a greeting message for a person.
+
+            Args:
+                name: The name of the person to greet.
+            """
+            return f"Hello, {name}!"
+
+        _tool_registry = {"get_greeting": get_greeting}
+        provider = get_provider(agent_config["model"])
+        agent_tools: list = [
+            _tool_registry[t]
+            for t in agent_config.get("tools", [])
+            if t in _tool_registry
+        ]
+        agent = Agent(
+            name=agent_config["name"],
+            model=agent_config["model"],
+            instructions=agent_config.get("instructions", ""),
+            tools=agent_tools,
+        )
+
+        async for event in run.stream(  # type: ignore[attr-defined]
+            agent,
+            req.input,
+            provider=provider,
+            detailed=True,
+            event_types={"text", "tool_call", "usage"},
+        ):
+            yield f"data: {event.model_dump_json()}\n\n"
+
+    return StreamingResponse(_event_generator(), media_type="text/event-stream")
