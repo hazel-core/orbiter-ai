@@ -1,3 +1,18 @@
+## 2026-02-20 - US-INT-028
+- What was implemented: Marathon research agent multi-step test — verifies a research agent uses 3 tools (search_topic, fetch_detail, count_words) across 5+ sequential steps, persists conversation to SQLiteMemoryStore, uses context windowing, and produces a structured ResearchReport with all required fields populated and > 10 memory items after the run
+- Files changed:
+  - `tests/integration/test_research_marathon.py` (new, 1 test with ResearchReport model and 3 tool definitions)
+- **Learnings for future iterations:**
+  - Memory item count per single `agent.run()` with N tool calls: 1 HumanMemory + N AIMemory (one per LLM step) + N ToolMemory (one per POST_TOOL_CALL hook) + 1 AIMemory (final response) = 2N+2 items; with 6 tool calls = 14 items
+  - MemoryPersistence saves both AIMemory (via POST_LLM_CALL hook) and ToolMemory (via POST_TOOL_CALL hook) within a single `agent.run()` call — not just at turn boundaries
+  - For > 10 memory items assertion, instruct agent to make 6+ tool calls (1 HumanMemory + 6 AIMemory + 6 ToolMemory + 1 AIMemory = 14 items)
+  - Sequential chaining pattern for marathon tests: tool results hint at next topic to fetch, creating a natural DAG that prevents Gemini parallel-tool-call INVALID_ARGUMENT
+  - Use `@pytest.mark.integration`, `@pytest.mark.marathon`, `@pytest.mark.timeout(180)` for marathon tests
+  - Import order within test function (ruff I001): `orbiter._internal.output_parser` < `orbiter.agent` < `orbiter.context.config` < `orbiter.memory.backends.sqlite` < `orbiter.memory.base` < `orbiter.models` < `orbiter.tool`
+  - `ContextConfig(mode="copilot", history_rounds=10, summary_threshold=50, offload_threshold=100)` — set `summary_threshold` high to prevent summarization from interfering with the marathon run
+  - Re-opening SQLiteMemoryStore after close to verify items: `verify_store = SQLiteMemoryStore(db_path=tmp_sqlite_db); await verify_store.init()` — works correctly since SQLite is file-backed
+---
+
 ## 2026-02-20 - US-INT-027
 - What was implemented: Agent-to-Agent (A2A) protocol integration test — verifies Agent A delegates a translation task to Agent B running as an A2A HTTP server on port 8766, and uses the result
 - Files changed:
