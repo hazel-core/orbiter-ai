@@ -628,10 +628,7 @@ class TestRunStreamDetailedFalse:
         provider = _make_stream_provider([round1, round2])
 
         events = [
-            ev
-            async for ev in run.stream(
-                agent, "Greet Alice", provider=provider, detailed=False
-            )
+            ev async for ev in run.stream(agent, "Greet Alice", provider=provider, detailed=False)
         ]
 
         for ev in events:
@@ -686,9 +683,7 @@ class TestRunStreamDetailedText:
         assert usage_events[0].agent_name == "bot"
 
         # StepEvent(status='completed') near the end
-        step_completed = [
-            e for e in events if isinstance(e, StepEvent) and e.status == "completed"
-        ]
+        step_completed = [e for e in events if isinstance(e, StepEvent) and e.status == "completed"]
         assert len(step_completed) == 1
         assert step_completed[0].completed_at is not None
         assert step_completed[0].usage is not None
@@ -704,9 +699,7 @@ class TestRunStreamDetailedText:
         chunks = [_FakeStreamChunk(delta="ok")]
         provider = _make_stream_provider([chunks])
 
-        events = [
-            ev async for ev in run.stream(agent, "Hi", provider=provider, detailed=True)
-        ]
+        events = [ev async for ev in run.stream(agent, "Hi", provider=provider, detailed=True)]
 
         type_names = [type(e).__name__ for e in events]
         assert type_names == [
@@ -749,10 +742,7 @@ class TestRunStreamDetailedToolCalls:
         provider = _make_stream_provider([round1, round2])
 
         events = [
-            ev
-            async for ev in run.stream(
-                agent, "Greet Alice", provider=provider, detailed=True
-            )
+            ev async for ev in run.stream(agent, "Greet Alice", provider=provider, detailed=True)
         ]
 
         tool_result_events = [e for e in events if isinstance(e, ToolResultEvent)]
@@ -792,10 +782,7 @@ class TestRunStreamDetailedToolCalls:
         round2 = [_FakeStreamChunk(delta="Result: 42")]
         provider = _make_stream_provider([round1, round2])
 
-        events = [
-            ev
-            async for ev in run.stream(agent, "calc", provider=provider, detailed=True)
-        ]
+        events = [ev async for ev in run.stream(agent, "calc", provider=provider, detailed=True)]
 
         type_names = [type(e).__name__ for e in events]
         # Step 1: tool call
@@ -839,10 +826,7 @@ class TestRunStreamDetailedToolCalls:
         round2 = [_FakeStreamChunk(delta="Tool failed.")]
         provider = _make_stream_provider([round1, round2])
 
-        events = [
-            ev
-            async for ev in run.stream(agent, "try", provider=provider, detailed=True)
-        ]
+        events = [ev async for ev in run.stream(agent, "try", provider=provider, detailed=True)]
 
         tool_result_events = [e for e in events if isinstance(e, ToolResultEvent)]
         assert len(tool_result_events) == 1
@@ -884,12 +868,7 @@ class TestRunStreamDetailedToolCalls:
         round2 = [_FakeStreamChunk(delta="Done.")]
         provider = _make_stream_provider([round1, round2])
 
-        events = [
-            ev
-            async for ev in run.stream(
-                agent, "compute", provider=provider, detailed=True
-            )
-        ]
+        events = [ev async for ev in run.stream(agent, "compute", provider=provider, detailed=True)]
 
         tool_result_events = [e for e in events if isinstance(e, ToolResultEvent)]
         assert len(tool_result_events) == 2
@@ -922,9 +901,7 @@ class TestRunStreamDetailedUsage:
         ]
         provider = _make_stream_provider([chunks])
 
-        events = [
-            ev async for ev in run.stream(agent, "Hi", provider=provider, detailed=True)
-        ]
+        events = [ev async for ev in run.stream(agent, "Hi", provider=provider, detailed=True)]
 
         usage_events = [e for e in events if isinstance(e, UsageEvent)]
         assert len(usage_events) == 1
@@ -940,9 +917,7 @@ class TestRunStreamDetailedUsage:
         chunks = [_FakeStreamChunk(delta="ok")]
         provider = _make_stream_provider([chunks])
 
-        events = [
-            ev async for ev in run.stream(agent, "Hi", provider=provider, detailed=True)
-        ]
+        events = [ev async for ev in run.stream(agent, "Hi", provider=provider, detailed=True)]
 
         usage_events = [e for e in events if isinstance(e, UsageEvent)]
         assert len(usage_events) == 1
@@ -1012,11 +987,7 @@ class TestRunStreamDetailedErrors:
             async for ev in run.stream(agent, "Hi", provider=mock, detailed=True):
                 events.append(ev)
 
-        status_events = [
-            e
-            for e in events
-            if isinstance(e, StatusEvent) and e.status == "error"
-        ]
+        status_events = [e for e in events if isinstance(e, StatusEvent) and e.status == "error"]
         assert len(status_events) == 1
         assert status_events[0].message == "bad input"
 
@@ -1049,10 +1020,7 @@ class TestRunStreamDetailedStepNumbers:
         text_round = [_FakeStreamChunk(delta="Final answer")]
         provider = _make_stream_provider([tool_round, text_round])
 
-        events = [
-            ev
-            async for ev in run.stream(agent, "go", provider=provider, detailed=True)
-        ]
+        events = [ev async for ev in run.stream(agent, "go", provider=provider, detailed=True)]
 
         step_events = [e for e in events if isinstance(e, StepEvent)]
         # Step 1 started + completed, Step 2 started + completed
@@ -1225,10 +1193,7 @@ class TestRunStreamEventFiltering:
         # Filter to only text — should get TextEvents (same as no filter, since
         # detailed=False only emits TextEvent/ToolCallEvent anyway)
         events = [
-            ev
-            async for ev in run.stream(
-                agent, "Hi", provider=provider, event_types={"text"}
-            )
+            ev async for ev in run.stream(agent, "Hi", provider=provider, event_types={"text"})
         ]
 
         assert len(events) == 2
@@ -1348,9 +1313,7 @@ class TestRunStreamEventMetrics:
         ]
         provider = _make_stream_provider([chunks])
 
-        events = [
-            ev async for ev in run.stream(agent, "Hi", provider=provider, detailed=True)
-        ]
+        events = [ev async for ev in run.stream(agent, "Hi", provider=provider, detailed=True)]
 
         # Should have text, status, step, usage events
         snap = get_metrics_snapshot()

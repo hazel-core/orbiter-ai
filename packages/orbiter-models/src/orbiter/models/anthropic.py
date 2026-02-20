@@ -7,6 +7,7 @@ Wraps the ``anthropic`` SDK to implement ``ModelProvider.complete()`` and
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -16,12 +17,20 @@ from anthropic import AsyncAnthropic
 from orbiter.config import ModelConfig
 from orbiter.types import (
     AssistantMessage,
+    AudioBlock,
+    ContentBlock,
+    DocumentBlock,
+    ImageDataBlock,
+    ImageURLBlock,
     Message,
+    MessageContent,
     SystemMessage,
+    TextBlock,
     ToolCall,
     ToolResult,
     Usage,
     UserMessage,
+    VideoBlock,
 )
 
 from .provider import ModelProvider, model_registry
@@ -33,6 +42,7 @@ from .types import (
     ToolCallDelta,
 )
 
+_log = logging.getLogger(__name__)
 _DEFAULT_MAX_TOKENS = 4096
 
 # ---------------------------------------------------------------------------
@@ -58,6 +68,65 @@ def _map_stop_reason(raw: str | None) -> FinishReason:
 # ---------------------------------------------------------------------------
 
 
+def _content_blocks_to_anthropic(blocks: list[ContentBlock]) -> list[dict[str, Any]]:
+    """Convert a list of ContentBlock objects to Anthropic content parts.
+
+    Args:
+        blocks: List of ContentBlock objects.
+
+    Returns:
+        List of Anthropic-format content part dicts.
+    """
+    parts: list[dict[str, Any]] = []
+    for block in blocks:
+        if isinstance(block, TextBlock):
+            parts.append({"type": "text", "text": block.text})
+        elif isinstance(block, ImageURLBlock):
+            parts.append({"type": "image", "source": {"type": "url", "url": block.url}})
+        elif isinstance(block, ImageDataBlock):
+            parts.append(
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": block.media_type,
+                        "data": block.data,
+                    },
+                }
+            )
+        elif isinstance(block, DocumentBlock):
+            doc: dict[str, Any] = {
+                "type": "document",
+                "source": {
+                    "type": "base64",
+                    "media_type": block.media_type,
+                    "data": block.data,
+                },
+            }
+            if block.title:
+                doc["title"] = block.title
+            parts.append(doc)
+        elif isinstance(block, AudioBlock):
+            _log.warning("Anthropic does not support audio input; skipping AudioBlock")
+        elif isinstance(block, VideoBlock):
+            _log.warning("Anthropic does not support video input; skipping VideoBlock")
+    return parts
+
+
+def _message_content_to_anthropic(content: MessageContent) -> str | list[dict[str, Any]]:
+    """Convert MessageContent to an Anthropic-compatible content value.
+
+    Args:
+        content: A string or list of ContentBlock objects.
+
+    Returns:
+        A string (for plain text) or list of content part dicts.
+    """
+    if isinstance(content, str):
+        return content
+    return _content_blocks_to_anthropic(content)
+
+
 def _build_messages(messages: list[Message]) -> tuple[str, list[dict[str, Any]]]:
     """Convert Orbiter messages to Anthropic format.
 
@@ -78,11 +147,14 @@ def _build_messages(messages: list[Message]) -> tuple[str, list[dict[str, Any]]]
         if isinstance(msg, SystemMessage):
             system_parts.append(msg.content)
         elif isinstance(msg, UserMessage):
-            result.append({"role": "user", "content": msg.content})
+            result.append({"role": "user", "content": _message_content_to_anthropic(msg.content)})
         elif isinstance(msg, AssistantMessage):
             content: list[dict[str, Any]] = []
             if msg.content:
-                content.append({"type": "text", "text": msg.content})
+                if isinstance(msg.content, str):
+                    content.append({"type": "text", "text": msg.content})
+                else:
+                    content.extend(_content_blocks_to_anthropic(msg.content))
             for tc in msg.tool_calls:
                 content.append(
                     {
@@ -96,10 +168,15 @@ def _build_messages(messages: list[Message]) -> tuple[str, list[dict[str, Any]]]
                 content.append({"type": "text", "text": ""})
             result.append({"role": "assistant", "content": content})
         elif isinstance(msg, ToolResult):
+            # Anthropic natively supports image blocks inside tool_result content
+            if isinstance(msg.content, list):
+                tool_content: str | list[dict[str, Any]] = _content_blocks_to_anthropic(msg.content)
+            else:
+                tool_content = msg.error if msg.error else msg.content
             tool_block: dict[str, Any] = {
                 "type": "tool_result",
                 "tool_use_id": msg.tool_call_id,
-                "content": msg.error if msg.error else msg.content,
+                "content": tool_content,
             }
             if msg.error:
                 tool_block["is_error"] = True

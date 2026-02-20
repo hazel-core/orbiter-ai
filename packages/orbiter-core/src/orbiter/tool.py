@@ -10,7 +10,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable
 from typing import Any, Union, get_type_hints, overload
 
-from orbiter.types import OrbiterError
+from orbiter.types import ContentBlock, OrbiterError
 
 
 class ToolError(OrbiterError):
@@ -215,14 +215,14 @@ class Tool(ABC):
     parameters: dict[str, Any]
 
     @abstractmethod
-    async def execute(self, **kwargs: Any) -> str | dict[str, Any]:
+    async def execute(self, **kwargs: Any) -> str | dict[str, Any] | list[ContentBlock]:
         """Execute the tool with the given keyword arguments.
 
         Args:
             **kwargs: Tool-specific arguments.
 
         Returns:
-            A string or dict result.
+            A string, dict, or list of ContentBlock results.
         """
 
     def to_schema(self) -> dict[str, Any]:
@@ -267,7 +267,7 @@ class FunctionTool(Tool):
         self.description = description or _extract_description(fn)
         self.parameters = _generate_schema(fn)
 
-    async def execute(self, **kwargs: Any) -> str | dict[str, Any]:
+    async def execute(self, **kwargs: Any) -> str | dict[str, Any] | list[ContentBlock]:
         """Execute the wrapped function.
 
         Args:

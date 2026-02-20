@@ -6,6 +6,7 @@ Wraps the ``openai`` SDK to implement ``ModelProvider.complete()`` and
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -15,12 +16,20 @@ from openai import AsyncOpenAI
 from orbiter.config import ModelConfig
 from orbiter.types import (
     AssistantMessage,
+    AudioBlock,
+    ContentBlock,
+    DocumentBlock,
+    ImageDataBlock,
+    ImageURLBlock,
     Message,
+    MessageContent,
     SystemMessage,
+    TextBlock,
     ToolCall,
     ToolResult,
     Usage,
     UserMessage,
+    VideoBlock,
 )
 
 from .provider import ModelProvider, model_registry
@@ -31,6 +40,8 @@ from .types import (
     StreamChunk,
     ToolCallDelta,
 )
+
+_log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Finish reason mapping
@@ -55,8 +66,68 @@ def _map_finish_reason(raw: str | None) -> FinishReason:
 # ---------------------------------------------------------------------------
 
 
+def _content_blocks_to_openai(blocks: list[ContentBlock]) -> list[dict[str, Any]]:
+    """Convert a list of ContentBlock objects to OpenAI content parts.
+
+    Args:
+        blocks: List of ContentBlock objects.
+
+    Returns:
+        List of OpenAI-format content part dicts.
+    """
+    parts: list[dict[str, Any]] = []
+    for block in blocks:
+        if isinstance(block, TextBlock):
+            parts.append({"type": "text", "text": block.text})
+        elif isinstance(block, ImageURLBlock):
+            parts.append(
+                {
+                    "type": "image_url",
+                    "image_url": {"url": block.url, "detail": block.detail},
+                }
+            )
+        elif isinstance(block, ImageDataBlock):
+            data_url = f"data:{block.media_type};base64,{block.data}"
+            parts.append(
+                {
+                    "type": "image_url",
+                    "image_url": {"url": data_url, "detail": "auto"},
+                }
+            )
+        elif isinstance(block, AudioBlock):
+            parts.append(
+                {
+                    "type": "input_audio",
+                    "input_audio": {"data": block.data, "format": block.format},
+                }
+            )
+        elif isinstance(block, VideoBlock):
+            _log.warning("OpenAI does not support video input; skipping VideoBlock")
+        elif isinstance(block, DocumentBlock):
+            _log.warning("OpenAI does not support document input natively; skipping DocumentBlock")
+    return parts
+
+
+def _message_content_to_openai(content: MessageContent) -> str | list[dict[str, Any]]:
+    """Convert MessageContent to an OpenAI-compatible content value.
+
+    Args:
+        content: A string or list of ContentBlock objects.
+
+    Returns:
+        A string (for plain text) or list of content part dicts.
+    """
+    if isinstance(content, str):
+        return content
+    return _content_blocks_to_openai(content)
+
+
 def _to_openai_messages(messages: list[Message]) -> list[dict[str, Any]]:
     """Convert Orbiter messages to OpenAI chat message dicts.
+
+    For ToolResult messages that contain media content blocks, OpenAI's
+    ``role: "tool"`` only accepts strings, so media blocks are collected
+    and injected as a synthetic user message after all tool results.
 
     Args:
         messages: Orbiter message sequence.
@@ -69,11 +140,11 @@ def _to_openai_messages(messages: list[Message]) -> list[dict[str, Any]]:
         if isinstance(msg, SystemMessage):
             result.append({"role": "system", "content": msg.content})
         elif isinstance(msg, UserMessage):
-            result.append({"role": "user", "content": msg.content})
+            result.append({"role": "user", "content": _message_content_to_openai(msg.content)})
         elif isinstance(msg, AssistantMessage):
             entry: dict[str, Any] = {"role": "assistant"}
             if msg.content:
-                entry["content"] = msg.content
+                entry["content"] = _message_content_to_openai(msg.content)
             if msg.tool_calls:
                 entry["tool_calls"] = [
                     {
@@ -87,12 +158,28 @@ def _to_openai_messages(messages: list[Message]) -> list[dict[str, Any]]:
                 entry["content"] = ""
             result.append(entry)
         elif isinstance(msg, ToolResult):
-            entry = {
-                "role": "tool",
-                "tool_call_id": msg.tool_call_id,
-                "content": msg.error if msg.error else msg.content,
-            }
-            result.append(entry)
+            if isinstance(msg.content, list):
+                # OpenAI tool role only accepts str — use placeholder text and
+                # collect media blocks for a synthetic follow-up user message.
+                media_parts = _content_blocks_to_openai(msg.content)
+                text_content = msg.error if msg.error else "[media result]"
+                result.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": msg.tool_call_id,
+                        "content": text_content,
+                    }
+                )
+                if media_parts:
+                    result.append({"role": "user", "content": media_parts})
+            else:
+                result.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": msg.tool_call_id,
+                        "content": msg.error if msg.error else msg.content,
+                    }
+                )
     return result
 
 

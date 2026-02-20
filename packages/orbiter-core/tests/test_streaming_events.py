@@ -323,8 +323,14 @@ class TestStreamEventUnion:
             ),
         ]
         expected_types = [
-            "text", "tool_call", "step", "tool_result",
-            "reasoning", "error", "status", "usage",
+            "text",
+            "tool_call",
+            "step",
+            "tool_result",
+            "reasoning",
+            "error",
+            "status",
+            "usage",
         ]
         assert [e.type for e in events] == expected_types
 

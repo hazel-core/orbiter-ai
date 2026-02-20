@@ -17,15 +17,33 @@ from orbiter.observability.logging import (  # pyright: ignore[reportMissingImpo
 from orbiter.runner import run
 from orbiter.swarm import Swarm
 from orbiter.tool import FunctionTool, Tool, tool
+from orbiter.types import (
+    AudioBlock,
+    ContentBlock,
+    DocumentBlock,
+    ImageDataBlock,
+    ImageURLBlock,
+    MessageContent,
+    TextBlock,
+    VideoBlock,
+)
 
 __all__ = [
     "Agent",
+    "AudioBlock",
+    "ContentBlock",
+    "DocumentBlock",
     "FunctionTool",
+    "ImageDataBlock",
+    "ImageURLBlock",
+    "MessageContent",
     "ParallelGroup",
     "SerialGroup",
     "Swarm",
     "SwarmNode",
+    "TextBlock",
     "Tool",
+    "VideoBlock",
     "configure",
     "get_logger",
     "run",

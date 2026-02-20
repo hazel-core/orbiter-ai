@@ -13,10 +13,25 @@ from collections.abc import Sequence
 from orbiter.types import (
     AssistantMessage,
     Message,
+    MessageContent,
     SystemMessage,
     ToolResult,
     UserMessage,
 )
+
+
+def _content_is_empty(content: MessageContent) -> bool:
+    """Return True when a MessageContent value is semantically empty.
+
+    Args:
+        content: A string or list of ContentBlock objects.
+
+    Returns:
+        True if the content is an empty string or an empty list.
+    """
+    if isinstance(content, str):
+        return not content
+    return len(content) == 0
 
 
 def build_messages(

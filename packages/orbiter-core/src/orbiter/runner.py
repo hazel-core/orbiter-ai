@@ -37,6 +37,7 @@ from orbiter.types import (
     AssistantMessage,
     ErrorEvent,
     Message,
+    MessageContent,
     RunResult,
     StatusEvent,
     StepEvent,
@@ -53,7 +54,7 @@ from orbiter.types import (
 
 async def run(
     agent: Any,
-    input: str,
+    input: MessageContent,
     *,
     messages: Sequence[Message] | None = None,
     provider: Any = None,
@@ -70,7 +71,7 @@ async def run(
 
     Args:
         agent: An ``Agent`` (or ``Swarm``) instance.
-        input: User query string.
+        input: User query — a string or list of ContentBlock objects.
         messages: Prior conversation history to continue from.
         provider: LLM provider with ``async complete()`` method.
             When ``None``, auto-resolved from the agent's model string.
@@ -105,7 +106,7 @@ async def run(
 
 def _sync(
     agent: Any,
-    input: str,
+    input: MessageContent,
     *,
     messages: Sequence[Message] | None = None,
     provider: Any = None,
@@ -119,7 +120,7 @@ def _sync(
 
     Args:
         agent: An ``Agent`` (or ``Swarm``) instance.
-        input: User query string.
+        input: User query — a string or list of ContentBlock objects.
         messages: Prior conversation history to continue from.
         provider: LLM provider with ``async complete()`` method.
         max_retries: Retry attempts for transient LLM errors.
@@ -144,7 +145,7 @@ def _sync(
 
 async def _stream(
     agent: Any,
-    input: str,
+    input: MessageContent,
     *,
     messages: Sequence[Message] | None = None,
     provider: Any = None,
@@ -378,11 +379,9 @@ async def _stream(
             if detailed:
                 total_tool_duration_ms = (tool_exec_end - tool_exec_start) * 1000
                 per_tool_duration_ms = (
-                    total_tool_duration_ms / len(tool_results)
-                    if tool_results
-                    else 0.0
+                    total_tool_duration_ms / len(tool_results) if tool_results else 0.0
                 )
-                for action, tr in zip(actions, tool_results):
+                for action, tr in zip(actions, tool_results, strict=False):
                     _ev = ToolResultEvent(
                         tool_name=tr.tool_name,
                         tool_call_id=tr.tool_call_id,
@@ -409,9 +408,7 @@ async def _stream(
                     yield _ev
 
             # Append assistant message + tool results to conversation
-            msg_list.append(
-                AssistantMessage(content=full_text, tool_calls=tool_calls)
-            )
+            msg_list.append(AssistantMessage(content=full_text, tool_calls=tool_calls))
             msg_list.extend(tool_results)
 
         except Exception as exc:

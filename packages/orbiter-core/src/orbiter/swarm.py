@@ -171,22 +171,31 @@ class Swarm:
         """
         if self.mode == "workflow":
             async for event in self._stream_workflow(
-                input, messages=messages, provider=provider,
-                detailed=detailed, max_steps=max_steps,
+                input,
+                messages=messages,
+                provider=provider,
+                detailed=detailed,
+                max_steps=max_steps,
                 event_types=event_types,
             ):
                 yield event
         elif self.mode == "handoff":
             async for event in self._stream_handoff(
-                input, messages=messages, provider=provider,
-                detailed=detailed, max_steps=max_steps,
+                input,
+                messages=messages,
+                provider=provider,
+                detailed=detailed,
+                max_steps=max_steps,
                 event_types=event_types,
             ):
                 yield event
         elif self.mode == "team":
             async for event in self._stream_team(
-                input, messages=messages, provider=provider,
-                detailed=detailed, max_steps=max_steps,
+                input,
+                messages=messages,
+                provider=provider,
+                detailed=detailed,
+                max_steps=max_steps,
                 event_types=event_types,
             ):
                 yield event
@@ -233,8 +242,11 @@ class Swarm:
                 if hasattr(agent, "stream"):
                     text_parts: list[str] = []
                     async for event in agent.stream(
-                        current_input, messages=messages, provider=provider,
-                        detailed=detailed, max_steps=max_steps,
+                        current_input,
+                        messages=messages,
+                        provider=provider,
+                        detailed=detailed,
+                        max_steps=max_steps,
                     ):
                         if isinstance(event, TextEvent):
                             text_parts.append(event.text)
@@ -243,7 +255,9 @@ class Swarm:
                     current_input = "".join(text_parts)
                 else:
                     result = await agent.run(
-                        current_input, messages=messages, provider=provider,
+                        current_input,
+                        messages=messages,
+                        provider=provider,
                     )
                     current_input = result.output
                 continue
@@ -251,8 +265,12 @@ class Swarm:
             # Stream the agent and collect text for chaining
             text_parts = []
             async for event in run.stream(
-                agent, current_input, messages=messages, provider=provider,
-                detailed=detailed, max_steps=max_steps,
+                agent,
+                current_input,
+                messages=messages,
+                provider=provider,
+                detailed=detailed,
+                max_steps=max_steps,
             ):
                 if isinstance(event, TextEvent):
                     text_parts.append(event.text)
@@ -301,8 +319,12 @@ class Swarm:
             # Stream the agent's execution and collect text
             text_parts: list[str] = []
             async for event in run.stream(
-                agent, current_input, messages=messages, provider=provider,
-                detailed=detailed, max_steps=max_steps,
+                agent,
+                current_input,
+                messages=messages,
+                provider=provider,
+                detailed=detailed,
+                max_steps=max_steps,
             ):
                 if isinstance(event, TextEvent):
                     text_parts.append(event.text)
@@ -385,8 +407,12 @@ class Swarm:
                     yield _ev
 
             async for event in run.stream(
-                lead, input, messages=messages, provider=provider,
-                detailed=detailed, max_steps=max_steps,
+                lead,
+                input,
+                messages=messages,
+                provider=provider,
+                detailed=detailed,
+                max_steps=max_steps,
                 event_types=event_types,
             ):
                 yield event

@@ -10,10 +10,13 @@ import json
 from collections.abc import AsyncIterator
 from typing import Any
 
+from google import genai
+
 from orbiter.config import ModelConfig
 from orbiter.types import (
     AssistantMessage,
     Message,
+    MessageContent,
     SystemMessage,
     ToolCall,
     ToolResult,
@@ -21,6 +24,7 @@ from orbiter.types import (
     UserMessage,
 )
 
+from ._media import content_blocks_to_google
 from .provider import ModelProvider, model_registry
 from .types import (
     FinishReason,
@@ -29,8 +33,6 @@ from .types import (
     StreamChunk,
     ToolCallDelta,
 )
-
-from google import genai
 
 # ---------------------------------------------------------------------------
 # Finish reason mapping
@@ -58,6 +60,20 @@ def _map_finish_reason(raw: str | None) -> FinishReason:
 # ---------------------------------------------------------------------------
 
 
+def _user_parts_from_content(content: MessageContent) -> list[dict[str, Any]]:
+    """Convert MessageContent to Google API parts for a user message.
+
+    Args:
+        content: A string or list of ContentBlock objects.
+
+    Returns:
+        List of Google-format part dicts.
+    """
+    if isinstance(content, str):
+        return [{"text": content}]
+    return content_blocks_to_google(content)
+
+
 def _to_google_contents(messages: list[Message]) -> tuple[list[dict[str, Any]], str]:
     """Convert Orbiter messages to Google API format.
 
@@ -76,11 +92,14 @@ def _to_google_contents(messages: list[Message]) -> tuple[list[dict[str, Any]], 
         if isinstance(msg, SystemMessage):
             system_parts.append(msg.content)
         elif isinstance(msg, UserMessage):
-            contents.append({"role": "user", "parts": [{"text": msg.content}]})
+            contents.append({"role": "user", "parts": _user_parts_from_content(msg.content)})
         elif isinstance(msg, AssistantMessage):
             parts: list[dict[str, Any]] = []
             if msg.content:
-                parts.append({"text": msg.content})
+                if isinstance(msg.content, str):
+                    parts.append({"text": msg.content})
+                else:
+                    parts.extend(content_blocks_to_google(msg.content))
             for tc in msg.tool_calls:
                 args = json.loads(tc.arguments) if tc.arguments else {}
                 parts.append({"function_call": {"name": tc.name, "args": args}})
@@ -88,16 +107,23 @@ def _to_google_contents(messages: list[Message]) -> tuple[list[dict[str, Any]], 
                 parts.append({"text": ""})
             contents.append({"role": "model", "parts": parts})
         elif isinstance(msg, ToolResult):
-            response_data = msg.error if msg.error else msg.content
-            contents.append({
-                "role": "user",
-                "parts": [{
-                    "function_response": {
-                        "name": msg.tool_name,
-                        "response": {"content": response_data},
-                    },
-                }],
-            })
+            # Build function_response part
+            if isinstance(msg.content, list):
+                response_data: Any = content_blocks_to_google(msg.content)
+            else:
+                response_data = msg.error if msg.error else msg.content
+            function_response_part: dict[str, Any] = {
+                "function_response": {
+                    "name": msg.tool_name,
+                    "response": {"content": response_data},
+                },
+            }
+            # Include any media parts alongside the function response
+            media_parts: list[dict[str, Any]] = []
+            if isinstance(msg.content, list):
+                media_parts = content_blocks_to_google(msg.content)
+            all_parts = [function_response_part, *media_parts]
+            contents.append({"role": "user", "parts": all_parts})
 
     return contents, "\n".join(system_parts)
 
@@ -119,11 +145,13 @@ def _convert_tools(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
     declarations: list[dict[str, Any]] = []
     for t in tools:
         fn = t.get("function", {})
-        declarations.append({
-            "name": fn.get("name", ""),
-            "description": fn.get("description", ""),
-            "parameters": fn.get("parameters", {"type": "object", "properties": {}}),
-        })
+        declarations.append(
+            {
+                "name": fn.get("name", ""),
+                "description": fn.get("description", ""),
+                "parameters": fn.get("parameters", {"type": "object", "properties": {}}),
+            }
+        )
     return [{"function_declarations": declarations}] if declarations else []
 
 

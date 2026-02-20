@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -11,13 +11,92 @@ class OrbiterError(Exception):
     """Base exception for all Orbiter errors."""
 
 
+# ---------------------------------------------------------------------------
+# Content block types for multimodal messages
+# ---------------------------------------------------------------------------
+
+
+class TextBlock(BaseModel):
+    """A plain-text content block."""
+
+    model_config = {"frozen": True}
+
+    type: Literal["text"] = "text"
+    text: str
+
+
+class ImageURLBlock(BaseModel):
+    """An image referenced by URL (https:// or data: URI)."""
+
+    model_config = {"frozen": True}
+
+    type: Literal["image_url"] = "image_url"
+    url: str
+    detail: Literal["auto", "low", "high"] = "auto"
+
+
+class ImageDataBlock(BaseModel):
+    """An image provided as raw base64-encoded bytes."""
+
+    model_config = {"frozen": True}
+
+    type: Literal["image_data"] = "image_data"
+    data: str
+    media_type: str = "image/jpeg"
+
+
+class AudioBlock(BaseModel):
+    """An audio clip provided as raw base64-encoded bytes."""
+
+    model_config = {"frozen": True}
+
+    type: Literal["audio"] = "audio"
+    data: str
+    format: str = "mp3"
+
+
+class VideoBlock(BaseModel):
+    """A video clip provided as base64 bytes or a URL."""
+
+    model_config = {"frozen": True}
+
+    type: Literal["video"] = "video"
+    data: str | None = None
+    url: str | None = None
+    media_type: str = "video/mp4"
+
+
+class DocumentBlock(BaseModel):
+    """A document (e.g. PDF) provided as raw base64-encoded bytes."""
+
+    model_config = {"frozen": True}
+
+    type: Literal["document"] = "document"
+    data: str
+    media_type: str = "application/pdf"
+    title: str | None = None
+
+
+ContentBlock = Annotated[
+    TextBlock | ImageURLBlock | ImageDataBlock | AudioBlock | VideoBlock | DocumentBlock,
+    Field(discriminator="type"),
+]
+
+MessageContent = str | list[ContentBlock]
+
+
+# ---------------------------------------------------------------------------
+# Message types
+# ---------------------------------------------------------------------------
+
+
 class UserMessage(BaseModel):
     """A message from the user."""
 
     model_config = {"frozen": True}
 
     role: Literal["user"] = "user"
-    content: str
+    content: MessageContent
 
 
 class SystemMessage(BaseModel):
@@ -58,7 +137,7 @@ class AssistantMessage(BaseModel):
     model_config = {"frozen": True}
 
     role: Literal["assistant"] = "assistant"
-    content: str = ""
+    content: MessageContent = ""
     tool_calls: list[ToolCall] = Field(default_factory=list)
 
 
@@ -68,7 +147,7 @@ class ToolResult(BaseModel):
     Args:
         tool_call_id: The id of the ToolCall this responds to.
         tool_name: Name of the tool that was executed.
-        content: The string result from the tool.
+        content: The result from the tool (string or list of content blocks).
         error: Error message if the tool failed.
     """
 
@@ -77,7 +156,7 @@ class ToolResult(BaseModel):
     role: Literal["tool"] = "tool"
     tool_call_id: str
     tool_name: str
-    content: str = ""
+    content: MessageContent = ""
     error: str | None = None
 
 
@@ -104,13 +183,13 @@ class AgentInput(BaseModel):
     """Normalized input for an agent run.
 
     Args:
-        query: The user's query string.
+        query: The user's query (string or list of content blocks).
         messages: Prior conversation messages for context.
     """
 
     model_config = {"frozen": True}
 
-    query: str
+    query: MessageContent
     messages: list[Message] = Field(default_factory=list)
 
 
@@ -249,7 +328,7 @@ class ToolResultEvent(BaseModel):
     tool_name: str
     tool_call_id: str
     arguments: dict[str, Any] = Field(default_factory=dict)
-    result: str = ""
+    result: MessageContent = ""
     error: str | None = None
     success: bool = True
     duration_ms: float = 0.0
@@ -307,9 +386,7 @@ class StatusEvent(BaseModel):
     model_config = {"frozen": True}
 
     type: Literal["status"] = "status"
-    status: Literal[
-        "starting", "running", "waiting_for_tool", "completed", "cancelled", "error"
-    ]
+    status: Literal["starting", "running", "waiting_for_tool", "completed", "cancelled", "error"]
     agent_name: str = ""
     message: str = ""
 

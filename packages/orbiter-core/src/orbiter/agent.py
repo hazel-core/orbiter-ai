@@ -19,6 +19,7 @@ from orbiter.types import (
     AgentOutput,
     AssistantMessage,
     Message,
+    MessageContent,
     OrbiterError,
     ToolResult,
     UserMessage,
@@ -156,7 +157,7 @@ class Agent:
 
     async def run(
         self,
-        input: str,
+        input: MessageContent,
         *,
         messages: Sequence[Message] | None = None,
         provider: Any = None,
@@ -170,7 +171,7 @@ class Agent:
         is produced or ``max_steps`` is reached.
 
         Args:
-            input: User query string for this turn.
+            input: User query — a string or list of ContentBlock objects.
             messages: Prior conversation history.
             provider: An object with an ``async complete()`` method
                 (e.g. a ``ModelProvider`` instance).
@@ -293,7 +294,13 @@ class Agent:
             else:
                 try:
                     output = await tool.execute(**action.arguments)
-                    content = output if isinstance(output, str) else str(output)
+                    content: MessageContent
+                    if isinstance(output, list):
+                        content = output  # list[ContentBlock] from tool
+                    elif isinstance(output, str):
+                        content = output
+                    else:
+                        content = str(output)  # dict fallback
                     result = ToolResult(
                         tool_call_id=action.tool_call_id,
                         tool_name=action.tool_name,
@@ -345,13 +352,9 @@ class Agent:
         if self.hook_manager.has_hooks(HookPoint.START) or any(
             self.hook_manager.has_hooks(hp) for hp in HookPoint
         ):
-            raise ValueError(
-                f"Agent '{self.name}' has hooks which cannot be serialized."
-            )
+            raise ValueError(f"Agent '{self.name}' has hooks which cannot be serialized.")
         if self.memory is not None:
-            raise ValueError(
-                f"Agent '{self.name}' has a memory store which cannot be serialized."
-            )
+            raise ValueError(f"Agent '{self.name}' has a memory store which cannot be serialized.")
         if self.context is not None:
             raise ValueError(
                 f"Agent '{self.name}' has a context engine which cannot be serialized."
@@ -481,8 +484,7 @@ def _serialize_tool(t: Tool) -> str:
     qualname = cls.__qualname__
     if "<" in qualname:
         raise ValueError(
-            f"Tool '{t.name}' is a locally-defined class ({qualname}) "
-            "which cannot be serialized."
+            f"Tool '{t.name}' is a locally-defined class ({qualname}) which cannot be serialized."
         )
     return f"{module}.{qualname}"
 
@@ -513,9 +515,7 @@ def _deserialize_tool(path: str) -> Tool:
     if callable(obj):
         return FunctionTool(obj)
 
-    raise ValueError(
-        f"Imported '{path}' is not a callable or Tool instance: {type(obj)}"
-    )
+    raise ValueError(f"Imported '{path}' is not a callable or Tool instance: {type(obj)}")
 
 
 def _import_object(dotted_path: str) -> Any:

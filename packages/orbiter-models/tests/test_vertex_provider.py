@@ -395,9 +395,7 @@ class TestVertexProviderComplete:
         assert "tools" in call_kwargs["config"]
 
     @patch("orbiter.models.vertex.genai")
-    async def test_complete_with_temperature_and_max_tokens(
-        self, mock_genai: MagicMock
-    ) -> None:
+    async def test_complete_with_temperature_and_max_tokens(self, mock_genai: MagicMock) -> None:
         config = _make_config()
         provider = VertexProvider(config)
         raw = _make_response()
@@ -443,9 +441,7 @@ class TestVertexProviderComplete:
         config = _make_config()
         provider = VertexProvider(config)
         provider._client = MagicMock()
-        provider._client.aio.models.generate_content = AsyncMock(
-            side_effect=RuntimeError("fail")
-        )
+        provider._client.aio.models.generate_content = AsyncMock(side_effect=RuntimeError("fail"))
 
         with pytest.raises(ModelError) as exc_info:
             await provider.complete([UserMessage(content="hi")])
@@ -482,9 +478,7 @@ class TestVertexProviderStream:
             return gen()
 
         provider._client = MagicMock()
-        provider._client.aio.models.generate_content_stream = AsyncMock(
-            side_effect=mock_stream
-        )
+        provider._client.aio.models.generate_content_stream = AsyncMock(side_effect=mock_stream)
 
         collected = []
         async for chunk in provider.stream([UserMessage(content="hi")]):
