@@ -1,3 +1,19 @@
+## 2026-02-20 - US-INT-027
+- What was implemented: Agent-to-Agent (A2A) protocol integration test — verifies Agent A delegates a translation task to Agent B running as an A2A HTTP server on port 8766, and uses the result
+- Files changed:
+  - `tests/integration/helpers/a2a_translator_server.py` (new, FastAPI A2A server with translator agent)
+  - `tests/integration/test_a2a_protocol.py` (new, 1 test + session fixture)
+- **Learnings for future iterations:**
+  - A2A server: use plain FastAPI app (not `orbiter.a2a.A2AServer`) for the test helper server; lazy imports inside the endpoint body allow provider creation only when a request arrives, avoiding module-level env var dependency
+  - A2A agent card endpoint: `GET /.well-known/agent-card` — used as health check when polling for server readiness
+  - Agent A tool pattern: define `@tool def call_translator_agent(text: str) -> str` as a sync httpx-based function that POSTs to `{a2a_url}/` with `{"text": text}`; the tool call appears in `result.tool_calls` with name `call_translator_agent`
+  - Use `httpx.Client` (sync) inside a `@tool` function — safe in async orbiter agent context for test purposes
+  - The `a2a_url` closure variable is captured from the test function scope when defining the tool — Python closures handle this correctly
+  - A2A response parsing: `data.get("artifact", {}).get("text", "")` or fallback to `data.get("result", "")` — same pattern as `orbiter.a2a.client._extract_text()`
+  - Session-scoped fixture for the A2A server subprocess; health-check via agent-card URL before yielding; `proc.kill()` + `proc.wait()` in finally for cleanup
+  - Use `timeout(60)` — two sequential LLM calls (Agent A + Agent B translator) fit comfortably
+---
+
 ## 2026-02-20 - US-INT-026
 - What was implemented: Evaluation framework integration tests — trajectory capture, LLM-as-judge scoring, and rule-based exact-match scoring
 - Files changed:
