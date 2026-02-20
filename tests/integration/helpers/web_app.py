@@ -69,6 +69,9 @@ class CreateAgentRequest(BaseModel):
     name: str = ""
     instructions: str = ""
     tools: list[str] = []
+    mcp_server_script: str = ""
+    mcp_large_output_tools: list[str] = []
+    vector_memory_path: str = ""
 
 
 class RunAgentRequest(BaseModel):
@@ -143,6 +146,9 @@ async def create_agent(
         "instructions": req.instructions,
         "owner": username,
         "tools": req.tools,
+        "mcp_server_script": req.mcp_server_script,
+        "mcp_large_output_tools": req.mcp_large_output_tools,
+        "vector_memory_path": req.vector_memory_path,
     }
     return _agents[agent_id]
 
@@ -160,7 +166,16 @@ async def run_agent(
     if agent_config["owner"] != username:
         raise HTTPException(status_code=403, detail="Forbidden")
 
+    import os
+    import sys
+
     from orbiter.agent import Agent  # pyright: ignore[reportMissingImports]
+    from orbiter.mcp import MCPServerConfig  # pyright: ignore[reportMissingImports]
+    from orbiter.memory.backends.vector import (  # pyright: ignore[reportMissingImports]
+        ChromaVectorMemoryStore,
+        SentenceTransformerEmbeddingProvider,
+    )
+    from orbiter.memory.base import AIMemory  # pyright: ignore[reportMissingImports]
     from orbiter.models import get_provider  # pyright: ignore[reportMissingImports]
 
     provider = get_provider(agent_config["model"])
@@ -168,13 +183,44 @@ async def run_agent(
         name=agent_config["name"],
         model=agent_config["model"],
         instructions=agent_config.get("instructions", ""),
+        max_steps=6,
     )
+
+    # Attach MCP server if configured
+    if agent_config.get("mcp_server_script"):
+        mcp_config = MCPServerConfig(
+            name="test-server",
+            transport="stdio",
+            command=sys.executable,
+            args=[agent_config["mcp_server_script"]],
+            large_output_tools=agent_config.get("mcp_large_output_tools", []),
+        )
+        await agent.add_mcp_server(mcp_config)
 
     run_kwargs: dict = {"provider": provider}
     if req.conversation_id:
         run_kwargs["conversation_id"] = req.conversation_id
 
     result = await agent.run(req.input, **run_kwargs)
+
+    # Collect workspace artifact count
+    workspace_artifact_count = 0
+    if hasattr(agent, "_workspace") and agent._workspace:
+        workspace_artifact_count = len(agent._workspace.list())
+
+    # Save agent output to vector memory if path configured
+    vector_memory_count = 0
+    if agent_config.get("vector_memory_path") and result.text:
+        vmp = agent_config["vector_memory_path"]
+        os.makedirs(vmp, exist_ok=True)
+        chroma_store = ChromaVectorMemoryStore(
+            SentenceTransformerEmbeddingProvider(),
+            collection_name="platform_marathon",
+            path=vmp,
+        )
+        await chroma_store.add(AIMemory(content=result.text))
+        search_results = await chroma_store.search(query=result.text[:80], limit=10)
+        vector_memory_count = len(search_results)
 
     return {
         "output": result.text,
@@ -183,6 +229,11 @@ async def run_agent(
             "output_tokens": result.usage.output_tokens,
             "total_tokens": result.usage.total_tokens,
         },
+        "tool_calls": [
+            {"name": tc.name, "arguments": tc.arguments} for tc in result.tool_calls
+        ],
+        "workspace_artifact_count": workspace_artifact_count,
+        "vector_memory_count": vector_memory_count,
     }
 
 
