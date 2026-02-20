@@ -56,6 +56,7 @@ class MCPServerConfig:
         "cwd",
         "env",
         "headers",
+        "large_output_tools",
         "name",
         "session_timeout",
         "sse_read_timeout",
@@ -79,6 +80,7 @@ class MCPServerConfig:
         sse_read_timeout: float = 300.0,
         cache_tools: bool = False,
         session_timeout: float | None = 120.0,
+        large_output_tools: list[str] | None = None,
     ) -> None:
         self.name = name
         self.transport = MCPTransport(transport)
@@ -92,6 +94,7 @@ class MCPServerConfig:
         self.sse_read_timeout = sse_read_timeout
         self.cache_tools = cache_tools
         self.session_timeout = session_timeout
+        self.large_output_tools: list[str] = list(large_output_tools) if large_output_tools else []
 
     def validate(self) -> None:
         """Validate config fields for the chosen transport."""
@@ -120,6 +123,7 @@ class MCPServerConfig:
             "sse_read_timeout": self.sse_read_timeout,
             "cache_tools": self.cache_tools,
             "session_timeout": self.session_timeout,
+            "large_output_tools": self.large_output_tools,
         }
 
     @classmethod
@@ -145,6 +149,7 @@ class MCPServerConfig:
             sse_read_timeout=data.get("sse_read_timeout", 300.0),
             cache_tools=data.get("cache_tools", False),
             session_timeout=data.get("session_timeout", 120.0),
+            large_output_tools=data.get("large_output_tools"),
         )
 
     def __repr__(self) -> str:
@@ -276,12 +281,23 @@ class MCPServerConnection:
         self,
         tool_name: str,
         arguments: dict[str, Any] | None = None,
+        *,
+        progress_callback: Any | None = None,
     ) -> CallToolResult:
-        """Invoke a tool on the server."""
+        """Invoke a tool on the server.
+
+        Args:
+            tool_name: Name of the tool to invoke.
+            arguments: Tool arguments to pass.
+            progress_callback: Optional async callable invoked on each progress
+                notification from the server: ``(progress, total, message) -> None``.
+        """
         if not self._session:
             raise MCPClientError(f"Server '{self.name}' not connected. Call connect() first.")
         logger.debug("Calling tool '%s' on server '%s'", tool_name, self.name)
-        return await self._session.call_tool(name=tool_name, arguments=arguments)
+        return await self._session.call_tool(
+            name=tool_name, arguments=arguments, progress_callback=progress_callback
+        )
 
     async def cleanup(self) -> None:
         """Close the transport and session."""
@@ -393,10 +409,12 @@ class MCPClient:
         server_name: str,
         tool_name: str,
         arguments: dict[str, Any] | None = None,
+        *,
+        progress_callback: Any | None = None,
     ) -> CallToolResult:
         """Call a tool on a specific server (connects if needed)."""
         conn = await self.connect(server_name)
-        return await conn.call_tool(tool_name, arguments)
+        return await conn.call_tool(tool_name, arguments, progress_callback=progress_callback)
 
     async def __aenter__(self) -> MCPClient:
         await self.connect_all()

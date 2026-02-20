@@ -94,6 +94,12 @@ def _to_google_contents(messages: list[Message]) -> tuple[list[dict[str, Any]], 
 
     Extracts system messages into a separate system instruction string.
 
+    Gemini requires that the number of ``function_response`` parts in a user
+    turn exactly matches the number of ``function_call`` parts in the
+    preceding model turn.  Consecutive :class:`~orbiter.types.ToolResult`
+    messages are therefore merged into a single ``role: user`` entry so that
+    all responses for one model turn travel together.
+
     Args:
         messages: Orbiter message sequence.
 
@@ -102,13 +108,23 @@ def _to_google_contents(messages: list[Message]) -> tuple[list[dict[str, Any]], 
     """
     system_parts: list[str] = []
     contents: list[dict[str, Any]] = []
+    pending_tool_parts: list[dict[str, Any]] = []
+
+    def _flush_tool_parts() -> None:
+        """Emit accumulated function_response parts as one user turn."""
+        if pending_tool_parts:
+            contents.append({"role": "user", "parts": list(pending_tool_parts)})
+            pending_tool_parts.clear()
 
     for msg in messages:
         if isinstance(msg, SystemMessage):
+            _flush_tool_parts()
             system_parts.append(msg.content)
         elif isinstance(msg, UserMessage):
+            _flush_tool_parts()
             contents.append({"role": "user", "parts": [{"text": msg.content}]})
         elif isinstance(msg, AssistantMessage):
+            _flush_tool_parts()
             parts: list[dict[str, Any]] = []
             if msg.content:
                 parts.append({"text": msg.content})
@@ -120,19 +136,17 @@ def _to_google_contents(messages: list[Message]) -> tuple[list[dict[str, Any]], 
             contents.append({"role": "model", "parts": parts})
         elif isinstance(msg, ToolResult):
             response_data = msg.error if msg.error else msg.content
-            contents.append(
+            pending_tool_parts.append(
                 {
-                    "role": "user",
-                    "parts": [
-                        {
-                            "function_response": {
-                                "name": msg.tool_name,
-                                "response": {"content": response_data},
-                            },
-                        }
-                    ],
+                    "function_response": {
+                        "name": msg.tool_name,
+                        "response": {"content": response_data},
+                    },
                 }
             )
+
+    # Flush any trailing tool results
+    _flush_tool_parts()
 
     return contents, "\n".join(system_parts)
 
@@ -275,7 +289,8 @@ def _parse_stream_chunk(chunk: Any) -> StreamChunk:
     text_parts: list[str] = []
     tool_call_deltas: list[ToolCallDelta] = []
 
-    for i, part in enumerate(candidate.content.parts):
+    parts = (candidate.content.parts if candidate.content else None) or []
+    for i, part in enumerate(parts):
         text = getattr(part, "text", None)
         if text:
             text_parts.append(text)

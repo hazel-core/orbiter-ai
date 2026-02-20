@@ -244,11 +244,12 @@ class TestAgentMemoryWiring:
         agent = Agent(name="test", memory=emitter)
         assert agent.memory is emitter
 
-    def test_agent_default_memory_none(self) -> None:
+    def test_agent_default_memory_auto_created(self) -> None:
         from orbiter.agent import Agent  # pyright: ignore[reportMissingImports]
+        from orbiter.memory.base import AgentMemory
 
         agent = Agent(name="test")
-        assert agent.memory is None
+        assert isinstance(agent.memory, AgentMemory)
 
 
 # ---------------------------------------------------------------------------

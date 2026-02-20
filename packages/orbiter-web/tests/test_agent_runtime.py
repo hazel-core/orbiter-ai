@@ -9,8 +9,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from orbiter.models.types import StreamChunk  # pyright: ignore[reportMissingImports]
-from orbiter.types import AgentOutput, Usage, UserMessage
+from orbiter.models.types import StreamChunk, ToolCallDelta  # pyright: ignore[reportMissingImports]
+from orbiter.types import AgentOutput, TextEvent, Usage, UsageEvent, UserMessage
 from orbiter_web.services.agent_runtime import (
     AgentRuntimeError,
     AgentService,
@@ -303,33 +303,30 @@ class TestAgentService:
     async def test_stream_agent(self):
         svc = AgentService()
 
-        chunks = [
-            StreamChunk(delta="Hello"),
-            StreamChunk(delta=" world"),
-            StreamChunk(delta="!", finish_reason="stop"),
-        ]
+        async def fake_run_stream(
+            agent: Any, input: str, *, messages: Any = None, provider: Any = None, **kwargs: Any
+        ) -> AsyncIterator[Any]:
+            yield TextEvent(text="Hello", agent_name="Test Agent")
+            yield TextEvent(text=" world", agent_name="Test Agent")
+            yield UsageEvent(
+                usage=Usage(input_tokens=10, output_tokens=2, total_tokens=12),
+                agent_name="Test Agent",
+                step_number=1,
+                model="openai:gpt-4o",
+            )
 
-        async def fake_stream(*args: Any, **kwargs: Any) -> AsyncIterator[StreamChunk]:
-            for c in chunks:
-                yield c
-
-        mock_provider = MagicMock()
-        mock_provider.stream = fake_stream
+        mock_run = MagicMock()
+        mock_run.stream = fake_run_stream
 
         with (
             patch("orbiter_web.services.agent_runtime._load_agent_row") as mock_load,
             patch.object(svc, "build_agent") as mock_build,
             patch("orbiter_web.services.agent_runtime._resolve_provider") as mock_resolve,
+            patch("orbiter_web.services.agent_runtime.orbiter_run", mock_run),
         ):
             mock_load.return_value = FAKE_AGENT_ROW
-            mock_build.return_value = MagicMock(
-                instructions="You are helpful.",
-                name="Test Agent",
-                temperature=0.7,
-                max_tokens=1024,
-                get_tool_schemas=MagicMock(return_value=[]),
-            )
-            mock_resolve.return_value = mock_provider
+            mock_build.return_value = MagicMock(name="Test Agent")
+            mock_resolve.return_value = MagicMock()
 
             collected: list[StreamChunk] = []
             async for chunk in svc.stream_agent(
@@ -337,10 +334,12 @@ class TestAgentService:
             ):
                 collected.append(chunk)
 
+        # 2 TextEvents → 2 StreamChunks with delta, + 1 final chunk with finish_reason
         assert len(collected) == 3
         assert collected[0].delta == "Hello"
         assert collected[1].delta == " world"
         assert collected[2].finish_reason == "stop"
+        assert collected[2].usage.input_tokens == 10
 
     async def test_stream_agent_no_model_raises(self):
         svc = AgentService()
@@ -354,3 +353,77 @@ class TestAgentService:
                     "agent-001", [UserMessage(content="Hi")]
                 ):
                     pass  # pragma: no cover
+
+    async def test_stream_agent_executes_tools(self):
+        """Tool registered on the agent is called when the LLM emits a tool_call."""
+        svc = AgentService()
+
+        # Track tool invocations
+        tool_invocations: list[dict[str, Any]] = []
+
+        async def add_numbers(x: int, y: int) -> str:
+            tool_invocations.append({"x": x, "y": y})
+            return str(x + y)
+
+        from orbiter.agent import Agent as OrbiterAgent  # pyright: ignore[reportMissingImports]
+        from orbiter.tool import FunctionTool  # pyright: ignore[reportMissingImports]
+
+        calc_tool = FunctionTool(add_numbers, name="add_numbers", description="Add two numbers")
+        real_agent = OrbiterAgent(
+            name="Test Agent",
+            model="openai:gpt-4o",
+            tools=[calc_tool],
+            max_steps=3,
+        )
+
+        # Mock provider: first call returns a tool call, second returns text
+        call_count = [0]
+
+        async def fake_stream(
+            msg_list: Any, *, tools: Any = None, temperature: Any = 1.0, max_tokens: Any = None
+        ) -> AsyncIterator[StreamChunk]:
+            call_count[0] += 1
+            if call_count[0] == 1:
+                # First LLM response: request a tool call
+                yield StreamChunk(
+                    tool_call_deltas=[
+                        ToolCallDelta(index=0, id="tc-001", name="add_numbers", arguments="")
+                    ]
+                )
+                yield StreamChunk(
+                    tool_call_deltas=[
+                        ToolCallDelta(index=0, arguments='{"x": 3, "y": 4}')
+                    ]
+                )
+            else:
+                # Second LLM response: text answer after seeing tool result
+                yield StreamChunk(delta="The answer is 7.")
+
+        mock_provider = MagicMock()
+        mock_provider.stream = fake_stream
+
+        with (
+            patch("orbiter_web.services.agent_runtime._load_agent_row") as mock_load,
+            patch.object(svc, "build_agent") as mock_build,
+            patch("orbiter_web.services.agent_runtime._resolve_provider") as mock_resolve,
+        ):
+            mock_load.return_value = FAKE_AGENT_ROW
+            mock_build.return_value = real_agent
+            mock_resolve.return_value = mock_provider
+
+            collected: list[StreamChunk] = []
+            async for chunk in svc.stream_agent(
+                "agent-001", [UserMessage(content="What is 3 + 4?")]
+            ):
+                collected.append(chunk)
+
+        # The tool was called with the correct arguments
+        assert len(tool_invocations) == 1
+        assert tool_invocations[0] == {"x": 3, "y": 4}
+
+        # The text from the second LLM call was streamed
+        text_chunks = [c for c in collected if c.delta]
+        assert any("7" in c.delta for c in text_chunks)
+
+        # Final chunk signals completion
+        assert collected[-1].finish_reason == "stop"

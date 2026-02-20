@@ -112,7 +112,7 @@ def check_trigger(
     estimated_tokens = _estimate_tokens(items, config.token_estimate_ratio)
 
     if message_count > config.message_threshold:
-        logger.debug("summary triggered: messages=%d > threshold=%d", message_count, config.message_threshold)
+        logger.info("Summarization triggered: threshold=%d messages=%d", config.message_threshold, message_count)
         return TriggerResult(
             triggered=True,
             reason=f"Message count {message_count} exceeds threshold {config.message_threshold}",
@@ -121,7 +121,7 @@ def check_trigger(
         )
 
     if estimated_tokens > config.token_threshold:
-        logger.debug("summary triggered: tokens=%d > threshold=%d", estimated_tokens, config.token_threshold)
+        logger.info("Summarization triggered: threshold=%d messages=%d", config.token_threshold, message_count)
         return TriggerResult(
             triggered=True,
             reason=f"Estimated tokens {estimated_tokens} exceeds threshold {config.token_threshold}",
@@ -228,7 +228,8 @@ async def generate_summary(
         result = await summarizer.summarize(prompt)
         summaries[template.value] = result
 
-    logger.debug("generated %d summaries, keeping %d recent items", len(summaries), len(recent))
+    total_length = sum(len(s) for s in summaries.values())
+    logger.debug("Summary generated length=%d", total_length)
     return SummaryResult(
         summaries=summaries,
         compressed_items=recent,

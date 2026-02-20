@@ -6,9 +6,12 @@ automatic scorer discovery and factory-based creation.
 
 from __future__ import annotations
 
+import logging
 from collections import Counter
 from collections.abc import Sequence
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from orbiter.eval.base import Scorer, ScorerResult  # pyright: ignore[reportMissingImports]
 from orbiter.eval.llm_scorer import LLMAsJudgeScorer  # pyright: ignore[reportMissingImports]
@@ -98,6 +101,7 @@ class TrajectoryValidator(Scorer):
                     reasons.append(f"missing {missing}")
                 errors.append(f"step {i}: {', '.join(reasons)}")
         ratio = valid / len(steps)
+        logger.debug("TrajectoryValidator case=%s score=%.3f", case_id, ratio)
         return ScorerResult(
             scorer_name=self._name,
             score=ratio,
@@ -129,6 +133,7 @@ class TimeCostScorer(Scorer):
         if isinstance(output, dict):
             elapsed = float(output.get("_time_cost_ms", 0.0))
         score = max(0.0, min(1.0, 1.0 - elapsed / self._max_ms)) if self._max_ms > 0 else 0.0
+        logger.debug("TimeCostScorer case=%s score=%.3f elapsed_ms=%.1f", case_id, score, elapsed)
         return ScorerResult(
             scorer_name=self._name,
             score=score,

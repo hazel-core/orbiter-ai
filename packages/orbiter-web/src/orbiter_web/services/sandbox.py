@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -22,6 +23,8 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+_log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -83,8 +86,9 @@ def _build_runner_script(
 ) -> str:
     """Build a self-contained Python script that runs user code in a restricted env."""
     allowed_json = json.dumps(allowed_libraries)
-    # Escape the user code for embedding as a string literal
-    escaped_code = code.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n")
+    # Use repr() to safely serialize the user code — handles \r, \t, \0, null bytes,
+    # embedded quotes, triple-quotes, and all other special characters without injection.
+    code_repr = repr(code)
 
     return textwrap.dedent(f"""\
         import builtins as _builtins
@@ -149,7 +153,7 @@ def _build_runner_script(
             pass
 
         # -- Execute user code --
-        _user_code = '{escaped_code}'
+        _user_code = {code_repr}
         exec(compile(_user_code, "<sandbox>", "exec"))
     """)
 
@@ -187,6 +191,7 @@ def execute_code(
     if config is None:
         config = SandboxConfig()
 
+    _log.debug("execute_code: code_len=%d timeout=%ds", len(code), config.timeout_seconds)
     start = time.monotonic()
     workspace = tempfile.mkdtemp(prefix="orbiter_sandbox_")
 
@@ -221,6 +226,7 @@ def execute_code(
             )
         except subprocess.TimeoutExpired:
             elapsed = (time.monotonic() - start) * 1000
+            _log.warning("execute_code: timed out after %ds", config.timeout_seconds)
             return SandboxResult(
                 success=False,
                 error=f"Execution timed out after {config.timeout_seconds}s",

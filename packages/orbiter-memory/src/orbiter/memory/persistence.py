@@ -8,7 +8,7 @@ saves a ``HumanMemory`` before calling ``run()`` / ``run.stream()``.
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from orbiter.hooks import HookPoint  # pyright: ignore[reportMissingImports]
 
@@ -19,6 +19,9 @@ from orbiter.memory.base import (  # pyright: ignore[reportMissingImports]
     MemoryStore,
     ToolMemory,
 )
+
+if TYPE_CHECKING:
+    from orbiter.types import Message  # pyright: ignore[reportMissingImports]
 
 
 class MemoryPersistence:
@@ -40,6 +43,7 @@ class MemoryPersistence:
     ) -> None:
         self.store = store
         self.metadata = metadata or MemoryMetadata()
+        self._attached_agent_ids: set[int] = set()
 
     async def _save_llm_response(self, *, agent: Any, response: Any, **_: Any) -> None:
         """POST_LLM_CALL hook — save an AIMemory item."""
@@ -72,13 +76,94 @@ class MemoryPersistence:
         logger.debug("persisted ToolMemory id=%s tool=%s is_error=%s", item.id, tool_name, item.is_error)
 
     def attach(self, agent: Any) -> None:
-        """Register persistence hooks on the given agent."""
+        """Register persistence hooks on the given agent.
+
+        Idempotent — a second call for the same agent object is a no-op.
+        """
+        agent_id = id(agent)
+        if agent_id in self._attached_agent_ids:
+            logger.debug("already attached to agent=%s, skipping", getattr(agent, "name", agent))
+            return
+        self._attached_agent_ids.add(agent_id)
         agent.hook_manager.add(HookPoint.POST_LLM_CALL, self._save_llm_response)
         agent.hook_manager.add(HookPoint.POST_TOOL_CALL, self._save_tool_result)
         logger.debug("attached memory persistence hooks to agent=%s", getattr(agent, "name", agent))
 
     def detach(self, agent: Any) -> None:
         """Remove persistence hooks from the given agent."""
+        self._attached_agent_ids.discard(id(agent))
         agent.hook_manager.remove(HookPoint.POST_LLM_CALL, self._save_llm_response)
         agent.hook_manager.remove(HookPoint.POST_TOOL_CALL, self._save_tool_result)
         logger.debug("detached memory persistence hooks from agent=%s", getattr(agent, "name", agent))
+
+    async def load_history(
+        self,
+        agent_name: str,
+        conversation_id: str,
+        rounds: int,
+    ) -> list[Message]:
+        """Load the last *rounds* message pairs for the given agent and conversation.
+
+        Queries the short-term store scoped to *conversation_id* (mapped to
+        ``metadata.task_id``) and *agent_name* (mapped to ``metadata.agent_id``),
+        then returns chronologically-ordered messages converted to
+        ``orbiter.types.Message`` objects ready for injection into an agent run.
+
+        Args:
+            agent_name: Name of the agent (stored as ``metadata.agent_id``).
+            conversation_id: Conversation scope (stored as ``metadata.task_id``).
+            rounds: Maximum number of human+AI message pairs to return.
+        """
+        from orbiter.types import (  # pyright: ignore[reportMissingImports]
+            AssistantMessage,
+            SystemMessage,
+            ToolCall,
+            ToolResult,
+            UserMessage,
+        )
+
+        meta = MemoryMetadata(agent_id=agent_name, task_id=conversation_id)
+        fetch_limit = max(rounds * 10, 100)
+        items = await self.store.search(metadata=meta, limit=fetch_limit)
+
+        # Normalise to chronological order (SQLite returns newest-first)
+        items = sorted(items, key=lambda x: x.created_at)
+
+        # Window: keep only the last `rounds` conversation rounds
+        if rounds > 0:
+            human_positions = [i for i, item in enumerate(items) if item.memory_type == "human"]
+            if len(human_positions) > rounds:
+                cut_index = human_positions[-rounds]
+                # Always keep system messages before the cut
+                system_msgs = [m for m in items[:cut_index] if m.memory_type == "system"]
+                items = system_msgs + items[cut_index:]
+
+        # Convert MemoryItem → orbiter.types.Message
+        messages: list[Message] = []
+        for item in items:
+            if item.memory_type == "human":
+                messages.append(UserMessage(content=item.content))
+            elif item.memory_type == "system":
+                messages.append(SystemMessage(content=item.content))
+            elif item.memory_type == "ai":
+                tcs = [ToolCall(**tc) for tc in getattr(item, "tool_calls", [])]
+                messages.append(AssistantMessage(content=item.content, tool_calls=tcs))
+            elif item.memory_type == "tool":
+                is_error = bool(getattr(item, "is_error", False))
+                messages.append(
+                    ToolResult(
+                        tool_call_id=getattr(item, "tool_call_id", ""),
+                        tool_name=getattr(item, "tool_name", ""),
+                        content="" if is_error else item.content,
+                        error=item.content if is_error else None,
+                    )
+                )
+
+        logger.debug(
+            "load_history agent=%s conversation=%s rounds=%d -> %d messages",
+            agent_name,
+            conversation_id,
+            rounds,
+            len(messages),
+        )
+        return messages

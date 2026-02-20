@@ -150,9 +150,11 @@ class LocalSandbox(Sandbox):
     """Sandbox that executes on the local machine."""
 
     async def start(self) -> None:
+        logger.info("Sandbox %s: starting", self._sandbox_id)
         self._transition(SandboxStatus.RUNNING)
 
     async def stop(self) -> None:
+        logger.info("Sandbox %s: stopping", self._sandbox_id)
         self._transition(SandboxStatus.IDLE)
 
     async def cleanup(self) -> None:

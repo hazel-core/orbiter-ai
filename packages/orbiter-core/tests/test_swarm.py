@@ -857,7 +857,8 @@ class TestSwarmTeam:
         # Lead should have only its original tool, not delegate tools
         assert "my_tool" in lead.tools
         assert "delegate_to_worker" not in lead.tools
-        assert len(lead.tools) == 1
+        # my_tool + retrieve_artifact (always auto-registered)
+        assert len(lead.tools) == 2
 
     async def test_team_tools_restored_on_error(self) -> None:
         """Lead's tools are restored even if run() raises."""
@@ -1310,3 +1311,75 @@ class TestSwarmStreamViaRun:
         text_events = [e for e in events if isinstance(e, TextEvent)]
         assert len(text_events) == 1
         assert text_events[0].text == "via run.stream"
+
+
+# ---------------------------------------------------------------------------
+# Swarm memory defaults (US-014)
+# ---------------------------------------------------------------------------
+
+
+class TestSwarmMemoryDefaults:
+    def test_lead_agent_has_auto_created_memory(self) -> None:
+        """Swarm lead agent has auto-created AgentMemory when not explicitly set."""
+        try:
+            from orbiter.memory.base import AgentMemory  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-memory not installed")
+
+        lead = Agent(name="lead")
+        worker = Agent(name="worker")
+        swarm = Swarm(agents=[lead, worker], mode="team")
+        assert isinstance(swarm.agents["lead"].memory, AgentMemory)
+
+    def test_lead_agent_with_disabled_memory_propagates(self) -> None:
+        """Swarm lead agent with memory=None keeps memory disabled."""
+        lead = Agent(name="lead", memory=None)
+        worker = Agent(name="worker", memory=None)
+        swarm = Swarm(agents=[lead, worker], mode="team")
+        assert swarm.agents["lead"].memory is None
+
+
+# ---------------------------------------------------------------------------
+# Swarm context_mode propagation (US-016)
+# ---------------------------------------------------------------------------
+
+
+class TestSwarmContextMode:
+    def test_swarm_propagates_context_mode_to_agents(self) -> None:
+        """Swarm(context_mode='pilot') propagates ContextConfig(mode='pilot') to all agents."""
+        try:
+            from orbiter.context.config import AutomationMode, ContextConfig  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-context not installed")
+
+        lead = Agent(name="lead")
+        worker = Agent(name="worker")
+        swarm = Swarm(agents=[lead, worker], context_mode="pilot")
+
+        assert isinstance(swarm.agents["lead"].context, ContextConfig)
+        assert swarm.agents["lead"].context.mode == AutomationMode.PILOT
+        assert isinstance(swarm.agents["worker"].context, ContextConfig)
+        assert swarm.agents["worker"].context.mode == AutomationMode.PILOT
+
+    def test_swarm_context_mode_none_disables_context(self) -> None:
+        """Swarm(context_mode=None) disables context on all agents."""
+        lead = Agent(name="lead")
+        worker = Agent(name="worker")
+        swarm = Swarm(agents=[lead, worker], context_mode=None)
+
+        assert swarm.agents["lead"].context is None
+        assert swarm.agents["worker"].context is None
+
+    def test_swarm_without_context_mode_agents_keep_defaults(self) -> None:
+        """Swarm without context_mode leaves agent contexts unchanged."""
+        try:
+            from orbiter.context.config import ContextConfig  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-context not installed")
+
+        lead = Agent(name="lead")
+        worker = Agent(name="worker")
+        # Both agents should retain their auto-created copilot context
+        swarm = Swarm(agents=[lead, worker])
+        assert isinstance(swarm.agents["lead"].context, ContextConfig)
+        assert isinstance(swarm.agents["worker"].context, ContextConfig)

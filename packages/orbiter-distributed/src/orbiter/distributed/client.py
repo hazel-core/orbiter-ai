@@ -103,7 +103,7 @@ class TaskHandle:
             task_result = await self._store.get_status(self._task_id)
             if task_result is not None and task_result.status in terminal:
                 if task_result.status == TaskStatus.COMPLETED:
-                    logger.debug("Task %s completed successfully", self._task_id)
+                    logger.info("Task %s result received (status=completed)", self._task_id)
                     return task_result.result or {}
                 if task_result.status == TaskStatus.CANCELLED:
                     logger.info("Task %s was cancelled", self._task_id)

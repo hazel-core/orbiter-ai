@@ -206,7 +206,7 @@ class Workspace:
             existing._add_version(content)
             self._persist(existing)
             self._index_artifact(existing)
-            logger.debug("updated artifact %r (version %d)", name, existing.version_count)
+            logger.debug("Artifact stored: id=%s size=%d bytes", name, len(content))
             await self._notify("on_update", existing)
             return existing
 
@@ -214,13 +214,15 @@ class Workspace:
         self._artifacts[name] = artifact
         self._persist(artifact)
         self._index_artifact(artifact)
-        logger.debug("created artifact %r (type=%s)", name, artifact_type.value)
+        logger.debug("Artifact stored: id=%s size=%d bytes", name, len(content))
         await self._notify("on_create", artifact)
         return artifact
 
     def read(self, name: str) -> str | None:
         """Read current content of an artifact by name.  Returns ``None`` if missing."""
         artifact = self._artifacts.get(name)
+        if artifact is not None:
+            logger.debug("Artifact retrieved: id=%s", name)
         return artifact.content if artifact else None
 
     def get(self, name: str) -> Artifact | None:

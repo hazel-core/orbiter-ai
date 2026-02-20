@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import json
 import logging
+import time
 import uuid
 from collections import defaultdict, deque
 from datetime import UTC, datetime
@@ -134,8 +134,10 @@ async def _execute_agent_node(
 
     async def emit(event: dict[str, Any]) -> None:
         if event_callback is not None:
-            with contextlib.suppress(Exception):
+            try:
                 await event_callback(event)
+            except Exception as exc:
+                _log.warning("WebSocket send failed: %s", exc)
 
     if agent_id and not is_inline:
         # --- Referenced agent from DB ---
@@ -383,8 +385,10 @@ async def _execute_approval_gate(
 
     async def emit(event: dict[str, Any]) -> None:
         if event_callback is not None:
-            with contextlib.suppress(Exception):
+            try:
                 await event_callback(event)
+            except Exception as exc:
+                _log.warning("WebSocket send failed: %s", exc)
 
     # Create the approval record.
     approval_id = await create_approval(run_id, node_id, user_id, timeout_minutes)
@@ -612,7 +616,7 @@ async def _execute_node_with_retry(
             )
 
             if event_callback is not None:
-                with contextlib.suppress(Exception):
+                try:
                     await event_callback({
                         "type": "node_retry",
                         "node_id": node_id,
@@ -621,6 +625,8 @@ async def _execute_node_with_retry(
                         "delay_ms": int(delay_s * 1000),
                         "error": str(last_error),
                     })
+                except Exception as exc:
+                    _log.warning("WebSocket send failed: %s", exc)
 
             await asyncio.sleep(delay_s)
 
@@ -795,10 +801,14 @@ async def execute_workflow(
 
     cancel_event = _register_run(run_id)
 
+    _log.info("Workflow %s starting: workflow=%s nodes=%d", run_id, workflow_id, len(nodes))
+
     async def emit(event: dict[str, Any]) -> None:
         if event_callback is not None:
-            with contextlib.suppress(Exception):
+            try:
                 await event_callback(event)
+            except Exception as exc:
+                _log.warning("WebSocket send failed: %s", exc)
 
     # Budget check — warn at threshold, pause at 100%.
     budget_result = await check_budget(user_id)
@@ -851,10 +861,14 @@ async def execute_workflow(
 
         # Execute all nodes in this layer concurrently.
         tasks: dict[str, asyncio.Task[dict[str, Any]]] = {}
+        node_start_times: dict[str, float] = {}
         for nid in layer:
             node = node_map.get(nid)
             if node is None:
                 continue
+
+            node_type = node.get("data", {}).get("nodeType", node.get("type", "unknown"))
+            _log.debug("Executing node %s (type=%s)", nid, node_type)
 
             # Create log entry with input snapshot for inspection.
             log_id = str(uuid.uuid4())
@@ -869,6 +883,7 @@ async def execute_workflow(
                 await db.commit()
 
             await emit({"type": "node_started", "node_id": nid})
+            node_start_times[nid] = time.monotonic()
             tasks[nid] = asyncio.create_task(
                 _execute_node_with_retry(
                     node, edges=edges, variables=variables, event_callback=emit,
@@ -885,6 +900,7 @@ async def execute_workflow(
                     continue
 
                 output = await task
+                elapsed_ms = (time.monotonic() - node_start_times.get(nid, time.monotonic())) * 1000
                 completed_at = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
 
                 logs_text = output.pop("logs", None)
@@ -924,6 +940,8 @@ async def execute_workflow(
                 # For skipped nodes, pass None as value to downstream
                 variables[nid] = output.get("result", "") if not is_skipped else None
 
+                _log.info("Node %s completed in %.1fms", nid, elapsed_ms)
+
                 event_type = "node_skipped" if is_skipped else "node_completed"
                 await emit(
                     {
@@ -947,6 +965,8 @@ async def execute_workflow(
             except Exception as exc:
                 error_msg = str(exc)
                 completed_at = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
+
+                _log.error("Node %s failed: %s", nid, exc, exc_info=True)
 
                 async with get_db() as db:
                     await db.execute(
@@ -1038,8 +1058,10 @@ async def execute_workflow_debug(
 
     async def emit(event: dict[str, Any]) -> None:
         if event_callback is not None:
-            with contextlib.suppress(Exception):
+            try:
                 await event_callback(event)
+            except Exception as exc:
+                _log.warning("WebSocket send failed: %s", exc)
 
     try:
         layers = topological_sort(nodes, edges)

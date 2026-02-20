@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sys
 import threading
 from contextvars import ContextVar
@@ -172,6 +173,55 @@ def reset_logging() -> None:
         root = logging.getLogger(_PREFIX)
         root.handlers.clear()
         root.setLevel(logging.WARNING)
+
+
+# ---------------------------------------------------------------------------
+# Environment-variable driven auto-configuration
+# ---------------------------------------------------------------------------
+
+_ENV_FORMAT = "%(asctime)s %(levelname)-8s %(name)s  %(message)s"
+_VALID_ENV_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR"}
+
+
+def _configure_from_env() -> None:
+    """Apply ORBITER_DEBUG / ORBITER_LOG_LEVEL env vars to the root orbiter logger.
+
+    Called automatically at module import time.  Safe to call again after the
+    environment is mutated (e.g. in tests using ``monkeypatch.setenv``).
+
+    - ``ORBITER_DEBUG=1`` forces level to DEBUG regardless of ``ORBITER_LOG_LEVEL``.
+    - ``ORBITER_LOG_LEVEL`` accepts DEBUG / INFO / WARNING / ERROR (case-insensitive).
+      Any unrecognised value falls back to WARNING.
+    - When either variable is present, a :class:`logging.StreamHandler` with the
+      standard format ``%(asctime)s %(levelname)-8s %(name)s  %(message)s`` is
+      attached to the root ``orbiter`` logger (idempotent — only once per reset).
+    """
+    global _configured
+
+    env_debug = os.environ.get("ORBITER_DEBUG", "")
+    env_level_str = os.environ.get("ORBITER_LOG_LEVEL", "WARNING").upper()
+    if env_level_str not in _VALID_ENV_LEVELS:
+        env_level_str = "WARNING"
+    if env_debug == "1":
+        env_level_str = "DEBUG"
+
+    level = getattr(logging, env_level_str, logging.WARNING)
+    root = logging.getLogger(_PREFIX)
+    root.setLevel(level)
+
+    # Only add a handler when explicitly triggered by an env var
+    if env_debug == "1" or "ORBITER_LOG_LEVEL" in os.environ:
+        with _configure_lock:
+            if not _configured:
+                handler = logging.StreamHandler(sys.stderr)
+                handler.setFormatter(logging.Formatter(_ENV_FORMAT))
+                root.addHandler(handler)
+                _configured = True
+
+
+# Apply env-var config at import time so the level is in effect before any
+# explicit configure_logging() call.
+_configure_from_env()
 
 
 # ---------------------------------------------------------------------------

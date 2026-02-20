@@ -196,6 +196,7 @@ class TerminalTool(Tool):
         base = parts[0].rsplit("/", maxsplit=1)[-1]  # strip path prefix
         base = base.rsplit("\\", maxsplit=1)[-1]
         if base.lower() in {b.lower() for b in self._blacklist}:
+            logger.warning("TerminalTool: blocked command %r (sandbox policy)", base)
             raise ToolError(f"Command {base!r} is blocked by sandbox policy")
 
     async def execute(self, **kwargs: Any) -> str | dict[str, Any]:

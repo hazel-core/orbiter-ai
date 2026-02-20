@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import importlib
+import os
+import uuid
 from collections.abc import Callable, Sequence
 from typing import Any
 
@@ -14,17 +16,334 @@ from orbiter._internal.output_parser import parse_response, parse_tool_arguments
 from orbiter.config import parse_model_string
 from orbiter.hooks import Hook, HookManager, HookPoint
 from orbiter.observability.logging import get_logger  # pyright: ignore[reportMissingImports]
-from orbiter.tool import Tool, ToolError
+from orbiter.tool import FunctionTool, Tool, ToolError
 from orbiter.types import (
     AgentOutput,
     AssistantMessage,
     Message,
     OrbiterError,
+    SystemMessage,
     ToolResult,
     UserMessage,
 )
 
 _log = get_logger(__name__)
+
+# Sentinels: distinguish "not provided" (auto-create) from explicit None (disable)
+_MEMORY_UNSET: Any = object()
+_CONTEXT_UNSET: Any = object()
+
+# Default byte threshold for automatic large-output offloading (10 KB)
+_LARGE_OUTPUT_THRESHOLD_DEFAULT = 10240
+
+
+def _get_large_output_threshold() -> int:
+    """Return the byte threshold for automatic tool result offloading.
+
+    Reads the ``ORBITER_LARGE_OUTPUT_THRESHOLD`` environment variable
+    (default: 10240 = 10 KB).
+    """
+    try:
+        return int(os.environ.get("ORBITER_LARGE_OUTPUT_THRESHOLD", str(_LARGE_OUTPUT_THRESHOLD_DEFAULT)))
+    except (ValueError, TypeError):
+        return _LARGE_OUTPUT_THRESHOLD_DEFAULT
+
+
+def _make_default_long_term() -> Any:
+    """Create the default long-term memory store.
+
+    Tries ChromaVectorMemoryStore (semantic search) when chromadb is importable.
+    Falls back to SQLiteMemoryStore with a warning when chromadb is not installed.
+    """
+    try:
+        import chromadb as _chromadb  # noqa: F401  # pyright: ignore[reportMissingImports]
+        from orbiter.memory.backends.vector import (  # pyright: ignore[reportMissingImports]
+            ChromaVectorMemoryStore,
+            OpenAIEmbeddingProvider,
+        )
+
+        return ChromaVectorMemoryStore(OpenAIEmbeddingProvider())
+    except ImportError:
+        _log.warning(
+            "chromadb not installed; falling back to keyword search. "
+            "Install with: pip install chromadb"
+        )
+        from orbiter.memory.backends.sqlite import SQLiteMemoryStore  # pyright: ignore[reportMissingImports]
+
+        return SQLiteMemoryStore()
+
+
+def _make_default_memory() -> Any:
+    """Try to create a default AgentMemory. Returns None if orbiter-memory is not installed."""
+    try:
+        from orbiter.memory.base import AgentMemory  # pyright: ignore[reportMissingImports]
+        from orbiter.memory.short_term import ShortTermMemory  # pyright: ignore[reportMissingImports]
+
+        return AgentMemory(short_term=ShortTermMemory(), long_term=_make_default_long_term())
+    except ImportError:
+        return None
+
+
+async def _inject_long_term_knowledge(
+    agent_memory: Any,
+    user_input: str,
+    msg_list: list[Message],
+    limit: int = 5,
+) -> list[Message]:
+    """Search long-term memory and inject relevant results into the system message.
+
+    When long_term is a VectorMemoryStore or ChromaVectorMemoryStore, uses
+    vector/semantic search. When it's SQLiteMemoryStore or LongTermMemory,
+    uses keyword search. Results are injected in KnowledgeNeuron <knowledge> format.
+    """
+    long_term = getattr(agent_memory, "long_term", None)
+    if long_term is None:
+        return msg_list
+
+    try:
+        items = await long_term.search(query=user_input, limit=limit)
+    except Exception as exc:
+        _log.debug("long-term search failed: %s", exc)
+        return msg_list
+
+    if not items:
+        return msg_list
+
+    # Format as KnowledgeNeuron <knowledge> block
+    lines = ["<knowledge>"]
+    for item in items:
+        lines.append(f"  [long_term_memory]: {item.content}")
+    lines.append("</knowledge>")
+    knowledge_block = "\n".join(lines)
+
+    # Inject into system message (append) or insert new SystemMessage at front
+    new_msg_list = list(msg_list)
+    sys_idx = next(
+        (i for i, m in enumerate(new_msg_list) if isinstance(m, SystemMessage)), None
+    )
+    if sys_idx is not None:
+        existing = new_msg_list[sys_idx]
+        new_content = (
+            (existing.content + "\n\n" + knowledge_block)
+            if existing.content
+            else knowledge_block
+        )
+        new_msg_list[sys_idx] = SystemMessage(content=new_content)
+    else:
+        new_msg_list.insert(0, SystemMessage(content=knowledge_block))
+
+    _log.debug("injected %d long-term memory items into system message", len(items))
+    return new_msg_list
+
+
+def _make_default_context() -> Any:
+    """Try to create a default ContextConfig(mode='copilot'). Returns None if not installed."""
+    try:
+        from orbiter.context.config import make_config  # pyright: ignore[reportMissingImports]
+
+        return make_config("copilot")
+    except ImportError:
+        return None
+
+
+def _make_context_from_mode(mode: Any) -> Any:
+    """Create a ContextConfig from a mode string or AutomationMode enum.
+
+    Returns None if orbiter-context is not installed.
+    """
+    try:
+        from orbiter.context.config import make_config  # pyright: ignore[reportMissingImports]
+
+        return make_config(mode)
+    except ImportError:
+        return None
+
+
+def _get_context_window_tokens(model_name: str) -> int | None:
+    """Look up context window token count from the model registry.
+
+    Returns ``None`` if orbiter-models is not installed or the model is unknown.
+    """
+    try:
+        from orbiter.models.context_windows import MODEL_CONTEXT_WINDOWS  # pyright: ignore[reportMissingImports]
+
+        return MODEL_CONTEXT_WINDOWS.get(model_name)
+    except ImportError:
+        return None
+
+
+def _update_system_token_info(
+    msg_list: list[Message],
+    used: int,
+    total: int,
+) -> list[Message]:
+    """Insert/replace ``[Context: {used}/{total} tokens ({pct}% full)]`` in the system message.
+
+    If a :class:`SystemMessage` is present it is updated in-place (replacing
+    any prior context tag). If no system message is present a new one is
+    inserted at position 0 with just the tag.
+
+    Parameters
+    ----------
+    msg_list:
+        Current message list (not mutated — a new list is returned).
+    used:
+        Number of tokens currently used (last LLM call's input_tokens).
+    total:
+        Context window capacity in tokens.
+
+    Returns
+    -------
+    Updated message list with the context tag injected into the system message.
+    """
+    pct = round(100.0 * used / total) if total > 0 else 0
+    tag = f"[Context: {used}/{total} tokens ({pct}% full)]"
+    result: list[Message] = list(msg_list)
+    for i, msg in enumerate(result):
+        if isinstance(msg, SystemMessage):
+            # Strip any prior [Context: ...] tag line then append new one
+            lines = msg.content.splitlines()
+            lines = [ln for ln in lines if not ln.startswith("[Context:")]
+            base = "\n".join(lines).rstrip()
+            content = f"{base}\n{tag}" if base else tag
+            result[i] = SystemMessage(content=content)
+            return result
+    # No system message — insert one with just the tag
+    result.insert(0, SystemMessage(content=tag))
+    return result
+
+
+class _ProviderSummarizer:
+    """Wraps a model provider for use with orbiter-memory's generate_summary()."""
+
+    def __init__(self, provider: Any) -> None:
+        self._provider = provider
+
+    async def summarize(self, prompt: str) -> str:
+        """Call provider.complete() to generate a summary string."""
+        try:
+            response = await self._provider.complete(
+                [UserMessage(content=prompt)],
+                tools=None,
+                temperature=0.3,
+                max_tokens=512,
+            )
+            return str(response.content or "")
+        except Exception as exc:
+            _log.warning("Context summarization provider call failed: %s", exc)
+            return ""
+
+
+async def _apply_context_windowing(
+    msg_list: list[Message],
+    context: Any,
+    provider: Any,
+    *,
+    force_summarize: bool = False,
+) -> list[Message]:
+    """Apply ContextConfig windowing and optional summarization to msg_list.
+
+    Called before the LLM call when context is set. Applies (in order):
+
+    1. Offload threshold: when exceeded, aggressively trims to summary_threshold
+    2. Summary threshold: when exceeded (or forced via *force_summarize*),
+       attempts LLM summarization via orbiter-memory
+    3. History windowing: always applied last, keeps last history_rounds messages
+
+    When *force_summarize* is ``True``, summarization fires regardless of
+    message count threshold (used when token budget is exceeded).
+
+    Falls back gracefully when orbiter-memory is not installed.
+    """
+    history_rounds: int = getattr(context, "history_rounds", 20)
+    summary_threshold: int = getattr(context, "summary_threshold", 10)
+    offload_threshold: int = getattr(context, "offload_threshold", 50)
+
+    # Separate system messages from conversation history
+    system_msgs: list[Message] = [m for m in msg_list if isinstance(m, SystemMessage)]
+    non_system: list[Message] = [m for m in msg_list if not isinstance(m, SystemMessage)]
+    msg_count = len(non_system)
+
+    # 1. Offload threshold: aggressive trim when far over limit
+    if msg_count > offload_threshold:
+        _log.debug(
+            "context offload: %d messages > offload_threshold=%d, trimming to %d",
+            msg_count, offload_threshold, summary_threshold,
+        )
+        non_system = non_system[-summary_threshold:]
+        msg_count = len(non_system)
+
+    # 2. Summary threshold: attempt summarization via orbiter-memory.
+    # Also fires when force_summarize=True (token budget exceeded) as long as
+    # there are at least 2 messages to summarize.
+    elif msg_count >= summary_threshold or (force_summarize and msg_count >= 2):
+        try:
+            from orbiter.memory.base import (  # pyright: ignore[reportMissingImports]
+                AIMemory,
+                HumanMemory,
+                MemoryItem,
+                ToolMemory,
+            )
+            from orbiter.memory.summary import (  # pyright: ignore[reportMissingImports]
+                SummaryConfig,
+                check_trigger,
+                generate_summary,
+            )
+
+            # Convert messages to MemoryItems for trigger check
+            items: list[MemoryItem] = []
+            for msg in non_system:
+                content = str(getattr(msg, "content", "") or "")
+                if isinstance(msg, UserMessage):
+                    items.append(HumanMemory(content=content))
+                elif isinstance(msg, AssistantMessage):
+                    items.append(AIMemory(content=content))
+                else:
+                    items.append(ToolMemory(content=content))
+
+            # When force_summarize=True, use a tighter keep_recent so that even
+            # a small message list gets meaningfully compressed (keep half).
+            if force_summarize:
+                keep_recent = max(2, msg_count // 2)
+            else:
+                keep_recent = max(2, summary_threshold // 2)
+            summary_cfg = SummaryConfig(
+                message_threshold=summary_threshold,
+                keep_recent=keep_recent,
+            )
+
+            # Bypass check_trigger() when force_summarize is set — the token
+            # budget decision has already been made by the caller.
+            should_summarize = force_summarize or check_trigger(items, summary_cfg).triggered
+
+            if should_summarize and provider is not None:
+                summarizer = _ProviderSummarizer(provider)
+                result = await generate_summary(items, summary_cfg, summarizer)
+                if result.summaries:
+                    summary_text = "\n\n".join(result.summaries.values())
+                    keep_count = len(result.compressed_items)
+                    recent_msgs = non_system[-keep_count:] if keep_count > 0 else []
+                    summary_msg = SystemMessage(
+                        content=f"[Conversation Summary]\n{summary_text}"
+                    )
+                    non_system = [summary_msg] + recent_msgs
+                    msg_count = len(non_system)
+                    _log.debug(
+                        "context summarization applied: %d -> %d messages (summary + %d recent)",
+                        len(items), msg_count, keep_count,
+                    )
+        except ImportError:
+            pass
+
+    # 3. History windowing: keep last history_rounds messages
+    if msg_count > history_rounds:
+        _log.debug(
+            "context windowing: trimming %d -> %d messages (history_rounds=%d)",
+            msg_count, history_rounds, history_rounds,
+        )
+        non_system = non_system[-history_rounds:]
+
+    return system_msgs + non_system
 
 
 class AgentError(OrbiterError):
@@ -55,6 +374,11 @@ class Agent:
         max_tokens: Maximum output tokens per LLM call.
         memory: Optional memory store for persistent memory across sessions.
         context: Optional context engine for hierarchical state and prompt building.
+        allow_self_spawn: When ``True``, automatically adds a ``spawn_self(task)``
+            tool that lets the agent spin up copies of itself for parallel sub-tasks.
+        max_spawn_depth: Maximum recursive spawn depth (default 3). When a spawned
+            agent's depth equals or exceeds this value, ``spawn_self`` returns an
+            error string instead of spawning.
     """
 
     def __init__(
@@ -62,7 +386,7 @@ class Agent:
         *,
         name: str,
         model: str = "openai:gpt-4o",
-        instructions: str | Callable[..., str] = "",
+        instructions: str | Callable[..., Any] = "",
         tools: list[Tool] | None = None,
         handoffs: list[Agent] | None = None,
         hooks: list[tuple[HookPoint, Hook]] | None = None,
@@ -70,8 +394,11 @@ class Agent:
         max_steps: int = 10,
         temperature: float = 1.0,
         max_tokens: int | None = None,
-        memory: Any = None,
-        context: Any = None,
+        memory: Any = _MEMORY_UNSET,
+        context_mode: Any = _CONTEXT_UNSET,
+        context: Any = _CONTEXT_UNSET,
+        allow_self_spawn: bool = False,
+        max_spawn_depth: int = 3,
     ) -> None:
         if max_steps < 1:
             raise AgentError(f"max_steps must be >= 1, got {max_steps}")
@@ -83,9 +410,35 @@ class Agent:
         self.max_steps = max_steps
         self.temperature = temperature
         self.max_tokens = max_tokens
-        self.memory = memory
-        self.context = context
+        # Self-spawn: opt-in parallel sub-task spawning
+        self.allow_self_spawn: bool = allow_self_spawn
+        self.max_spawn_depth: int = max_spawn_depth
+        # Internal: spawn depth (0 for top-level agents; incremented for each spawn level)
+        self._spawn_depth: int = 0
+        # Internal: provider reference stored during run() for use by spawn_self tool
+        self._current_provider: Any = None
+        # Auto-create AgentMemory when not explicitly specified; None disables memory
+        if memory is _MEMORY_UNSET:
+            memory = _make_default_memory()
+            self._memory_is_auto: bool = True
+        else:
+            self._memory_is_auto = False
+        self.memory: Any = memory
+        self.conversation_id: str | None = None
+        # Resolve context: explicit context takes precedence over context_mode; both
+        # unset triggers auto-creation of ContextConfig(mode='copilot').
+        if context is not _CONTEXT_UNSET:
+            self.context = context
+            self._context_is_auto: bool = False
+        elif context_mode is not _CONTEXT_UNSET:
+            self.context = None if context_mode is None else _make_context_from_mode(context_mode)
+            self._context_is_auto = False
+        else:
+            self.context = _make_default_context()
+            self._context_is_auto = True
         self._memory_persistence: Any = None
+        # Workspace for large-output tool result offloading (lazy-created on first use)
+        self._workspace: Any = None
 
         # Tools indexed by name for O(1) lookup during execution
         self.tools: dict[str, Tool] = {}
@@ -93,14 +446,27 @@ class Agent:
             for t in tools:
                 self._register_tool(t)
 
+        # Always register retrieve_artifact so any tool result that exceeds the
+        # ORBITER_LARGE_OUTPUT_THRESHOLD byte limit can be retrieved by the LLM.
+        if "retrieve_artifact" not in self.tools:
+            self._register_retrieve_artifact()
+
         # Handoff targets indexed by name
         self.handoffs: dict[str, Agent] = {}
         if handoffs:
             for agent in handoffs:
                 self._register_handoff(agent)
 
+        # Lock for asyncio-safe runtime mutations (add_tool, add_mcp_server, add_handoff)
+        self._tools_lock: asyncio.Lock = asyncio.Lock()
+
+        # Auto-register spawn_self tool when opt-in self-spawn is enabled
+        if allow_self_spawn:
+            self._register_tool(self._make_spawn_self_tool())
+
         # Lifecycle hooks
         self.hook_manager = HookManager()
+        self._has_user_hooks: bool = bool(hooks)  # tracks explicitly-provided hooks only
         if hooks:
             for point, hook in hooks:
                 self.hook_manager.add(point, hook)
@@ -112,6 +478,10 @@ class Agent:
     def _register_tool(self, t: Tool) -> None:
         """Add a tool, raising on duplicate names.
 
+        When a ``large_output=True`` tool is registered and ``retrieve_artifact``
+        is not yet present, auto-registers the ``retrieve_artifact`` tool so the
+        LLM can access offloaded results.
+
         Args:
             t: The tool to register.
 
@@ -121,6 +491,9 @@ class Agent:
         if t.name in self.tools:
             raise AgentError(f"Duplicate tool name '{t.name}' on agent '{self.name}'")
         self.tools[t.name] = t
+        # Auto-register retrieve_artifact when the first large_output=True tool is added
+        if getattr(t, "large_output", False) and "retrieve_artifact" not in self.tools:
+            self._register_retrieve_artifact()
 
     def _register_handoff(self, agent: Agent) -> None:
         """Add a handoff target, raising on duplicate names.
@@ -135,21 +508,271 @@ class Agent:
             raise AgentError(f"Duplicate handoff agent '{agent.name}' on agent '{self.name}'")
         self.handoffs[agent.name] = agent
 
+    def _register_retrieve_artifact(self) -> None:
+        """Auto-register the ``retrieve_artifact`` tool for workspace access.
+
+        Called automatically by :meth:`_register_tool` when the first
+        ``large_output=True`` tool is registered on this agent.
+        """
+        agent_ref = self
+
+        async def retrieve_artifact(id: str) -> str:
+            """Retrieve the content of a large tool result stored as an artifact.
+
+            Args:
+                id: The artifact ID returned in the pointer string from a
+                    large_output tool.
+
+            Returns:
+                The full content of the stored artifact, or an error message
+                if the artifact is not found.
+            """
+            if agent_ref._workspace is None:
+                return "[Error: No workspace available — no artifacts have been stored yet]"
+            content = agent_ref._workspace.read(id)
+            if content is None:
+                return f"[Error: Artifact '{id}' not found in workspace]"
+            return content
+
+        # Direct dict insertion avoids triggering the duplicate check in _register_tool
+        # and the large_output auto-registration loop.
+        self.tools["retrieve_artifact"] = FunctionTool(
+            retrieve_artifact, name="retrieve_artifact"
+        )
+
+    async def _offload_large_result(self, tool_name: str, content: str) -> str:
+        """Store a large tool result in the workspace and return a pointer string.
+
+        Lazily creates the agent's :class:`~orbiter.context.workspace.Workspace`
+        on first use.  Falls back to returning the content unchanged when
+        ``orbiter-context`` is not installed.
+
+        Args:
+            tool_name: Name of the tool that produced the result (used in the artifact ID).
+            content: The full tool result string to offload.
+
+        Returns:
+            A pointer string referencing the stored artifact, or the original
+            *content* when the workspace is unavailable.
+        """
+        artifact_id = f"tool_result_{tool_name}_{uuid.uuid4().hex[:8]}"
+
+        # Lazy-create workspace when first needed
+        if self._workspace is None:
+            try:
+                from orbiter.context.workspace import Workspace  # pyright: ignore[reportMissingImports]
+
+                self._workspace = Workspace(workspace_id=f"agent_{self.name}")
+            except ImportError:
+                _log.debug(
+                    "ToolResultOffloader: orbiter-context not installed, skipping offload for %s",
+                    tool_name,
+                )
+                return content
+
+        await self._workspace.write(artifact_id, content)
+        _log.debug(
+            "ToolResultOffloader: offloading %s result size=%d bytes artifact_id=%s",
+            tool_name,
+            len(content),
+            artifact_id,
+        )
+        return (
+            f"[Result stored as artifact '{artifact_id}'. "
+            f"Call retrieve_artifact('{artifact_id}') to access.]"
+        )
+
+    def _make_spawn_self_tool(self) -> Tool:
+        """Create the ``spawn_self`` FunctionTool closure for this agent.
+
+        The returned tool captures ``self`` as *parent* so it can access
+        ``_current_provider``, ``_spawn_depth``, ``max_spawn_depth``, and the
+        agent configuration needed to create child agents.
+        """
+        parent = self
+
+        async def spawn_self(task: str) -> str:
+            """Spawn a copy of the current agent to handle a parallel sub-task.
+
+            Creates a new agent with the same model, instructions, and tools
+            (but fresh short-term memory) and runs it on *task*.  The spawned
+            agent shares the parent's long-term memory store so knowledge
+            accumulates across spawns.
+
+            Args:
+                task: The sub-task for the spawned agent to complete.
+
+            Returns:
+                The text result of the spawned agent's run, or an error string
+                if the maximum spawn depth has been reached.
+            """
+            # Depth guard — return error string instead of raising
+            if parent._spawn_depth >= parent.max_spawn_depth:
+                return (
+                    f"[spawn_self error] Maximum spawn depth ({parent.max_spawn_depth}) "
+                    "reached. Cannot spawn further sub-agents."
+                )
+
+            provider = parent._current_provider
+            if provider is None:
+                return "[spawn_self error] No provider available for spawned agent."
+
+            # Build tools list for the child — exclude spawn_self to avoid
+            # accidentally re-registering it (child has allow_self_spawn=False)
+            child_tools = [t for name, t in parent.tools.items() if name != "spawn_self"]
+
+            # Build memory: fresh ShortTermMemory + shared LongTermMemory instance
+            child_memory: Any = _MEMORY_UNSET  # default: auto-create
+            if parent.memory is None:
+                child_memory = None  # explicitly disabled — propagate
+            elif parent.memory is not _MEMORY_UNSET:
+                # parent.memory is a resolved AgentMemory or MemoryStore
+                try:
+                    from orbiter.memory.base import AgentMemory  # pyright: ignore[reportMissingImports]
+                    from orbiter.memory.short_term import ShortTermMemory  # pyright: ignore[reportMissingImports]
+
+                    long_term = getattr(parent.memory, "long_term", None)
+                    child_memory = AgentMemory(
+                        short_term=ShortTermMemory(),
+                        long_term=long_term,
+                    )
+                except ImportError:
+                    child_memory = None
+
+            child_agent = Agent(
+                name=f"{parent.name}_spawn_{uuid.uuid4().hex[:8]}",
+                model=parent.model,
+                instructions=parent.instructions,
+                tools=child_tools,
+                max_steps=parent.max_steps,
+                temperature=parent.temperature,
+                max_tokens=parent.max_tokens,
+                memory=child_memory,
+                allow_self_spawn=False,
+            )
+            child_agent._spawn_depth = parent._spawn_depth + 1
+
+            _log.info(
+                "spawn_self: parent=%s child=%s depth=%d task_len=%d",
+                parent.name,
+                child_agent.name,
+                child_agent._spawn_depth,
+                len(task),
+            )
+
+            result = await child_agent.run(task, provider=provider)
+            return result.text or ""
+
+        return FunctionTool(spawn_self, name="spawn_self")
+
+    # -----------------------------------------------------------------------
+    # Runtime mutation API — asyncio-safe via _tools_lock
+    # -----------------------------------------------------------------------
+
+    async def add_tool(self, tool: Tool) -> None:
+        """Append a single tool at runtime, asyncio-safe.
+
+        Uses ``_tools_lock`` to prevent concurrent registrations from
+        interfering with each other.
+
+        Args:
+            tool: The tool to register.
+
+        Raises:
+            AgentError: If a tool with the same name is already registered.
+        """
+        async with self._tools_lock:
+            self._register_tool(tool)
+
+    def remove_tool(self, tool_name: str) -> None:
+        """Unregister a tool by name.
+
+        Safe to call without holding the lock — dict.pop() is atomic in
+        CPython's single-threaded asyncio event loop (no await between
+        check and removal).
+
+        Args:
+            tool_name: Name of the tool to remove.
+
+        Raises:
+            AgentError: If no tool with that name is registered.
+        """
+        if tool_name not in self.tools:
+            raise AgentError(f"Tool '{tool_name}' is not registered on agent '{self.name}'")
+        del self.tools[tool_name]
+
+    async def add_handoff(self, target: Agent) -> None:
+        """Register a target agent as a handoff destination at runtime.
+
+        Args:
+            target: The agent to delegate to.
+
+        Raises:
+            AgentError: If a handoff with the same name is already registered.
+        """
+        async with self._tools_lock:
+            self._register_handoff(target)
+
+    async def add_mcp_server(self, config: Any) -> None:
+        """Connect an MCP server and append its tools to this agent at runtime.
+
+        Requires the ``orbiter-mcp`` package.  Creates a new
+        ``MCPServerConnection``, connects to the server, lists its tools,
+        and registers each one via :meth:`add_tool`.
+
+        Args:
+            config: An ``MCPServerConfig`` instance describing the server.
+
+        Raises:
+            AgentError: If ``orbiter-mcp`` is not installed or the connection
+                fails.
+        """
+        try:
+            from orbiter.mcp.client import MCPServerConnection  # pyright: ignore[reportMissingImports]
+            from orbiter.mcp.tools import load_tools_from_connection  # pyright: ignore[reportMissingImports]
+        except ImportError as exc:
+            raise AgentError("orbiter-mcp is required for add_mcp_server()") from exc
+
+        try:
+            conn = MCPServerConnection(config)
+            await conn.connect()
+        except Exception as exc:
+            raise AgentError(f"Failed to connect MCP server '{getattr(config, 'name', config)}': {exc}") from exc
+
+        mcp_tools = await load_tools_from_connection(conn)
+        async with self._tools_lock:
+            for tool in mcp_tools:
+                self._register_tool(tool)
+
+        _log.info(
+            "add_mcp_server: agent=%s server=%s tools_added=%d",
+            self.name,
+            getattr(config, "name", config),
+            len(mcp_tools),
+        )
+
+    # -----------------------------------------------------------------------
+
     def _attach_memory_persistence(self, memory: Any) -> None:
         """Auto-attach MemoryPersistence hooks if orbiter-memory is installed.
 
-        Only attaches if ``memory`` satisfies the ``MemoryStore`` protocol.
-        If the orbiter-memory package is not installed, this is a no-op.
+        Handles both ``AgentMemory`` (uses ``short_term`` store) and plain
+        ``MemoryStore`` objects.  If the orbiter-memory package is not
+        installed, this is a no-op.
         """
         try:
-            from orbiter.memory.base import MemoryStore  # pyright: ignore[reportMissingImports]
+            from orbiter.memory.base import AgentMemory, MemoryStore  # pyright: ignore[reportMissingImports]
             from orbiter.memory.persistence import (  # pyright: ignore[reportMissingImports]
                 MemoryPersistence,
             )
         except ImportError:
             return
 
-        if isinstance(memory, MemoryStore):
+        if isinstance(memory, AgentMemory):
+            persistence = MemoryPersistence(memory.short_term)
+            persistence.attach(self)
+            self._memory_persistence = persistence
+        elif isinstance(memory, MemoryStore):
             persistence = MemoryPersistence(memory)
             persistence.attach(self)
             self._memory_persistence = persistence
@@ -187,6 +810,7 @@ class Agent:
         messages: Sequence[Message] | None = None,
         provider: Any = None,
         max_retries: int = 3,
+        conversation_id: str | None = None,
     ) -> AgentOutput:
         """Execute the agent's LLM-tool loop with retry logic.
 
@@ -201,6 +825,9 @@ class Agent:
             provider: An object with an ``async complete()`` method
                 (e.g. a ``ModelProvider`` instance).
             max_retries: Maximum retry attempts for transient errors.
+            conversation_id: Conversation scope override for this call only.
+                When omitted, the agent's ``conversation_id`` attribute is
+                used (auto-assigned UUID4 on first run if memory is set).
 
         Returns:
             Parsed ``AgentOutput`` from the final LLM response.
@@ -211,26 +838,115 @@ class Agent:
         if provider is None:
             raise AgentError(f"Agent '{self.name}' requires a provider for run()")
 
+        # Store provider reference so spawn_self tool can access it during execution.
+        # Always cleaned up in the finally block below.
+        self._current_provider = provider
+        try:
+            return await self._run_inner(
+                input,
+                messages=messages,
+                provider=provider,
+                max_retries=max_retries,
+                conversation_id=conversation_id,
+            )
+        finally:
+            self._current_provider = None
+
+    async def _run_inner(
+        self,
+        input: str,
+        *,
+        messages: Sequence[Message] | None = None,
+        provider: Any = None,
+        max_retries: int = 3,
+        conversation_id: str | None = None,
+    ) -> AgentOutput:
+        """Inner run implementation; called by :meth:`run` after provider setup."""
         # Resolve instructions (may be async callable)
-        instructions = self.instructions
-        if callable(instructions):
-            result = instructions(self.name)
-            if asyncio.iscoroutine(result):
-                instructions = await result
+        raw_instr = self.instructions
+        if callable(raw_instr):
+            if asyncio.iscoroutinefunction(raw_instr):
+                instructions = await raw_instr(self.name)
             else:
-                instructions = result
+                instructions = raw_instr(self.name)
+        else:
+            instructions = raw_instr
+
+        # ---- Memory: load history and persist user input before LLM call ----
+        history: list[Message] = list(messages) if messages else []
+        if self._memory_persistence is not None:
+            _active_conv = conversation_id or self.conversation_id
+            if _active_conv is None:
+                _active_conv = str(uuid.uuid4())
+                if conversation_id is None:
+                    self.conversation_id = _active_conv
+            from orbiter.memory.base import HumanMemory, MemoryMetadata  # pyright: ignore[reportMissingImports]
+            self._memory_persistence.metadata = MemoryMetadata(
+                agent_id=self.name,
+                task_id=_active_conv,
+            )
+            _db_history = await self._memory_persistence.load_history(
+                agent_name=self.name,
+                conversation_id=_active_conv,
+                rounds=self.max_steps,
+            )
+            history = list(_db_history) + history
+            await self._memory_persistence.store.add(
+                HumanMemory(
+                    content=input,
+                    metadata=self._memory_persistence.metadata,
+                )
+            )
+            _log.debug(
+                "memory pre-run: agent=%s conversation=%s db_history=%d",
+                self.name, _active_conv, len(_db_history),
+            )
+        # ---- end Memory ----
 
         # Build initial message list
-        history: list[Message] = list(messages) if messages else []
         history.append(UserMessage(content=input))
         msg_list = build_messages(instructions, history)
 
-        # Tool schemas
-        tool_schemas = self.get_tool_schemas() or None
+        # ---- Context: apply windowing and summarization ----
+        if self.context is not None:
+            msg_list = await _apply_context_windowing(msg_list, self.context, provider)
+        # ---- end Context ----
+
+        # ---- Long-term memory: inject relevant knowledge into system message ----
+        if self.memory is not None:
+            msg_list = await _inject_long_term_knowledge(self.memory, input, msg_list)
+        # ---- end Long-term memory ----
+
+        # ---- Token tracking: init per-run tracker and look up context window ----
+        _context_window_tokens = _get_context_window_tokens(self.model_name)
+        _token_tracker: Any = None
+        if self.context is not None:
+            try:
+                from orbiter.context.token_tracker import TokenTracker  # pyright: ignore[reportMissingImports]
+
+                _token_tracker = TokenTracker()
+            except ImportError:
+                pass
+        # ---- end Token tracking init ----
 
         # Tool loop — iterate up to max_steps
         for _step in range(self.max_steps):
+            # Re-enumerate tool schemas each step so dynamically added/removed
+            # tools (via add_tool/remove_tool) take effect without restarting.
+            tool_schemas = self.get_tool_schemas() or None
+
+            # Augment system message with token context info from previous step
+            if _token_tracker is not None and _context_window_tokens:
+                _trajectory = _token_tracker.get_trajectory(self.name)
+                if _trajectory:
+                    _last_input = _trajectory[-1].prompt_tokens
+                    msg_list = _update_system_token_info(msg_list, _last_input, _context_window_tokens)
+
             output = await self._call_llm(msg_list, tool_schemas, provider, max_retries)
+
+            # Record token usage in tracker
+            if _token_tracker is not None and output.usage.total_tokens > 0:
+                _token_tracker.add_usage(self.name, output.usage)
 
             # No tool calls — return the final text response
             if not output.tool_calls:
@@ -244,8 +960,145 @@ class Agent:
             msg_list.append(AssistantMessage(content=output.text, tool_calls=output.tool_calls))
             msg_list.extend(tool_results)
 
+            # Check token budget trigger → force early summarization before next LLM call
+            if (
+                _token_tracker is not None
+                and _context_window_tokens
+                and self.context is not None
+                and output.usage.input_tokens > 0
+            ):
+                _fill_ratio = output.usage.input_tokens / _context_window_tokens
+                _trigger = getattr(self.context, "token_budget_trigger", 0.8)
+                if _fill_ratio > _trigger:
+                    _log.info(
+                        "token budget trigger: %.0f%% full (%d/%d tokens), forcing summarization on '%s'",
+                        100.0 * _fill_ratio,
+                        output.usage.input_tokens,
+                        _context_window_tokens,
+                        self.name,
+                    )
+                    msg_list = await _apply_context_windowing(
+                        msg_list, self.context, provider, force_summarize=True
+                    )
+
         # max_steps exhausted — return last output as-is
         return output
+
+    async def branch(self, from_message_id: str) -> str:
+        """Branch the conversation at *from_message_id*.
+
+        Creates a new conversation that inherits all messages up to and
+        including the message identified by *from_message_id*.  The branch is
+        independent of the parent — activity in the branch does not affect the
+        original conversation.
+
+        ``Context.fork()`` is used internally to create an isolated child
+        context so summarisation is tracked per-branch and not shared with the
+        parent.
+
+        Args:
+            from_message_id: The ``MemoryItem.id`` of the last message to
+                include in the branch.  All messages up to and including this
+                item are copied to the new conversation scope.
+
+        Returns:
+            A new conversation_id (UUID4 string) for the branched conversation.
+            Pass it to ``agent.run(input, conversation_id=branch_id)`` to
+            continue on the branch.
+
+        Raises:
+            AgentError: If memory is not configured, no active conversation
+                exists, or *from_message_id* is not found in the current
+                conversation.
+        """
+        if self._memory_persistence is None:
+            raise AgentError(
+                f"Agent '{self.name}' requires memory to be set for branch()"
+            )
+        if self.conversation_id is None:
+            raise AgentError(
+                f"Agent '{self.name}' has no active conversation; "
+                "run the agent at least once before calling branch()"
+            )
+
+        store = self._memory_persistence.store
+
+        # Collect all raw items for the current conversation.
+        # Access _items directly (for ShortTermMemory) to bypass windowing and
+        # incomplete-pair filtering — we want the full unfiltered history.
+        raw_items: list[Any] = []
+        store_internal = getattr(store, "_items", None)
+        if store_internal is not None:
+            for item in store_internal:
+                item_meta = item.metadata
+                if (
+                    getattr(item_meta, "agent_id", None) == self.name
+                    and getattr(item_meta, "task_id", None) == self.conversation_id
+                ):
+                    raw_items.append(item)
+        else:
+            try:
+                from orbiter.memory.base import MemoryMetadata  # pyright: ignore[reportMissingImports]
+            except ImportError as exc:
+                raise AgentError("orbiter-memory is required for branch()") from exc
+            _meta_filter = MemoryMetadata(
+                agent_id=self.name, task_id=self.conversation_id
+            )
+            raw_items = await store.search(metadata=_meta_filter, limit=10000)
+            raw_items = sorted(raw_items, key=lambda x: x.created_at)
+
+        # Find the cutoff index
+        cutoff_idx: int | None = None
+        for i, item in enumerate(raw_items):
+            if item.id == from_message_id:
+                cutoff_idx = i
+                break
+
+        if cutoff_idx is None:
+            raise AgentError(
+                f"Message ID {from_message_id!r} not found in conversation "
+                f"{self.conversation_id!r} on agent '{self.name}'"
+            )
+
+        # Create new conversation_id for the branch
+        branch_conv_id = str(uuid.uuid4())
+
+        # Copy messages up to and including the cutoff to the new conversation scope
+        try:
+            from orbiter.memory.base import MemoryMetadata  # pyright: ignore[reportMissingImports]
+        except ImportError as exc:
+            raise AgentError("orbiter-memory is required for branch()") from exc
+
+        branch_meta = MemoryMetadata(agent_id=self.name, task_id=branch_conv_id)
+        items_to_copy = raw_items[: cutoff_idx + 1]
+        for item in items_to_copy:
+            copied = item.model_copy(
+                update={"id": uuid.uuid4().hex, "metadata": branch_meta}
+            )
+            await store.add(copied)
+
+        # Use Context.fork() to create an isolated child context so that
+        # summarisation is tracked per-branch and not shared with the parent.
+        if self.context is not None:
+            try:
+                from orbiter.context.context import Context  # pyright: ignore[reportMissingImports]
+
+                _parent_ctx = Context(
+                    task_id=self.conversation_id, config=self.context
+                )
+                _parent_ctx.fork(branch_conv_id)
+            except ImportError:
+                pass
+
+        _log.info(
+            "branched conversation: agent=%s parent=%s branch=%s messages_copied=%d at_id=%s",
+            self.name,
+            self.conversation_id,
+            branch_conv_id,
+            len(items_to_copy),
+            from_message_id,
+        )
+        return branch_conv_id
 
     async def _call_llm(
         self,
@@ -326,6 +1179,10 @@ class Agent:
                 try:
                     output = await tool.execute(**action.arguments)
                     content = output if isinstance(output, str) else str(output)
+                    # Large-output offloading: store in workspace and inject pointer.
+                    # Fires when large_output=True OR result exceeds the byte threshold.
+                    if getattr(tool, "large_output", False) or len(content.encode("utf-8")) > _get_large_output_threshold():
+                        content = await self._offload_large_result(action.tool_name, content)
                     result = ToolResult(
                         tool_call_id=action.tool_call_id,
                         tool_name=action.tool_name,
@@ -374,17 +1231,15 @@ class Agent:
                 f"Agent '{self.name}' has callable instructions which cannot be serialized. "
                 "Use a string instruction instead."
             )
-        if self.memory is not None:
+        if self.memory is not None and not self._memory_is_auto:
             raise ValueError(
                 f"Agent '{self.name}' has a memory store which cannot be serialized."
             )
-        if self.hook_manager.has_hooks(HookPoint.START) or any(
-            self.hook_manager.has_hooks(hp) for hp in HookPoint
-        ):
+        if self._has_user_hooks:
             raise ValueError(
                 f"Agent '{self.name}' has hooks which cannot be serialized."
             )
-        if self.context is not None:
+        if self.context is not None and not self._context_is_auto:
             raise ValueError(
                 f"Agent '{self.name}' has a context engine which cannot be serialized."
             )
@@ -398,9 +1253,11 @@ class Agent:
             "max_tokens": self.max_tokens,
         }
 
-        # Serialize tools as importable dotted paths
-        if self.tools:
-            data["tools"] = [_serialize_tool(t) for t in self.tools.values()]
+        # Serialize tools as importable dotted paths.
+        # Skip retrieve_artifact — it's always auto-registered on reconstruction.
+        user_tools = [t for name, t in self.tools.items() if name != "retrieve_artifact"]
+        if user_tools:
+            data["tools"] = [_serialize_tool(t) for t in user_tools]
 
         # Serialize handoffs recursively
         if self.handoffs:

@@ -307,7 +307,7 @@ class MemoryOrchestrator:
             )
             self._tasks[task.task_id] = task
             tasks.append(task)
-        logger.debug("submitted %d extraction tasks from %d items", len(tasks), len(items))
+        logger.info("long-term extraction triggered: items=%d types=%d", len(items), len(tasks))
         return tasks
 
     async def process(

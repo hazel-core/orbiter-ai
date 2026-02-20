@@ -38,6 +38,7 @@ from orbiter.observability.semconv import (  # pyright: ignore[reportMissingImpo
 from orbiter.types import (
     AssistantMessage,
     ErrorEvent,
+    MCPProgressEvent,
     Message,
     RunResult,
     StatusEvent,
@@ -157,6 +158,7 @@ async def _stream(
     max_steps: int | None = None,
     detailed: bool = False,
     event_types: set[str] | None = None,
+    conversation_id: str | None = None,
 ) -> AsyncIterator[StreamEvent]:
     """Stream agent execution, yielding events in real-time.
 
@@ -250,22 +252,86 @@ async def _stream(
     instr: str = ""
     raw_instr = agent.instructions
     if callable(raw_instr):
-        result_instr = raw_instr(agent.name)
-        if asyncio.iscoroutine(result_instr):
-            instr = str(await result_instr)
+        if asyncio.iscoroutinefunction(raw_instr):
+            instr = str(await raw_instr(agent.name))
         else:
-            instr = str(result_instr)
+            instr = str(raw_instr(agent.name))
     elif raw_instr:
         instr = str(raw_instr)
 
-    # Build initial message list
+    # ---- Memory: load history and persist user input before streaming ----
     history: list[Message] = list(messages) if messages else []
+    _persistence = getattr(agent, "_memory_persistence", None)
+    if _persistence is not None:
+        import uuid as _uuid
+        _active_conv = conversation_id or getattr(agent, "conversation_id", None)
+        if _active_conv is None:
+            _active_conv = str(_uuid.uuid4())
+            if conversation_id is None:
+                agent.conversation_id = _active_conv
+        from orbiter.memory.base import HumanMemory, MemoryMetadata  # pyright: ignore[reportMissingImports]
+        _persistence.metadata = MemoryMetadata(
+            agent_id=agent.name,
+            task_id=_active_conv,
+        )
+        _db_history = await _persistence.load_history(
+            agent_name=agent.name,
+            conversation_id=_active_conv,
+            rounds=max_steps or agent.max_steps,
+        )
+        history = list(_db_history) + history
+        await _persistence.store.add(
+            HumanMemory(
+                content=input,
+                metadata=_persistence.metadata,
+            )
+        )
+        _log.debug(
+            "memory stream pre-run: agent=%s conversation=%s db_history=%d",
+            agent.name, _active_conv, len(_db_history),
+        )
+    # ---- end Memory ----
+
+    # Build initial message list
     history.append(UserMessage(content=input))
     msg_list = build_messages(instr, history)
 
-    tool_schemas = agent.get_tool_schemas() or None
+    # ---- Context: apply windowing and summarization ----
+    _agent_context = getattr(agent, "context", None)
+    if _agent_context is not None:
+        from orbiter.agent import _apply_context_windowing  # pyright: ignore[reportMissingImports]
+        msg_list = await _apply_context_windowing(msg_list, _agent_context, resolved)
+    # ---- end Context ----
+
+    # ---- Long-term memory: inject relevant knowledge into system message ----
+    _agent_memory_lt = getattr(agent, "memory", None)
+    if _agent_memory_lt is not None:
+        try:
+            from orbiter.agent import _inject_long_term_knowledge  # pyright: ignore[reportMissingImports]
+            msg_list = await _inject_long_term_knowledge(_agent_memory_lt, input, msg_list)
+        except ImportError:
+            pass
+    # ---- end Long-term memory ----
 
     model_name = getattr(agent, "model", "") or ""
+
+    # ---- Token tracking: init per-stream tracker and look up context window ----
+    _model_name_only = model_name.partition(":")[2] or model_name
+    _stream_context_window: int | None = None
+    _stream_token_tracker: Any = None
+    if _agent_context is not None:
+        try:
+            from orbiter.agent import (  # pyright: ignore[reportMissingImports]
+                _get_context_window_tokens,
+                _update_system_token_info,
+            )
+            from orbiter.context.token_tracker import TokenTracker  # pyright: ignore[reportMissingImports]
+
+            _stream_context_window = _get_context_window_tokens(_model_name_only)
+            _stream_token_tracker = TokenTracker()
+        except ImportError:
+            pass
+    # ---- end Token tracking init ----
 
     # Fire START hook (parity with run() path)
     await agent.hook_manager.run(HookPoint.START, agent=agent, input=input)
@@ -281,6 +347,17 @@ async def _stream(
 
     for step_num in range(steps):
         step_started_at = time.time()
+
+        # Re-enumerate tool schemas each step so dynamically added/removed
+        # tools (via add_tool/remove_tool) take effect without restarting.
+        tool_schemas = agent.get_tool_schemas() or None
+
+        # Augment system message with token context info from previous step
+        if _stream_token_tracker is not None and _stream_context_window:
+            _traj = _stream_token_tracker.get_trajectory(agent.name)
+            if _traj:
+                _last_input = _traj[-1].prompt_tokens
+                msg_list = _update_system_token_info(msg_list, _last_input, _stream_context_window)  # type: ignore[possibly-undefined]
 
         if detailed:
             _ev = StepEvent(
@@ -365,6 +442,10 @@ async def _stream(
             )
             await agent.hook_manager.run(HookPoint.POST_LLM_CALL, agent=agent, response=_synth)
 
+            # Record token usage in tracker
+            if _stream_token_tracker is not None and step_usage.total_tokens > 0:
+                _stream_token_tracker.add_usage(agent.name, step_usage)
+
             # No tool calls — done streaming
             if not tool_calls:
                 if detailed:
@@ -408,6 +489,32 @@ async def _stream(
             tool_results = await agent._execute_tools(actions)
             tool_exec_end = time.time()
 
+            # Drain MCP progress queues and yield MCPProgressEvent items.
+            # Progress notifications are captured by MCPToolWrapper.execute()
+            # into per-wrapper asyncio.Queue instances during _execute_tools().
+            # They are yielded here (after all tools complete) so the LLM
+            # never sees them — only the caller's async-for loop does.
+            for action in actions:
+                tool = agent.tools.get(action.tool_name)
+                if tool is not None and hasattr(tool, "progress_queue"):
+                    q = tool.progress_queue
+                    while not q.empty():
+                        try:
+                            progress_evt: MCPProgressEvent = q.get_nowait()
+                            # Stamp agent_name if not already set
+                            if not progress_evt.agent_name:
+                                progress_evt = MCPProgressEvent(
+                                    tool_name=progress_evt.tool_name,
+                                    progress=progress_evt.progress,
+                                    total=progress_evt.total,
+                                    message=progress_evt.message,
+                                    agent_name=agent.name,
+                                )
+                            if _passes_filter(progress_evt):
+                                yield progress_evt
+                        except Exception:
+                            break
+
             # Emit ToolResultEvent for each tool execution when detailed
             if detailed:
                 total_tool_duration_ms = (tool_exec_end - tool_exec_start) * 1000
@@ -443,6 +550,26 @@ async def _stream(
             # Append assistant message + tool results to conversation
             msg_list.append(AssistantMessage(content=full_text, tool_calls=tool_calls))
             msg_list.extend(tool_results)
+
+            # Check token budget trigger → force early summarization before next step
+            if (
+                _stream_token_tracker is not None
+                and _stream_context_window
+                and _agent_context is not None
+                and step_usage.input_tokens > 0
+            ):
+                _fill_ratio = step_usage.input_tokens / _stream_context_window
+                _trigger = getattr(_agent_context, "token_budget_trigger", 0.8)
+                if _fill_ratio > _trigger:
+                    _log.info(
+                        "stream token budget trigger: %.0f%% full (%d/%d tokens) on '%s'",
+                        100.0 * _fill_ratio,
+                        step_usage.input_tokens,
+                        _stream_context_window,
+                        agent.name,
+                    )
+                    from orbiter.agent import _apply_context_windowing as _acw  # pyright: ignore[reportMissingImports]
+                    msg_list = await _acw(msg_list, _agent_context, resolved, force_summarize=True)
 
         except Exception as exc:
             _ev = ErrorEvent(

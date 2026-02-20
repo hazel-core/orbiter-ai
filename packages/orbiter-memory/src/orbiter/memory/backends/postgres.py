@@ -236,6 +236,48 @@ class PostgresMemoryStore:
             logger.debug("soft-deleted filtered items count=%d", count)
             return count
 
+    async def get_recent(
+        self,
+        n: int = 10,
+        *,
+        metadata: MemoryMetadata | None = None,
+    ) -> list[MemoryItem]:
+        """Return the *n* most recently created items, newest first.
+
+        Optionally scoped to a metadata filter (agent_id, task_id, etc.).
+        """
+        pool = self._ensure_init()
+        clauses: list[str] = ["deleted = 0"]
+        params: list[Any] = []
+        idx = 1
+
+        if metadata:
+            if metadata.user_id:
+                clauses.append(f"metadata->>'user_id' = ${idx}")
+                params.append(metadata.user_id)
+                idx += 1
+            if metadata.session_id:
+                clauses.append(f"metadata->>'session_id' = ${idx}")
+                params.append(metadata.session_id)
+                idx += 1
+            if metadata.task_id:
+                clauses.append(f"metadata->>'task_id' = ${idx}")
+                params.append(metadata.task_id)
+                idx += 1
+            if metadata.agent_id:
+                clauses.append(f"metadata->>'agent_id' = ${idx}")
+                params.append(metadata.agent_id)
+                idx += 1
+
+        where = " AND ".join(clauses)
+        sql = f"SELECT * FROM memory_items WHERE {where} ORDER BY created_at DESC LIMIT ${idx}"
+        params.append(n)
+
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(sql, *params)
+        logger.debug("get_recent n=%d returned %d rows", n, len(rows))
+        return [_row_to_item(r) for r in rows]
+
     # -- extras ---------------------------------------------------------------
 
     async def count(self, *, include_deleted: bool = False) -> int:

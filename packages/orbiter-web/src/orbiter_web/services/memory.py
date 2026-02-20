@@ -8,10 +8,13 @@ Strategies:
 
 from __future__ import annotations
 
+import logging
 import uuid
 from collections.abc import Awaitable, Callable
 
 from orbiter_web.database import get_db
+
+_log = logging.getLogger(__name__)
 
 # Type alias for an optional async function that generates a summary from text.
 SummarizeFn = Callable[[str], Awaitable[str]]
@@ -65,6 +68,7 @@ class MemoryService:
             List of {role, content} dicts ready for injection into message
             history.
         """
+        _log.debug("get_memory: agent=%s thread=%s type=%s", agent_id, thread_id, memory_type)
         if memory_type == "sliding_window":
             return await self._get_sliding_window(agent_id, thread_id, window_size)
         if memory_type == "summary":

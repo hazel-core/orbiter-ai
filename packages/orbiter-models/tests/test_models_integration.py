@@ -26,6 +26,7 @@ EXPECTED_ALL = [
     "AnthropicProvider",
     "FinishReason",
     "GeminiProvider",
+    "MODEL_CONTEXT_WINDOWS",
     "ModelError",
     "ModelProvider",
     "ModelResponse",
@@ -139,3 +140,54 @@ class TestCrossProviderConsistency:
         for provider in (openai, anthropic):
             assert callable(getattr(provider, "complete", None))
             assert callable(getattr(provider, "stream", None))
+
+
+class TestModelContextWindows:
+    """Tests for MODEL_CONTEXT_WINDOWS registry and get_provider() integration."""
+
+    def test_registry_is_dict(self) -> None:
+        from orbiter.models import MODEL_CONTEXT_WINDOWS  # pyright: ignore[reportMissingImports]
+
+        assert isinstance(MODEL_CONTEXT_WINDOWS, dict)
+
+    def test_well_known_models_present(self) -> None:
+        from orbiter.models import MODEL_CONTEXT_WINDOWS  # pyright: ignore[reportMissingImports]
+
+        for model in ("gpt-4o", "gpt-4o-mini", "o1", "claude-sonnet-4-6",
+                      "claude-opus-4-6", "claude-haiku-4-5-20251001",
+                      "gemini-2.0-flash", "gemini-1.5-pro"):
+            assert model in MODEL_CONTEXT_WINDOWS, f"{model!r} missing from registry"
+
+    def test_gpt4o_context_window(self) -> None:
+        from orbiter.models import MODEL_CONTEXT_WINDOWS  # pyright: ignore[reportMissingImports]
+
+        assert MODEL_CONTEXT_WINDOWS["gpt-4o"] == 128000
+
+    def test_claude_context_window(self) -> None:
+        from orbiter.models import MODEL_CONTEXT_WINDOWS  # pyright: ignore[reportMissingImports]
+
+        assert MODEL_CONTEXT_WINDOWS["claude-sonnet-4-6"] == 200000
+        assert MODEL_CONTEXT_WINDOWS["claude-opus-4-6"] == 200000
+        assert MODEL_CONTEXT_WINDOWS["claude-haiku-4-5-20251001"] == 200000
+
+    def test_gemini_context_window(self) -> None:
+        from orbiter.models import MODEL_CONTEXT_WINDOWS  # pyright: ignore[reportMissingImports]
+
+        assert MODEL_CONTEXT_WINDOWS["gemini-2.0-flash"] == 1048576
+        assert MODEL_CONTEXT_WINDOWS["gemini-1.5-pro"] == 2097152
+
+    def test_get_provider_populates_context_window_tokens_known_model(self) -> None:
+        provider = get_provider("openai:gpt-4o", api_key="sk-test")
+        assert provider.config.context_window_tokens == 128000
+
+    def test_get_provider_populates_context_window_tokens_anthropic(self) -> None:
+        provider = get_provider("anthropic:claude-sonnet-4-6", api_key="sk-ant")
+        assert provider.config.context_window_tokens == 200000
+
+    def test_get_provider_context_window_none_for_unknown_model(self) -> None:
+        provider = get_provider("openai:gpt-unknown-xyz", api_key="sk-test")
+        assert provider.config.context_window_tokens is None
+
+    def test_get_provider_explicit_override(self) -> None:
+        provider = get_provider("openai:gpt-4o", api_key="sk-test", context_window_tokens=999)
+        assert provider.config.context_window_tokens == 999

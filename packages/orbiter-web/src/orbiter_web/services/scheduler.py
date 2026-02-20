@@ -88,6 +88,7 @@ async def _fire_schedule(schedule: dict[str, Any]) -> None:
 
         # Update the schedule: last_run_at = now, compute next_run_at.
         next_run = compute_next_run(cron_expr)
+        _log.debug("Next run for schedule %s: %s", schedule_id, next_run)
         await db.execute(
             "UPDATE schedules SET last_run_at = ?, next_run_at = ?, updated_at = ? WHERE id = ?",
             (now, next_run, now, schedule_id),

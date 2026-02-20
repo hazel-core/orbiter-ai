@@ -8,9 +8,10 @@ from typing import Any
 import pytest
 
 from orbiter.hooks import HookPoint
-from orbiter.memory.base import AIMemory, MemoryMetadata, ToolMemory
+from orbiter.memory.base import AIMemory, HumanMemory, MemoryMetadata, SystemMemory, ToolMemory
 from orbiter.memory.persistence import MemoryPersistence
 from orbiter.memory.short_term import ShortTermMemory
+from orbiter.types import AssistantMessage, SystemMessage, ToolResult, UserMessage
 
 
 # ---------------------------------------------------------------------------
@@ -19,10 +20,10 @@ from orbiter.memory.short_term import ShortTermMemory
 
 
 def _make_agent() -> Any:
-    """Create a minimal Agent for testing."""
+    """Create a minimal Agent for testing (memory=None to avoid auto-attached hooks)."""
     from orbiter.agent import Agent
 
-    return Agent(name="test-agent")
+    return Agent(name="test-agent", memory=None)
 
 
 def _make_response(
@@ -89,6 +90,35 @@ class TestAttachDetach:
         persistence.attach(agent)
         persistence.detach(agent)
         persistence.detach(agent)  # should not raise
+
+    def test_attach_idempotent(self) -> None:
+        """Attaching twice registers hooks only once (second call is a no-op)."""
+        agent = _make_agent()
+        store = ShortTermMemory()
+        persistence = MemoryPersistence(store)
+
+        persistence.attach(agent)
+        hook_count_after_first = len(agent.hook_manager._hooks.get(HookPoint.POST_LLM_CALL, []))
+
+        persistence.attach(agent)  # second call should be a no-op
+        hook_count_after_second = len(agent.hook_manager._hooks.get(HookPoint.POST_LLM_CALL, []))
+
+        assert hook_count_after_first == hook_count_after_second
+
+    def test_attach_idempotent_different_agents(self) -> None:
+        """Two different agents can each be attached once."""
+        agent1 = _make_agent()
+        agent2 = _make_agent()
+        store = ShortTermMemory()
+        persistence = MemoryPersistence(store)
+
+        persistence.attach(agent1)
+        persistence.attach(agent2)
+        persistence.attach(agent1)  # no-op for agent1
+
+        # Both agents should have hooks registered exactly once
+        assert agent1.hook_manager.has_hooks(HookPoint.POST_LLM_CALL)
+        assert agent2.hook_manager.has_hooks(HookPoint.POST_LLM_CALL)
 
 
 # ---------------------------------------------------------------------------
@@ -289,3 +319,134 @@ class TestPersistenceIntegration:
         assert "AIMemory" in types
 
         persistence.detach(agent)
+
+
+# ---------------------------------------------------------------------------
+# load_history
+# ---------------------------------------------------------------------------
+
+
+class TestLoadHistory:
+    async def test_returns_empty_when_no_history(self) -> None:
+        store = ShortTermMemory()
+        persistence = MemoryPersistence(store)
+        messages = await persistence.load_history("agent-a", "conv-1", rounds=5)
+        assert messages == []
+
+    async def test_converts_human_and_ai_to_messages(self) -> None:
+        store = ShortTermMemory()
+        persistence = MemoryPersistence(store)
+        meta = MemoryMetadata(agent_id="agent-a", task_id="conv-1")
+
+        await store.add(HumanMemory(content="hello", metadata=meta))
+        await store.add(AIMemory(content="hi there", metadata=meta))
+
+        messages = await persistence.load_history("agent-a", "conv-1", rounds=5)
+
+        assert len(messages) == 2
+        assert isinstance(messages[0], UserMessage)
+        assert messages[0].content == "hello"
+        assert isinstance(messages[1], AssistantMessage)
+        assert messages[1].content == "hi there"
+
+    async def test_converts_system_memory(self) -> None:
+        store = ShortTermMemory()
+        persistence = MemoryPersistence(store)
+        meta = MemoryMetadata(agent_id="agent-a", task_id="conv-1")
+
+        await store.add(SystemMemory(content="You are a helpful assistant.", metadata=meta))
+        await store.add(HumanMemory(content="hello", metadata=meta))
+
+        messages = await persistence.load_history("agent-a", "conv-1", rounds=5)
+        assert len(messages) == 2
+        assert isinstance(messages[0], SystemMessage)
+        assert messages[0].content == "You are a helpful assistant."
+
+    async def test_converts_tool_memory_to_tool_result(self) -> None:
+        store = ShortTermMemory()
+        persistence = MemoryPersistence(store)
+        meta = MemoryMetadata(agent_id="agent-a", task_id="conv-1")
+
+        tc_item = AIMemory(
+            content="calling tool",
+            metadata=meta,
+            tool_calls=[{"id": "tc1", "name": "search", "arguments": "{}"}],
+        )
+        await store.add(tc_item)
+        await store.add(
+            ToolMemory(
+                content="result",
+                metadata=meta,
+                tool_call_id="tc1",
+                tool_name="search",
+                is_error=False,
+            )
+        )
+        await store.add(AIMemory(content="done", metadata=meta))
+
+        messages = await persistence.load_history("agent-a", "conv-1", rounds=5)
+        tool_results = [m for m in messages if isinstance(m, ToolResult)]
+        assert len(tool_results) == 1
+        assert tool_results[0].tool_call_id == "tc1"
+        assert tool_results[0].tool_name == "search"
+        assert tool_results[0].content == "result"
+
+    async def test_error_tool_memory_sets_error_field(self) -> None:
+        store = ShortTermMemory()
+        persistence = MemoryPersistence(store)
+        meta = MemoryMetadata(agent_id="agent-a", task_id="conv-1")
+
+        tc_item = AIMemory(
+            content="calling tool",
+            metadata=meta,
+            tool_calls=[{"id": "tc2", "name": "fetch", "arguments": "{}"}],
+        )
+        await store.add(tc_item)
+        await store.add(
+            ToolMemory(
+                content="timeout",
+                metadata=meta,
+                tool_call_id="tc2",
+                tool_name="fetch",
+                is_error=True,
+            )
+        )
+        await store.add(AIMemory(content="sorry", metadata=meta))
+
+        messages = await persistence.load_history("agent-a", "conv-1", rounds=5)
+        tool_results = [m for m in messages if isinstance(m, ToolResult)]
+        assert len(tool_results) == 1
+        assert tool_results[0].error == "timeout"
+        assert tool_results[0].content == ""
+
+    async def test_windowing_limits_rounds(self) -> None:
+        store = ShortTermMemory()
+        persistence = MemoryPersistence(store)
+        meta = MemoryMetadata(agent_id="agent-a", task_id="conv-1")
+
+        # Add 3 conversation rounds
+        for i in range(3):
+            await store.add(HumanMemory(content=f"human {i}", metadata=meta))
+            await store.add(AIMemory(content=f"ai {i}", metadata=meta))
+
+        messages = await persistence.load_history("agent-a", "conv-1", rounds=2)
+
+        user_msgs = [m for m in messages if isinstance(m, UserMessage)]
+        assert len(user_msgs) == 2
+        assert user_msgs[0].content == "human 1"
+        assert user_msgs[1].content == "human 2"
+
+    async def test_scoping_by_agent_and_conversation(self) -> None:
+        store = ShortTermMemory()
+        persistence = MemoryPersistence(store)
+
+        meta_a = MemoryMetadata(agent_id="agent-a", task_id="conv-1")
+        meta_b = MemoryMetadata(agent_id="agent-b", task_id="conv-2")
+
+        await store.add(HumanMemory(content="agent-a message", metadata=meta_a))
+        await store.add(HumanMemory(content="agent-b message", metadata=meta_b))
+
+        messages = await persistence.load_history("agent-a", "conv-1", rounds=5)
+        assert len(messages) == 1
+        assert isinstance(messages[0], UserMessage)
+        assert messages[0].content == "agent-a message"

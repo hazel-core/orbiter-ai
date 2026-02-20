@@ -77,9 +77,16 @@ logger = logging.getLogger("orbiter_web")
 def _validate_startup() -> None:
     """Validate configuration on startup and log warnings for insecure defaults."""
     # Check for default or missing secret key
-    if settings.secret_key == "change-me-in-production" or not settings.secret_key:
+    if settings.secret_key == "change-me-in-production":
+        if not settings.debug:
+            raise RuntimeError("ORBITER_SECRET_KEY must be changed in production")
         logger.warning(
             "Using default secret key — all encrypted data is insecure. "
+            "Set ORBITER_SECRET_KEY env var"
+        )
+    elif not settings.secret_key:
+        logger.warning(
+            "Secret key is empty — all encrypted data is insecure. "
             "Set ORBITER_SECRET_KEY env var"
         )
 

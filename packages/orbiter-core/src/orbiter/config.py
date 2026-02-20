@@ -47,6 +47,7 @@ class ModelConfig(BaseModel):
     base_url: str | None = None
     max_retries: int = Field(default=3, ge=0)
     timeout: float = Field(default=30.0, gt=0)
+    context_window_tokens: int | None = None
 
 
 class AgentConfig(BaseModel):

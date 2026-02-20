@@ -9,6 +9,7 @@ output against a Pydantic model.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any, TypeVar
 
 from pydantic import BaseModel, ValidationError
@@ -123,6 +124,27 @@ def _parse_json_arguments(raw: str, *, tool_name: str) -> dict[str, Any]:
 # Structured output validation
 # ---------------------------------------------------------------------------
 
+_MARKDOWN_FENCE_RE = re.compile(r"^\s*```(?:json)?\s*\n(.*?)\n\s*```\s*$", re.DOTALL)
+
+
+def _strip_markdown_fences(text: str) -> str:
+    """Remove markdown code fences wrapping JSON output.
+
+    Some LLMs (e.g. Gemini) wrap structured output in triple-backtick fences.
+    This strips ````` ```json ... ``` ````` or ````` ``` ... ``` ````` wrappers
+    so that the inner content can be parsed as plain JSON.
+
+    Args:
+        text: Raw text from the LLM, possibly wrapped in a code fence.
+
+    Returns:
+        The original text with any surrounding markdown fence removed.
+    """
+    match = _MARKDOWN_FENCE_RE.match(text)
+    if match:
+        return match.group(1)
+    return text
+
 
 def parse_structured_output(
     text: str,
@@ -143,7 +165,7 @@ def parse_structured_output(
         OutputParseError: If *text* is not valid JSON or fails validation.
     """
     try:
-        data = json.loads(text)
+        data = json.loads(_strip_markdown_fences(text))
     except json.JSONDecodeError as exc:
         raise OutputParseError(f"Structured output is not valid JSON: {exc}") from exc
     try:

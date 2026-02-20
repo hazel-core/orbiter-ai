@@ -22,6 +22,19 @@ class TestContextConfigDefaults:
         assert cfg.enable_retrieval is False
         assert cfg.neuron_names == ()
         assert cfg.extra == {}
+        assert cfg.token_budget_trigger == 0.8
+
+    def test_token_budget_trigger_default(self) -> None:
+        cfg = ContextConfig()
+        assert cfg.token_budget_trigger == 0.8
+
+    def test_token_budget_trigger_custom(self) -> None:
+        cfg = ContextConfig(token_budget_trigger=0.5)
+        assert cfg.token_budget_trigger == 0.5
+
+    def test_token_budget_trigger_out_of_range(self) -> None:
+        with pytest.raises(ValidationError):
+            ContextConfig(token_budget_trigger=1.5)
 
     def test_frozen(self) -> None:
         cfg = ContextConfig()

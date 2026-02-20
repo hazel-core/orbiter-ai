@@ -252,6 +252,9 @@ class FunctionTool(Tool):
         fn: The function to wrap.
         name: Override the tool name (defaults to ``fn.__name__``).
         description: Override the description (defaults to docstring).
+        large_output: When ``True``, the tool's result will be offloaded to
+            the agent's workspace instead of being injected directly into the
+            LLM context.  A pointer string is returned in its place.
     """
 
     def __init__(
@@ -260,12 +263,14 @@ class FunctionTool(Tool):
         *,
         name: str | None = None,
         description: str | None = None,
+        large_output: bool = False,
     ) -> None:
         self._fn = fn
         self._is_async = asyncio.iscoroutinefunction(fn)
         self.name = name or fn.__name__
         self.description = description or _extract_description(fn)
         self.parameters = _generate_schema(fn)
+        self.large_output: bool = large_output
 
     async def execute(self, **kwargs: Any) -> str | dict[str, Any]:
         """Execute the wrapped function.
@@ -305,6 +310,7 @@ def tool(
     *,
     name: str | None = None,
     description: str | None = None,
+    large_output: bool = False,
 ) -> Callable[[Callable[..., Any]], FunctionTool]: ...
 
 
@@ -314,6 +320,7 @@ def tool(
     *,
     name: str | None = None,
     description: str | None = None,
+    large_output: bool = False,
 ) -> FunctionTool | Callable[[Callable[..., Any]], FunctionTool]:
     """Decorator to turn a function into a ``FunctionTool``.
 
@@ -323,14 +330,17 @@ def tool(
         fn: The function (when used as bare ``@tool``).
         name: Override tool name.
         description: Override tool description.
+        large_output: When ``True``, the tool's result will be offloaded to
+            the agent's workspace.  A pointer string referencing the artifact
+            is returned in its place so the LLM context window is not flooded.
 
     Returns:
         A ``FunctionTool`` instance, or a decorator that produces one.
     """
     if fn is not None:
-        return FunctionTool(fn, name=name, description=description)
+        return FunctionTool(fn, name=name, description=description, large_output=large_output)
 
     def decorator(func: Callable[..., Any]) -> FunctionTool:
-        return FunctionTool(func, name=name, description=description)
+        return FunctionTool(func, name=name, description=description, large_output=large_output)
 
     return decorator

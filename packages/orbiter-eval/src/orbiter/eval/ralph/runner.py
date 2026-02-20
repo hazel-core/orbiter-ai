@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from orbiter.eval.base import (  # pyright: ignore[reportMissingImports]
     Scorer,
@@ -101,6 +104,7 @@ class RalphRunner:
 
     async def run(self, input: str) -> RalphResult:
         """Execute the full Ralph loop on *input* and return the result."""
+        logger.info("RalphRunner starting: input_len=%d scorers=%d", len(input), len(self._scorers))
         state = LoopState()
         current_input = input
         last_output = ""
@@ -172,8 +176,8 @@ class RalphRunner:
             try:
                 result: ScorerResult = await scorer.score(case_id, input, output)
                 scores[result.scorer_name] = result.score
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("Scorer failed case=%s: %s", case_id, exc, exc_info=True)
         state.record_score(scores)
         return scores
 

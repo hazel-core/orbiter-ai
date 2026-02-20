@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 from collections.abc import AsyncIterator
 from typing import Any, Protocol, runtime_checkable
+
+logger = logging.getLogger(__name__)
 
 from orbiter.a2a.types import (  # pyright: ignore[reportMissingImports]
     AgentCapabilities,
@@ -174,6 +177,8 @@ class A2AServer:
             text = payload.get("text", "")
             task_id = payload.get("task_id") or str(uuid.uuid4())
 
+            logger.info("A2A run start: task_id=%s agent=%s", task_id, server._executor.agent_name)
+
             # Save initial task state
             status = TaskStatus(state=TaskState.SUBMITTED)
             await server._task_store.save(
@@ -214,6 +219,7 @@ class A2AServer:
                     },
                 )
 
+                logger.info("A2A run complete: task_id=%s agent=%s", task_id, server._executor.agent_name)
                 return JSONResponse(
                     {
                         "task_id": task_id,
@@ -223,6 +229,13 @@ class A2AServer:
                 )
 
             except Exception as exc:
+                logger.error(
+                    "A2A run failed: task_id=%s agent=%s error=%s",
+                    task_id,
+                    server._executor.agent_name,
+                    exc,
+                    exc_info=True,
+                )
                 failed_status = TaskStatus(state=TaskState.FAILED, reason=str(exc))
                 await server._task_store.save(
                     task_id,
@@ -259,6 +272,11 @@ class A2AServer:
                 async def _generate() -> AsyncIterator[str]:
                     import json
 
+                    logger.info(
+                        "A2A stream start: task_id=%s agent=%s",
+                        task_id,
+                        server._executor.agent_name,
+                    )
                     yield (
                         json.dumps(
                             TaskStatusUpdateEvent(
@@ -271,6 +289,11 @@ class A2AServer:
 
                     try:
                         result = await server._executor.execute(text, provider=server._provider)
+                        logger.info(
+                            "A2A stream complete: task_id=%s agent=%s",
+                            task_id,
+                            server._executor.agent_name,
+                        )
                         yield (
                             json.dumps(
                                 TaskArtifactUpdateEvent(
@@ -289,6 +312,13 @@ class A2AServer:
                             + "\n"
                         )
                     except Exception as exc:
+                        logger.error(
+                            "A2A stream failed: task_id=%s agent=%s error=%s",
+                            task_id,
+                            server._executor.agent_name,
+                            exc,
+                            exc_info=True,
+                        )
                         yield (
                             json.dumps(
                                 TaskStatusUpdateEvent(

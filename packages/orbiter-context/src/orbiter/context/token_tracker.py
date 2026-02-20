@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +109,14 @@ class TokenTracker:
             "token step recorded: agent=%r step=%d prompt=%d output=%d",
             agent_id, step_index, prompt_tokens, output_tokens,
         )
+        agent_used = sum(s.total_tokens for s in self._steps if s.agent_id == agent_id)
+        all_total = sum(s.total_tokens for s in self._steps)
+        logger.debug(
+            "TokenTracker: used=%d / total=%d (%.0f%%)",
+            agent_used,
+            all_total,
+            100.0 * agent_used / all_total if all_total > 0 else 0.0,
+        )
         return token_step
 
     def get_trajectory(self, agent_id: str) -> list[TokenStep]:
@@ -135,6 +144,29 @@ class TokenTracker:
             output_tokens=output,
             total_tokens=prompt + output,
             step_count=len(trajectory),
+        )
+
+    def add_usage(self, agent_id: str, usage: Any) -> TokenStep:
+        """Record token usage from a Usage object (e.g. ``orbiter.types.Usage``).
+
+        Accepts any object with ``input_tokens`` and ``output_tokens``
+        attributes (duck typing — no direct import of ``orbiter.types``).
+
+        Parameters
+        ----------
+        agent_id:
+            Identifier of the agent that made the LLM call.
+        usage:
+            A usage object with ``input_tokens`` and ``output_tokens`` fields.
+
+        Returns
+        -------
+        The created :class:`TokenStep`.
+        """
+        return self.add_step(
+            agent_id,
+            prompt_tokens=getattr(usage, "input_tokens", 0),
+            output_tokens=getattr(usage, "output_tokens", 0),
         )
 
     @property

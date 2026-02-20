@@ -280,6 +280,7 @@ class VeRLTrainer(Trainer):
         verl_params = _build_verl_params(cfg, self._reward_spec)
         logger.info("VeRL params: %s", verl_params)
 
+        logger.warning("VeRLTrainer.train: STUB — no real training performed")
         # In a real deployment, this would call verl.trainer.main_ppo.main()
         # or the GRPO equivalent. Here we structure the integration layer.
         total_steps = cfg.epochs * max(1, len(self._train_data) // cfg.batch_size)

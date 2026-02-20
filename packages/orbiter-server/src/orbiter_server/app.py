@@ -16,10 +16,13 @@ Usage::
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import AsyncIterator
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
+
+logger = logging.getLogger(__name__)
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -140,6 +143,20 @@ async def _sse_stream(agent: Any, message: str) -> AsyncIterator[str]:
 # ---------------------------------------------------------------------------
 # App factory
 # ---------------------------------------------------------------------------
+
+
+def serve(host: str = "0.0.0.0", port: int = 8000) -> None:
+    """Start the Orbiter Server with uvicorn.
+
+    Parameters:
+        host: Host address to bind to.
+        port: Port to listen on.
+    """
+    import uvicorn  # pyright: ignore[reportMissingImports]
+
+    logger.info("Starting Orbiter Server on %s:%d", host, port)
+    app = create_app()
+    uvicorn.run(app, host=host, port=port)
 
 
 def create_app() -> FastAPI:

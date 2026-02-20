@@ -6,6 +6,7 @@ __path__ = extend_path(__path__, __name__)
 
 from orbiter.memory.base import (  # pyright: ignore[reportMissingImports]
     AIMemory,
+    AgentMemory,
     HumanMemory,
     MemoryError,
     MemoryItem,
@@ -51,6 +52,7 @@ __all__ = [
     "MEMORY_CLEARED",
     "MEMORY_SEARCHED",
     # base types
+    "AgentMemory",
     "AIMemory",
     # long-term
     "ExtractionTask",

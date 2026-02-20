@@ -459,6 +459,124 @@ class TestRowToItem:
 
 
 # ---------------------------------------------------------------------------
+# GetRecent (mocked)
+# ---------------------------------------------------------------------------
+
+
+class TestGetRecent:
+    @patch("orbiter.memory.backends.postgres.asyncpg")
+    async def test_get_recent_returns_items(self, mock_asyncpg: MagicMock) -> None:
+        pool, conn = _mock_pool()
+        mock_asyncpg.create_pool = AsyncMock(return_value=pool)
+        conn.fetch = AsyncMock(
+            return_value=[
+                _record(id="1", content="newest", created_at="2024-01-03T00:00:00"),
+                _record(id="2", content="older", created_at="2024-01-01T00:00:00"),
+            ]
+        )
+
+        async with PostgresMemoryStore() as store:
+            results = await store.get_recent(n=2)
+        assert len(results) == 2
+        assert results[0].content == "newest"
+
+        # Verify ORDER BY and LIMIT in SQL
+        call_args = conn.fetch.call_args
+        assert "ORDER BY created_at DESC" in call_args[0][0]
+        assert 2 in call_args[0]
+
+    @patch("orbiter.memory.backends.postgres.asyncpg")
+    async def test_get_recent_with_metadata(self, mock_asyncpg: MagicMock) -> None:
+        pool, conn = _mock_pool()
+        mock_asyncpg.create_pool = AsyncMock(return_value=pool)
+        conn.fetch = AsyncMock(return_value=[_record(content="scoped")])
+
+        async with PostgresMemoryStore() as store:
+            results = await store.get_recent(n=5, metadata=_make_meta(agent_id="agent1"))
+        assert len(results) == 1
+
+        # Verify metadata filter in query
+        call_args = conn.fetch.call_args
+        assert "metadata->>'agent_id'" in call_args[0][0]
+
+    @patch("orbiter.memory.backends.postgres.asyncpg")
+    async def test_get_recent_empty(self, mock_asyncpg: MagicMock) -> None:
+        pool, conn = _mock_pool()
+        mock_asyncpg.create_pool = AsyncMock(return_value=pool)
+        conn.fetch = AsyncMock(return_value=[])
+
+        async with PostgresMemoryStore() as store:
+            results = await store.get_recent()
+        assert results == []
+
+    @patch("orbiter.memory.backends.postgres.asyncpg")
+    async def test_get_recent_default_n(self, mock_asyncpg: MagicMock) -> None:
+        pool, conn = _mock_pool()
+        mock_asyncpg.create_pool = AsyncMock(return_value=pool)
+        conn.fetch = AsyncMock(return_value=[])
+
+        async with PostgresMemoryStore() as store:
+            await store.get_recent()
+        # Default n=10
+        call_args = conn.fetch.call_args
+        assert 10 in call_args[0]
+
+
+# ---------------------------------------------------------------------------
+# Agent end-to-end integration (mocked asyncpg)
+# ---------------------------------------------------------------------------
+
+
+class TestAgentIntegration:
+    """Verify Agent works end-to-end with AgentMemory(long_term=PostgresMemoryStore)."""
+
+    @patch("orbiter.memory.backends.postgres.asyncpg")
+    async def test_agent_with_postgres_long_term_memory(self, mock_asyncpg: MagicMock) -> None:
+        """Agent can be configured with PostgresMemoryStore as long_term backend."""
+        pool, conn = _mock_pool()
+        mock_asyncpg.create_pool = AsyncMock(return_value=pool)
+        conn.execute = AsyncMock(return_value="INSERT 0 1")
+        conn.fetch = AsyncMock(return_value=[])
+        conn.fetchrow = AsyncMock(return_value=None)
+
+        from orbiter.agent import Agent  # pyright: ignore[reportMissingImports]
+        from orbiter.memory.base import AgentMemory
+        from orbiter.memory.short_term import ShortTermMemory
+
+        async with PostgresMemoryStore("postgresql://localhost/test") as pg_store:
+            agent = Agent(
+                name="pg-agent",
+                memory=AgentMemory(
+                    short_term=ShortTermMemory(),
+                    long_term=pg_store,
+                ),
+            )
+            assert agent.memory is not None
+            assert isinstance(agent.memory, AgentMemory)
+            assert agent.memory.long_term is pg_store
+            assert pg_store._initialized
+
+    @patch("orbiter.memory.backends.postgres.asyncpg")
+    async def test_postgres_store_add_and_search(self, mock_asyncpg: MagicMock) -> None:
+        """Verify add() and search() work end-to-end with mocked asyncpg."""
+        pool, conn = _mock_pool()
+        mock_asyncpg.create_pool = AsyncMock(return_value=pool)
+        conn.execute = AsyncMock(return_value="INSERT 0 1")
+        conn.fetch = AsyncMock(
+            return_value=[_record(id="1", content="persisted message")]
+        )
+
+        async with PostgresMemoryStore("postgresql://localhost/test") as store:
+            item = HumanMemory(content="persisted message")
+            await store.add(item)
+            conn.execute.assert_awaited()
+
+            results = await store.search(query="persisted")
+            assert len(results) == 1
+            assert results[0].content == "persisted message"
+
+
+# ---------------------------------------------------------------------------
 # Integration tests (require real Postgres)
 # ---------------------------------------------------------------------------
 

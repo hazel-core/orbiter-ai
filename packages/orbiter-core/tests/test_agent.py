@@ -50,14 +50,27 @@ class TestAgentCreation:
         assert agent.provider_name == "openai"
         assert agent.model_name == "gpt-4o"
         assert agent.instructions == ""
-        assert agent.tools == {}
+        # retrieve_artifact is always auto-registered (needed for threshold-based offloading)
+        assert "retrieve_artifact" in agent.tools
+        assert len([k for k in agent.tools if k != "retrieve_artifact"]) == 0
         assert agent.handoffs == {}
         assert agent.output_type is None
         assert agent.max_steps == 10
         assert agent.temperature == 1.0
         assert agent.max_tokens is None
-        assert agent.memory is None
-        assert agent.context is None
+        # memory is auto-created (AgentMemory) when orbiter-memory is installed, else None
+        try:
+            from orbiter.memory.base import AgentMemory  # pyright: ignore[reportMissingImports]
+            assert isinstance(agent.memory, AgentMemory)
+        except ImportError:
+            assert agent.memory is None
+        assert agent.conversation_id is None
+        # context is auto-created (ContextConfig copilot) when orbiter-context is installed
+        try:
+            from orbiter.context.config import ContextConfig  # pyright: ignore[reportMissingImports]
+            assert isinstance(agent.context, ContextConfig)
+        except ImportError:
+            assert agent.context is None
 
     def test_full_config(self) -> None:
         """Agent accepts all configuration parameters."""
@@ -80,7 +93,8 @@ class TestAgentCreation:
         assert agent.provider_name == "anthropic"
         assert agent.model_name == "claude-sonnet-4-20250514"
         assert agent.instructions == "Research things."
-        assert len(agent.tools) == 2
+        # 2 user tools + retrieve_artifact (always auto-registered)
+        assert len(agent.tools) == 3
         assert agent.output_type is ReportOutput
         assert agent.max_steps == 20
         assert agent.temperature == 0.7
@@ -148,9 +162,11 @@ class TestToolRegistration:
     def test_get_tool_schemas(self) -> None:
         agent = Agent(name="bot", tools=[greet])
         schemas = agent.get_tool_schemas()
-        assert len(schemas) == 1
+        # greet + retrieve_artifact (always auto-registered)
+        assert len(schemas) == 2
+        names = {s["function"]["name"] for s in schemas}
+        assert "greet" in names
         assert schemas[0]["type"] == "function"
-        assert schemas[0]["function"]["name"] == "greet"
 
 
 # ---------------------------------------------------------------------------
@@ -248,7 +264,8 @@ class TestDescribeAndRepr:
         desc = agent.describe()
         assert desc["name"] == "bot"
         assert desc["model"] == "openai:gpt-4o"
-        assert desc["tools"] == []
+        # retrieve_artifact is always auto-registered
+        assert "retrieve_artifact" in desc["tools"]
         assert desc["handoffs"] == []
         assert desc["output_type"] is None
 
@@ -261,7 +278,7 @@ class TestDescribeAndRepr:
             output_type=ReportOutput,
         )
         desc = agent.describe()
-        assert desc["tools"] == ["greet"]
+        assert "greet" in desc["tools"]
         assert desc["handoffs"] == ["helper"]
         assert desc["output_type"] == "ReportOutput"
 
@@ -275,7 +292,9 @@ class TestDescribeAndRepr:
     def test_repr_with_tools(self) -> None:
         agent = Agent(name="bot", tools=[greet])
         r = repr(agent)
-        assert "tools=['greet']" in r
+        # retrieve_artifact is always auto-registered alongside user tools
+        assert "greet" in r
+        assert "retrieve_artifact" in r
 
 
 # ---------------------------------------------------------------------------
@@ -364,6 +383,22 @@ class TestAgentRun:
         messages = call_args[0][0]
         assert messages[0].content == "You are bot."
 
+    async def test_async_callable_instructions(self) -> None:
+        """Async callable instructions are awaited and produce the correct system prompt."""
+        provider = _mock_provider()
+
+        async def make_prompt(name: str) -> str:
+            return f"You are {name}"
+
+        agent = Agent(name="bot", instructions=make_prompt)
+
+        await agent.run("Hi", provider=provider)
+
+        call_args = provider.complete.call_args
+        messages = call_args[0][0]
+        assert messages[0].role == "system"
+        assert messages[0].content == "You are bot"
+
     async def test_run_without_provider_raises(self) -> None:
         """run() without provider raises AgentError."""
         agent = Agent(name="bot")
@@ -402,7 +437,8 @@ class TestAgentRun:
 
         call_args = provider.complete.call_args
         assert call_args[1]["tools"] is not None
-        assert len(call_args[1]["tools"]) == 1
+        # greet + retrieve_artifact (always auto-registered)
+        assert len(call_args[1]["tools"]) == 2
 
 
 # ---------------------------------------------------------------------------
@@ -827,10 +863,10 @@ class TestAgentEdgeCases:
 
         schemas = agent.get_tool_schemas()
 
-        assert len(schemas) == 1
-        assert schemas[0]["function"]["name"] == "greet"
-        # Handoff should not appear as a tool
+        # greet + retrieve_artifact (always auto-registered); handoff should not appear
+        assert len(schemas) == 2
         names = [s["function"]["name"] for s in schemas]
+        assert "greet" in names
         assert "helper" not in names
 
     async def test_sequential_tool_calls_accumulate_messages(self) -> None:
@@ -940,3 +976,489 @@ class TestAgentEdgeCases:
         second_call_msgs = provider.complete.call_args_list[1][0][0]
         tool_msgs = [m for m in second_call_msgs if m.role == "tool"]
         assert "pong" in tool_msgs[0].content
+
+
+# ---------------------------------------------------------------------------
+# Agent memory defaults (US-014)
+# ---------------------------------------------------------------------------
+
+
+class TestAgentMemoryDefaults:
+    def test_default_memory_auto_created(self) -> None:
+        """Agent() auto-creates AgentMemory when orbiter-memory is installed."""
+        try:
+            from orbiter.memory.base import AgentMemory  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-memory not installed")
+
+        agent = Agent(name="bot")
+        assert isinstance(agent.memory, AgentMemory)
+
+    def test_default_memory_has_short_and_long_term(self) -> None:
+        """Auto-created AgentMemory contains ShortTermMemory and a MemoryStore for long_term."""
+        try:
+            from orbiter.memory.base import AgentMemory  # pyright: ignore[reportMissingImports]
+            from orbiter.memory.short_term import ShortTermMemory  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-memory not installed")
+
+        agent = Agent(name="bot")
+        assert isinstance(agent.memory, AgentMemory)
+        assert isinstance(agent.memory.short_term, ShortTermMemory)
+        # long_term is SQLiteMemoryStore (no chromadb) or ChromaVectorMemoryStore (chromadb installed)
+        assert agent.memory.long_term is not None
+        assert hasattr(agent.memory.long_term, "search")
+
+    def test_explicit_none_disables_memory(self) -> None:
+        """Agent(memory=None) fully disables memory — no persistence."""
+        agent = Agent(name="bot", memory=None)
+        assert agent.memory is None
+        assert agent._memory_persistence is None
+
+    def test_explicit_agent_memory_used(self) -> None:
+        """Agent(memory=AgentMemory(...)) uses the provided backends."""
+        try:
+            from orbiter.memory.base import AgentMemory  # pyright: ignore[reportMissingImports]
+            from orbiter.memory.short_term import ShortTermMemory  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-memory not installed")
+
+        short = ShortTermMemory()
+        long_store = ShortTermMemory()
+        custom = AgentMemory(short_term=short, long_term=long_store)
+        agent = Agent(name="bot", memory=custom)
+        assert agent.memory is custom
+        assert agent.memory.short_term is short
+        assert agent.memory.long_term is long_store
+
+    def test_conversation_id_initially_none(self) -> None:
+        """Agent has conversation_id=None on creation."""
+        agent = Agent(name="bot")
+        assert agent.conversation_id is None
+
+    def test_auto_created_memory_attaches_persistence(self) -> None:
+        """Auto-created AgentMemory wires up MemoryPersistence hooks."""
+        try:
+            from orbiter.memory.base import AgentMemory  # pyright: ignore[reportMissingImports]
+            from orbiter.memory.persistence import MemoryPersistence  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-memory not installed")
+
+        agent = Agent(name="bot")
+        assert isinstance(agent.memory, AgentMemory)
+        assert isinstance(agent._memory_persistence, MemoryPersistence)
+
+    def test_explicit_none_memory_conversation_id_still_none(self) -> None:
+        """Agent(memory=None) still has conversation_id=None."""
+        agent = Agent(name="bot", memory=None)
+        assert agent.conversation_id is None
+
+
+# ---------------------------------------------------------------------------
+# Long-term knowledge injection (US-022)
+# ---------------------------------------------------------------------------
+
+
+class TestLongTermKnowledgeInjection:
+    """Tests for _inject_long_term_knowledge() helper and its wiring into Agent.run()."""
+
+    async def test_vector_store_results_injected_into_system_message(self) -> None:
+        """When long_term returns results, they appear in the system message."""
+        from unittest.mock import AsyncMock
+
+        from orbiter.agent import _inject_long_term_knowledge  # pyright: ignore[reportMissingImports]
+
+        try:
+            from orbiter.memory.base import AgentMemory, HumanMemory  # pyright: ignore[reportMissingImports]
+            from orbiter.memory.short_term import ShortTermMemory  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-memory not installed")
+
+        from orbiter.types import SystemMessage, UserMessage
+
+        # Mock long_term store that returns a hit
+        mock_lt = AsyncMock()
+        mock_lt.search = AsyncMock(return_value=[HumanMemory(content="Paris is the capital of France")])
+        mem = AgentMemory(short_term=ShortTermMemory(), long_term=mock_lt)
+
+        msg_list = [SystemMessage(content="You are a helpful assistant."), UserMessage(content="hello")]
+        result = await _inject_long_term_knowledge(mem, "What is the capital of France?", msg_list)
+
+        # System message should now contain the knowledge block
+        sys_msgs = [m for m in result if isinstance(m, SystemMessage)]
+        assert sys_msgs, "No SystemMessage in result"
+        assert "<knowledge>" in sys_msgs[0].content
+        assert "Paris is the capital of France" in sys_msgs[0].content
+        assert "[long_term_memory]" in sys_msgs[0].content
+
+    async def test_empty_results_no_injection(self) -> None:
+        """When long_term returns no results, msg_list is unchanged."""
+        from unittest.mock import AsyncMock
+
+        from orbiter.agent import _inject_long_term_knowledge  # pyright: ignore[reportMissingImports]
+
+        try:
+            from orbiter.memory.base import AgentMemory  # pyright: ignore[reportMissingImports]
+            from orbiter.memory.short_term import ShortTermMemory  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-memory not installed")
+
+        from orbiter.types import SystemMessage, UserMessage
+
+        mock_lt = AsyncMock()
+        mock_lt.search = AsyncMock(return_value=[])
+        mem = AgentMemory(short_term=ShortTermMemory(), long_term=mock_lt)
+
+        msg_list = [SystemMessage(content="You are a bot."), UserMessage(content="hello")]
+        result = await _inject_long_term_knowledge(mem, "query", msg_list)
+        assert result == msg_list
+
+    async def test_search_exception_returns_unchanged_msg_list(self) -> None:
+        """When long_term.search() raises, msg_list is returned unchanged."""
+        from unittest.mock import AsyncMock
+
+        from orbiter.agent import _inject_long_term_knowledge  # pyright: ignore[reportMissingImports]
+
+        try:
+            from orbiter.memory.base import AgentMemory  # pyright: ignore[reportMissingImports]
+            from orbiter.memory.short_term import ShortTermMemory  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-memory not installed")
+
+        from orbiter.types import UserMessage
+
+        mock_lt = AsyncMock()
+        mock_lt.search = AsyncMock(side_effect=RuntimeError("embedding failed"))
+        mem = AgentMemory(short_term=ShortTermMemory(), long_term=mock_lt)
+
+        msg_list = [UserMessage(content="hello")]
+        result = await _inject_long_term_knowledge(mem, "query", msg_list)
+        assert result == msg_list
+
+    async def test_no_system_message_creates_new_one(self) -> None:
+        """When no SystemMessage exists, a new one is inserted with the knowledge block."""
+        from unittest.mock import AsyncMock
+
+        from orbiter.agent import _inject_long_term_knowledge  # pyright: ignore[reportMissingImports]
+
+        try:
+            from orbiter.memory.base import AgentMemory, HumanMemory  # pyright: ignore[reportMissingImports]
+            from orbiter.memory.short_term import ShortTermMemory  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-memory not installed")
+
+        from orbiter.types import SystemMessage, UserMessage
+
+        mock_lt = AsyncMock()
+        mock_lt.search = AsyncMock(return_value=[HumanMemory(content="Some fact")])
+        mem = AgentMemory(short_term=ShortTermMemory(), long_term=mock_lt)
+
+        msg_list = [UserMessage(content="hello")]
+        result = await _inject_long_term_knowledge(mem, "query", msg_list)
+
+        sys_msgs = [m for m in result if isinstance(m, SystemMessage)]
+        assert sys_msgs, "No SystemMessage created"
+        assert "<knowledge>" in sys_msgs[0].content
+        assert "Some fact" in sys_msgs[0].content
+
+    async def test_none_memory_returns_unchanged(self) -> None:
+        """When agent.memory is None, msg_list is unchanged."""
+        from orbiter.agent import _inject_long_term_knowledge  # pyright: ignore[reportMissingImports]
+
+        from orbiter.types import UserMessage
+
+        msg_list = [UserMessage(content="hello")]
+        result = await _inject_long_term_knowledge(None, "query", msg_list)
+        assert result == msg_list
+
+    async def test_keyword_search_used_for_sqlite_store(self) -> None:
+        """SQLiteMemoryStore (keyword search) works correctly as long_term backend."""
+        from unittest.mock import AsyncMock
+
+        from orbiter.agent import _inject_long_term_knowledge  # pyright: ignore[reportMissingImports]
+
+        try:
+            from orbiter.memory.base import AgentMemory, AIMemory  # pyright: ignore[reportMissingImports]
+            from orbiter.memory.short_term import ShortTermMemory  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-memory not installed")
+
+        from orbiter.types import SystemMessage, UserMessage
+
+        mock_sqlite = AsyncMock()
+        mock_sqlite.search = AsyncMock(return_value=[AIMemory(content="The sky is blue")])
+        mem = AgentMemory(short_term=ShortTermMemory(), long_term=mock_sqlite)
+
+        msg_list = [SystemMessage(content="You are a bot."), UserMessage(content="hi")]
+        result = await _inject_long_term_knowledge(mem, "sky color", msg_list)
+
+        sys_msgs = [m for m in result if isinstance(m, SystemMessage)]
+        assert "<knowledge>" in sys_msgs[0].content
+        assert "The sky is blue" in sys_msgs[0].content
+        # Verify search was called with the user input as query
+        mock_sqlite.search.assert_called_once_with(query="sky color", limit=5)
+
+
+class TestDefaultLongTermCreation:
+    """Tests for _make_default_long_term() chromadb auto-selection and warning."""
+
+    def test_chromadb_warning_when_not_installed(self, monkeypatch: Any, caplog: Any) -> None:
+        """When chromadb is not importable, warn and fall back to SQLiteMemoryStore."""
+        import logging
+        import sys
+
+        try:
+            from orbiter.memory.backends.sqlite import SQLiteMemoryStore  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-memory not installed")
+
+        from orbiter.agent import _make_default_long_term  # pyright: ignore[reportMissingImports]
+
+        # Block chromadb import so the function falls back to SQLiteMemoryStore
+        monkeypatch.setitem(sys.modules, "chromadb", None)  # type: ignore[arg-type]
+
+        with caplog.at_level(logging.WARNING, logger="orbiter.agent"):
+            store = _make_default_long_term()
+
+        assert isinstance(store, SQLiteMemoryStore)
+        assert any(
+            "chromadb not installed" in rec.message
+            for rec in caplog.records
+        ), f"Expected chromadb warning, got: {[r.message for r in caplog.records]}"
+
+
+# ---------------------------------------------------------------------------
+# Agent history persistence (US-015)
+# ---------------------------------------------------------------------------
+
+
+class TestAgentHistoryPersistence:
+    async def test_second_run_picks_up_history(self) -> None:
+        """Second run() on same agent instance sees messages from the first run."""
+        try:
+            from orbiter.memory.base import AgentMemory  # pyright: ignore[reportMissingImports]
+            from orbiter.memory.short_term import ShortTermMemory  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-memory not installed")
+
+        # Use in-memory stores for test isolation
+        memory = AgentMemory(short_term=ShortTermMemory(), long_term=ShortTermMemory())
+        provider1 = _mock_provider(content="First reply")
+        agent = Agent(name="history-bot", memory=memory)
+
+        # First run
+        await agent.run("First input", provider=provider1)
+
+        # Second run — capture messages sent to the LLM
+        provider2 = _mock_provider(content="Second reply")
+        original_complete = provider2.complete
+        captured_messages: list[Any] = []
+
+        async def capturing_complete(msgs: Any, **kwargs: Any) -> Any:
+            captured_messages.extend(msgs)
+            return await original_complete(msgs, **kwargs)
+
+        provider2.complete = capturing_complete
+        await agent.run("Second input", provider=provider2)
+
+        # History from the first run should be present in the second run's LLM call
+        user_msgs = [m for m in captured_messages if m.role == "user"]
+        assistant_msgs = [m for m in captured_messages if m.role == "assistant"]
+        user_contents = [m.content for m in user_msgs]
+        assert "First input" in user_contents, "First run's user message not found in history"
+        assert "Second input" in user_contents, "Current input not found"
+        assert len(assistant_msgs) >= 1, "First run's assistant reply not found in history"
+
+    async def test_conversation_id_auto_assigned_on_first_run(self) -> None:
+        """conversation_id is auto-assigned (UUID4) on first run when memory is set."""
+        try:
+            from orbiter.memory.base import AgentMemory  # pyright: ignore[reportMissingImports]
+            from orbiter.memory.short_term import ShortTermMemory  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-memory not installed")
+
+        memory = AgentMemory(short_term=ShortTermMemory(), long_term=ShortTermMemory())
+        agent = Agent(name="bot", memory=memory)
+        assert agent.conversation_id is None
+
+        provider = _mock_provider(content="hello")
+        await agent.run("hi", provider=provider)
+
+        assert agent.conversation_id is not None
+        assert len(agent.conversation_id) > 0
+
+    async def test_conversation_id_param_overrides_per_call_only(self) -> None:
+        """conversation_id kwarg overrides instance conversation_id for that call only."""
+        try:
+            from orbiter.memory.base import AgentMemory  # pyright: ignore[reportMissingImports]
+            from orbiter.memory.short_term import ShortTermMemory  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-memory not installed")
+
+        memory = AgentMemory(short_term=ShortTermMemory(), long_term=ShortTermMemory())
+        agent = Agent(name="bot", memory=memory)
+
+        provider = _mock_provider(content="reply")
+        # Run with explicit conversation_id
+        await agent.run("hi", provider=provider, conversation_id="my-conv-123")
+
+        # Instance conversation_id should NOT be updated when override is passed
+        assert agent.conversation_id != "my-conv-123"
+
+    async def test_explicit_messages_merged_with_history(self) -> None:
+        """Explicit messages= are merged after loaded history, not replaced."""
+        try:
+            from orbiter.memory.base import AgentMemory  # pyright: ignore[reportMissingImports]
+            from orbiter.memory.short_term import ShortTermMemory  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-memory not installed")
+
+        from orbiter.types import AssistantMessage, UserMessage
+
+        memory = AgentMemory(short_term=ShortTermMemory(), long_term=ShortTermMemory())
+        provider1 = _mock_provider(content="First reply")
+        agent = Agent(name="bot", memory=memory)
+
+        # First run to populate history
+        await agent.run("First input", provider=provider1)
+
+        # Second run with explicit messages
+        provider2 = _mock_provider(content="Second reply")
+        original_complete = provider2.complete
+        captured_messages: list[Any] = []
+
+        async def capture(msgs: Any, **kwargs: Any) -> Any:
+            captured_messages.extend(msgs)
+            return await original_complete(msgs, **kwargs)
+
+        provider2.complete = capture
+        explicit_msgs = [
+            UserMessage(content="explicit-prior"),
+            AssistantMessage(content="explicit-reply"),
+        ]
+        await agent.run("New input", messages=explicit_msgs, provider=provider2)
+
+        user_contents = [m.content for m in captured_messages if m.role == "user"]
+        # Both DB history and explicit messages must be present
+        assert "First input" in user_contents
+        assert "explicit-prior" in user_contents
+        assert "New input" in user_contents
+
+    async def test_no_memory_no_history_loading(self) -> None:
+        """Agent with memory=None does not attempt history loading."""
+        provider = _mock_provider(content="Direct answer")
+        agent = Agent(name="bot", memory=None)
+
+        captured_messages: list[Any] = []
+        original_complete = provider.complete
+
+        async def capture(msgs: Any, **kwargs: Any) -> Any:
+            captured_messages.extend(msgs)
+            return await original_complete(msgs, **kwargs)
+
+        provider.complete = capture
+        await agent.run("Hello", provider=provider)
+
+        # conversation_id still None after run (memory disabled)
+        assert agent.conversation_id is None
+        # Only the current user message should be present (no history)
+        user_msgs = [m for m in captured_messages if m.role == "user"]
+        assert len(user_msgs) == 1
+        assert user_msgs[0].content == "Hello"
+
+
+# ---------------------------------------------------------------------------
+# Context defaults (US-016)
+# ---------------------------------------------------------------------------
+
+
+class TestAgentContextDefaults:
+    def test_auto_creates_copilot_context(self) -> None:
+        """Agent with no context params auto-creates ContextConfig(mode='copilot')."""
+        try:
+            from orbiter.context.config import AutomationMode, ContextConfig  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-context not installed")
+
+        agent = Agent(name="bot")
+        assert isinstance(agent.context, ContextConfig)
+        assert agent.context.mode == AutomationMode.COPILOT
+        assert agent._context_is_auto is True
+
+    def test_context_none_disables_context(self) -> None:
+        """Agent(context=None) fully disables the context engine."""
+        agent = Agent(name="bot", context=None)
+        assert agent.context is None
+        assert agent._context_is_auto is False
+
+    def test_context_mode_none_disables_context(self) -> None:
+        """Agent(context_mode=None) fully disables the context engine."""
+        agent = Agent(name="bot", context_mode=None)
+        assert agent.context is None
+        assert agent._context_is_auto is False
+
+    def test_context_mode_pilot(self) -> None:
+        """Agent(context_mode='pilot') creates ContextConfig(mode='pilot')."""
+        try:
+            from orbiter.context.config import AutomationMode, ContextConfig  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-context not installed")
+
+        agent = Agent(name="bot", context_mode="pilot")
+        assert isinstance(agent.context, ContextConfig)
+        assert agent.context.mode == AutomationMode.PILOT
+        assert agent._context_is_auto is False
+
+    def test_context_mode_navigator(self) -> None:
+        """Agent(context_mode='navigator') creates ContextConfig(mode='navigator')."""
+        try:
+            from orbiter.context.config import AutomationMode, ContextConfig  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-context not installed")
+
+        agent = Agent(name="bot", context_mode="navigator")
+        assert isinstance(agent.context, ContextConfig)
+        assert agent.context.mode == AutomationMode.NAVIGATOR
+
+    def test_explicit_context_takes_precedence_over_context_mode(self) -> None:
+        """When context= is given, it takes precedence over context_mode."""
+        try:
+            from orbiter.context.config import AutomationMode, ContextConfig, make_config  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-context not installed")
+
+        custom_ctx = make_config("navigator")
+        agent = Agent(name="bot", context=custom_ctx, context_mode="pilot")
+        assert isinstance(agent.context, ContextConfig)
+        assert agent.context.mode == AutomationMode.NAVIGATOR
+
+    def test_explicit_context_config_accepted(self) -> None:
+        """Agent(context=ContextConfig(...)) uses the provided config directly."""
+        try:
+            from orbiter.context.config import AutomationMode, ContextConfig  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-context not installed")
+
+        cfg = ContextConfig(mode="pilot", history_rounds=50)
+        agent = Agent(name="bot", context=cfg)
+        assert agent.context is cfg
+        assert agent.context.history_rounds == 50
+        assert agent._context_is_auto is False
+
+    def test_auto_context_not_raised_in_to_dict(self) -> None:
+        """Auto-created context does not prevent serialization."""
+        agent = Agent(name="bot")  # auto-creates context
+        # Should not raise even though context is set (it's auto-created)
+        d = agent.to_dict()
+        assert d["name"] == "bot"
+
+    def test_explicit_context_raises_in_to_dict(self) -> None:
+        """Explicitly provided ContextConfig raises ValueError in to_dict()."""
+        try:
+            from orbiter.context.config import ContextConfig  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            pytest.skip("orbiter-context not installed")
+
+        agent = Agent(name="bot", context=ContextConfig())
+        with pytest.raises(ValueError, match="context engine"):
+            agent.to_dict()

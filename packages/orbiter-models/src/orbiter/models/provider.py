@@ -16,6 +16,7 @@ from orbiter.config import ModelConfig, parse_model_string
 from orbiter.registry import Registry, RegistryError
 from orbiter.types import Message
 
+from .context_windows import MODEL_CONTEXT_WINDOWS
 from .types import ModelError, ModelResponse, StreamChunk
 
 # ---------------------------------------------------------------------------
@@ -125,11 +126,13 @@ def get_provider(
             f"Provider '{provider_name}' not registered. Available: {available}",
             model=model,
         ) from None
+    ctx_tokens = kwargs.pop("context_window_tokens", MODEL_CONTEXT_WINDOWS.get(model_name))
     config = ModelConfig(
         provider=provider_name,
         model_name=model_name,
         api_key=api_key,
         base_url=base_url,
+        context_window_tokens=ctx_tokens,
         **kwargs,
     )
     provider = cls(config)

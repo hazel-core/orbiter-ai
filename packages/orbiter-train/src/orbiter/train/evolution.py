@@ -10,11 +10,14 @@ Each phase is pluggable via EvolutionStrategy, allowing custom backends.
 
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 class EvolutionError(Exception):
@@ -214,6 +217,9 @@ class EvolutionPipeline:
         try:
             for epoch_idx in range(cfg.max_epochs):
                 epoch = EpochResult(epoch=epoch_idx)
+                logger.info(
+                    "Evolution epoch %d/%d starting", epoch_idx + 1, cfg.max_epochs
+                )
 
                 # Phase 1: Synthesis
                 if EvolutionPhase.SYNTHESIS in cfg.phases:
@@ -233,6 +239,17 @@ class EvolutionPipeline:
 
                 result.epochs.append(epoch)
                 result.final_accuracy = epoch.eval_accuracy
+                logger.info(
+                    "Evolution epoch %d/%d complete: loss=%.4f accuracy=%.4f",
+                    epoch_idx + 1,
+                    cfg.max_epochs,
+                    epoch.train_loss,
+                    epoch.eval_accuracy,
+                )
+
+                best = result.best_epoch
+                if best is not None:
+                    logger.debug("Best epoch so far: epoch=%d accuracy=%.4f", best.epoch, best.eval_accuracy)
 
                 # Early stopping
                 if (

@@ -49,6 +49,7 @@ class TestModelConfig:
         assert mc.base_url is None
         assert mc.max_retries == 3
         assert mc.timeout == 30.0
+        assert mc.context_window_tokens is None
 
     def test_create(self) -> None:
         mc = ModelConfig(
@@ -79,11 +80,26 @@ class TestModelConfig:
         with pytest.raises(ValidationError):
             ModelConfig(timeout=-1.0)
 
+    def test_context_window_tokens_field(self) -> None:
+        mc = ModelConfig(context_window_tokens=128000)
+        assert mc.context_window_tokens == 128000
+
+    def test_context_window_tokens_none(self) -> None:
+        mc = ModelConfig(context_window_tokens=None)
+        assert mc.context_window_tokens is None
+
     def test_roundtrip(self) -> None:
         mc = ModelConfig(provider="anthropic", model_name="claude", max_retries=1)
         data = mc.model_dump()
         restored = ModelConfig.model_validate(data)
         assert restored == mc
+
+    def test_roundtrip_with_context_window(self) -> None:
+        mc = ModelConfig(provider="openai", model_name="gpt-4o", context_window_tokens=128000)
+        data = mc.model_dump()
+        restored = ModelConfig.model_validate(data)
+        assert restored == mc
+        assert restored.context_window_tokens == 128000
 
 
 # --- AgentConfig ---
