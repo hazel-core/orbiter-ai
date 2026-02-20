@@ -1,3 +1,15 @@
+## 2026-02-20 - US-INT-024
+- What was implemented: Web API authentication flow tests — valid token grants access, invalid/missing tokens return 401, wrong password rejected
+- Files changed:
+  - `tests/integration/helpers/web_app.py` (changed `HTTPBearer(auto_error=False)` so missing auth header returns 401 not 403; updated `_require_auth` signature to accept `Optional[HTTPAuthorizationCredentials]`)
+  - `tests/integration/test_web_auth_flow.py` (new, 4 tests)
+- **Learnings for future iterations:**
+  - FastAPI's `HTTPBearer()` with default `auto_error=True` returns 403 (not 401) when the Authorization header is absent; use `HTTPBearer(auto_error=False)` and handle `None` credentials manually to return 401
+  - When changing `_require_auth` signature to accept `Optional[HTTPAuthorizationCredentials]`, the `# noqa: B008` must be on the same line as `Depends(security)`, not on the function `def` line
+  - Auth flow tests (register → login → use token) don't require Vertex AI; they run entirely against the local web_app and are very fast
+  - Use distinct usernames per test (e.g., "testuser_int024a", "testuser_int024b") to avoid 409 conflicts from session-scoped uvicorn_server reusing in-memory state
+---
+
 ## Codebase Patterns
 - SQLiteMemoryStore: import from `orbiter.memory.backends.sqlite`, needs `await store.init()` before use
 - Context summarization: `_apply_context_windowing()` in `orbiter.agent` creates a transient `SystemMessage("[Conversation Summary]...")` — NOT persisted to SQLiteMemoryStore; only HumanMemory + AIMemory are persisted; summarization fires when non-system msg_count >= summary_threshold (including loaded history + new user message)
