@@ -40,6 +40,7 @@ from orbiter.types import (
     ErrorEvent,
     MCPProgressEvent,
     Message,
+    MessageContent,
     RunResult,
     StatusEvent,
     StepEvent,
@@ -59,7 +60,7 @@ _log = get_logger(__name__)
 
 async def run(
     agent: Any,
-    input: str,
+    input: MessageContent,
     *,
     messages: Sequence[Message] | None = None,
     provider: Any = None,
@@ -76,7 +77,7 @@ async def run(
 
     Args:
         agent: An ``Agent`` (or ``Swarm``) instance.
-        input: User query string.
+        input: User query — a string or list of ContentBlock objects.
         messages: Prior conversation history to continue from.
         provider: LLM provider with ``async complete()`` method.
             When ``None``, auto-resolved from the agent's model string.
@@ -112,7 +113,7 @@ async def run(
 
 def _sync(
     agent: Any,
-    input: str,
+    input: MessageContent,
     *,
     messages: Sequence[Message] | None = None,
     provider: Any = None,
@@ -126,7 +127,7 @@ def _sync(
 
     Args:
         agent: An ``Agent`` (or ``Swarm``) instance.
-        input: User query string.
+        input: User query — a string or list of ContentBlock objects.
         messages: Prior conversation history to continue from.
         provider: LLM provider with ``async complete()`` method.
         max_retries: Retry attempts for transient LLM errors.
@@ -151,7 +152,7 @@ def _sync(
 
 async def _stream(
     agent: Any,
-    input: str,
+    input: MessageContent,
     *,
     messages: Sequence[Message] | None = None,
     provider: Any = None,
@@ -521,7 +522,7 @@ async def _stream(
                 per_tool_duration_ms = (
                     total_tool_duration_ms / len(tool_results) if tool_results else 0.0
                 )
-                for action, tr in zip(actions, tool_results):
+                for action, tr in zip(actions, tool_results, strict=False):
                     _ev = ToolResultEvent(
                         tool_name=tr.tool_name,
                         tool_call_id=tr.tool_call_id,

@@ -1178,9 +1178,7 @@ class TestSwarmStreamHandoff:
         assert "b" in agent_names
 
         # Verify handoff message
-        handoff_events = [
-            e for e in running_events if "Handoff from" in e.message
-        ]
+        handoff_events = [e for e in running_events if "Handoff from" in e.message]
         assert len(handoff_events) >= 1
         assert "a" in handoff_events[0].message
         assert "b" in handoff_events[0].message

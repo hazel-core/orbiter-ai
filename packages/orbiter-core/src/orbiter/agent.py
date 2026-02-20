@@ -21,6 +21,7 @@ from orbiter.types import (
     AgentOutput,
     AssistantMessage,
     Message,
+    MessageContent,
     OrbiterError,
     SystemMessage,
     ToolResult,
@@ -805,7 +806,7 @@ class Agent:
 
     async def run(
         self,
-        input: str,
+        input: MessageContent,
         *,
         messages: Sequence[Message] | None = None,
         provider: Any = None,
@@ -820,7 +821,7 @@ class Agent:
         is produced or ``max_steps`` is reached.
 
         Args:
-            input: User query string for this turn.
+            input: User query — a string or list of ContentBlock objects.
             messages: Prior conversation history.
             provider: An object with an ``async complete()`` method
                 (e.g. a ``ModelProvider`` instance).
@@ -1178,10 +1179,20 @@ class Agent:
             else:
                 try:
                     output = await tool.execute(**action.arguments)
-                    content = output if isinstance(output, str) else str(output)
+                    content: MessageContent
+                    if isinstance(output, list):
+                        content = output  # list[ContentBlock] from tool
+                    elif isinstance(output, str):
+                        content = output
+                    else:
+                        content = str(output)  # dict fallback
                     # Large-output offloading: store in workspace and inject pointer.
                     # Fires when large_output=True OR result exceeds the byte threshold.
-                    if getattr(tool, "large_output", False) or len(content.encode("utf-8")) > _get_large_output_threshold():
+                    # Only applies to string content (not multimodal content blocks).
+                    if isinstance(content, str) and (
+                        getattr(tool, "large_output", False)
+                        or len(content.encode("utf-8")) > _get_large_output_threshold()
+                    ):
                         content = await self._offload_large_result(action.tool_name, content)
                     result = ToolResult(
                         tool_call_id=action.tool_call_id,
@@ -1380,8 +1391,7 @@ def _serialize_tool(t: Tool) -> str | dict[str, Any]:
     qualname = cls.__qualname__
     if "<" in qualname:
         raise ValueError(
-            f"Tool '{t.name}' is a locally-defined class ({qualname}) "
-            "which cannot be serialized."
+            f"Tool '{t.name}' is a locally-defined class ({qualname}) which cannot be serialized."
         )
     return f"{module}.{qualname}"
 
@@ -1424,9 +1434,7 @@ def _deserialize_tool(path: str | dict[str, Any]) -> Tool:
     if callable(obj):
         return FunctionTool(obj)
 
-    raise ValueError(
-        f"Imported '{path}' is not a callable or Tool instance: {type(obj)}"
-    )
+    raise ValueError(f"Imported '{path}' is not a callable or Tool instance: {type(obj)}")
 
 
 def _import_object(dotted_path: str) -> Any:

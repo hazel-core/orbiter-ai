@@ -34,8 +34,11 @@ EXPECTED_ALL = [
     "StreamChunk",
     "ToolCallDelta",
     "VertexProvider",
+    "dalle_generate_image",
     "get_provider",
+    "imagen_generate_image",
     "model_registry",
+    "veo_generate_video",
 ]
 
 INTERNAL_HELPERS = [

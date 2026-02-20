@@ -25,6 +25,7 @@ from orbiter.config import ModelConfig
 from orbiter.types import (
     AssistantMessage,
     Message,
+    MessageContent,
     SystemMessage,
     ToolCall,
     ToolResult,
@@ -32,6 +33,7 @@ from orbiter.types import (
     UserMessage,
 )
 
+from ._media import content_blocks_to_google
 from .provider import ModelProvider, model_registry
 from .types import (
     FinishReason,
@@ -41,7 +43,7 @@ from .types import (
     ToolCallDelta,
 )
 
-logger = logging.getLogger(__name__)
+_log = logging.getLogger(__name__)
 
 _VERTEX_SCOPES = ["https://www.googleapis.com/auth/cloud-platform"]
 
@@ -89,6 +91,20 @@ def _map_finish_reason(raw: str | None) -> FinishReason:
 # ---------------------------------------------------------------------------
 
 
+def _user_parts_from_content(content: MessageContent) -> list[dict[str, Any]]:
+    """Convert MessageContent to Google API parts for a user message.
+
+    Args:
+        content: A string or list of ContentBlock objects.
+
+    Returns:
+        List of Google-format part dicts.
+    """
+    if isinstance(content, str):
+        return [{"text": content}]
+    return content_blocks_to_google(content)
+
+
 def _to_google_contents(messages: list[Message]) -> tuple[list[dict[str, Any]], str]:
     """Convert Orbiter messages to Google API format.
 
@@ -122,12 +138,15 @@ def _to_google_contents(messages: list[Message]) -> tuple[list[dict[str, Any]], 
             system_parts.append(msg.content)
         elif isinstance(msg, UserMessage):
             _flush_tool_parts()
-            contents.append({"role": "user", "parts": [{"text": msg.content}]})
+            contents.append({"role": "user", "parts": _user_parts_from_content(msg.content)})
         elif isinstance(msg, AssistantMessage):
             _flush_tool_parts()
             parts: list[dict[str, Any]] = []
             if msg.content:
-                parts.append({"text": msg.content})
+                if isinstance(msg.content, str):
+                    parts.append({"text": msg.content})
+                else:
+                    parts.extend(content_blocks_to_google(msg.content))
             for tc in msg.tool_calls:
                 args = json.loads(tc.arguments) if tc.arguments else {}
                 parts.append({"function_call": {"name": tc.name, "args": args}})
@@ -135,15 +154,21 @@ def _to_google_contents(messages: list[Message]) -> tuple[list[dict[str, Any]], 
                 parts.append({"text": ""})
             contents.append({"role": "model", "parts": parts})
         elif isinstance(msg, ToolResult):
-            response_data = msg.error if msg.error else msg.content
-            pending_tool_parts.append(
-                {
-                    "function_response": {
-                        "name": msg.tool_name,
-                        "response": {"content": response_data},
-                    },
-                }
-            )
+            # Build function_response part; append media parts alongside it
+            if isinstance(msg.content, list):
+                response_data: Any = content_blocks_to_google(msg.content)
+            else:
+                response_data = msg.error if msg.error else msg.content
+            function_response_part: dict[str, Any] = {
+                "function_response": {
+                    "name": msg.tool_name,
+                    "response": {"content": response_data},
+                },
+            }
+            media_parts: list[dict[str, Any]] = []
+            if isinstance(msg.content, list):
+                media_parts = content_blocks_to_google(msg.content)
+            pending_tool_parts.extend([function_response_part, *media_parts])
 
     # Flush any trailing tool results
     _flush_tool_parts()
@@ -398,7 +423,7 @@ class VertexProvider(ModelProvider):
         Raises:
             ModelError: If the API call fails.
         """
-        logger.debug(
+        _log.debug(
             "vertex complete: model=%s, messages=%d, tools=%d",
             self.config.model_name,
             len(messages),
@@ -413,7 +438,7 @@ class VertexProvider(ModelProvider):
                 config=config,
             )
         except Exception as exc:
-            logger.error(
+            _log.error(
                 "vertex complete failed: model=%s, error=%s",
                 self.config.model_name,
                 exc,
@@ -444,7 +469,7 @@ class VertexProvider(ModelProvider):
         Raises:
             ModelError: If the API call fails.
         """
-        logger.debug(
+        _log.debug(
             "vertex stream: model=%s, messages=%d, tools=%d",
             self.config.model_name,
             len(messages),
@@ -462,7 +487,7 @@ class VertexProvider(ModelProvider):
         except ModelError:
             raise
         except Exception as exc:
-            logger.error(
+            _log.error(
                 "vertex stream failed: model=%s, error=%s",
                 self.config.model_name,
                 exc,
