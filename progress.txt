@@ -1,3 +1,20 @@
+## 2026-02-20 - US-INT-029
+- What was implemented: Marathon multi-agent team test — verifies a 3-agent Swarm in team mode (coordinator + worker_a + worker_b) streams all event types, delegates geography and math tasks via delegate_to_worker_a/delegate_to_worker_b tool calls, and produces a structured TeamReport with all fields populated. All 3 agents share a single SQLiteMemoryStore and their contributions are verified by agent_id metadata query.
+- Files changed:
+  - `tests/integration/test_team_marathon.py` (new, 1 test with TeamReport model)
+- **Learnings for future iterations:**
+  - Team mode Swarm: `Swarm(agents=[coordinator, worker_a, worker_b], mode="team")` — first agent is the lead/coordinator; workers receive auto-generated `delegate_to_{worker_name}` tools on the coordinator
+  - Delegation tool naming: `delegate_to_worker_a`, `delegate_to_worker_b` — check via `e.tool_name.startswith("delegate_to_")` in ToolCallEvent stream
+  - `swarm.stream(prompt, provider=provider, detailed=True)` works as an async generator for team mode streaming — same API as `run.stream()` but called directly on Swarm instance
+  - Coordinator's text output is accumulated from `TextEvent` items where `event.agent_name == "coordinator"` — workers' text events have their own `agent_name`
+  - Workers in team mode run via internal `call_runner()` — if they have `memory=shared_store`, they persist to the same SQLiteMemoryStore with their own `agent_id`
+  - Sequential delegation critical: instruct coordinator to call delegation tools ONE AT A TIME to avoid Gemini parallel-tool-call INVALID_ARGUMENT error
+  - `UsageEvent` appears when `detailed=True` even in team mode streaming — check by `e.type == "usage"` (no need to import `UsageEvent` if not using isinstance)
+  - Import ordering: `from orbiter import Swarm` comes before `from orbiter._internal...` and `from orbiter.agent...` (root package sorts before submodules)
+  - Memory isolation verification: re-open SQLiteMemoryStore as verify_store after close; query each agent's items with `MemoryMetadata(agent_id="agent_name")` — no task_id filter needed
+  - Workers get fresh task_id per delegation call; search by agent_id only to find their contributions regardless of task_id
+---
+
 ## 2026-02-20 - US-INT-028
 - What was implemented: Marathon research agent multi-step test — verifies a research agent uses 3 tools (search_topic, fetch_detail, count_words) across 5+ sequential steps, persists conversation to SQLiteMemoryStore, uses context windowing, and produces a structured ResearchReport with all required fields populated and > 10 memory items after the run
 - Files changed:
