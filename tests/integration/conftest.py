@@ -40,11 +40,19 @@ _REDIS_PORT = 6380
 
 @pytest.fixture(scope="session")
 def vertex_model() -> str:
-    """Return the Vertex AI model name for integration tests.
+    """Return the model string for integration tests.
 
-    Skips the test if GOOGLE_CLOUD_PROJECT or GOOGLE_CLOUD_LOCATION are
-    not set in the environment.
+    Skips if GOOGLE_CLOUD_PROJECT or GOOGLE_CLOUD_LOCATION are absent.
+
+    When VERTEX_MODEL is an ``openai:`` model (i.e. a Vertex AI Model Garden
+    model accessed via the OpenAI-compatible endpoint), this fixture generates
+    a short-lived OAuth2 bearer token from GOOGLE_SERVICE_ACCOUNT_BASE64 and
+    sets OPENAI_API_KEY / OPENAI_BASE_URL so that ``get_provider()`` builds an
+    OpenAIProvider correctly without any per-test changes.
     """
+    import base64
+    import json
+
     project = os.environ.get("GOOGLE_CLOUD_PROJECT")
     location = os.environ.get("GOOGLE_CLOUD_LOCATION")
     if not project or not location:
@@ -52,7 +60,31 @@ def vertex_model() -> str:
             "Vertex AI integration tests require GOOGLE_CLOUD_PROJECT and "
             "GOOGLE_CLOUD_LOCATION environment variables."
         )
-    return "vertex:gemini-2.0-flash"
+
+    model = os.environ.get("VERTEX_MODEL", "vertex:gemini-2.0-flash")
+
+    # Model Garden path: openai:<model> via /endpoints/openapi
+    if model.startswith("openai:"):
+        sa_b64 = os.environ.get("GOOGLE_SERVICE_ACCOUNT_BASE64")
+        if not sa_b64:
+            pytest.skip(
+                "Model Garden tests require GOOGLE_SERVICE_ACCOUNT_BASE64."
+            )
+        from google.auth.transport.requests import Request
+        from google.oauth2 import service_account
+
+        sa_info = json.loads(base64.b64decode(sa_b64))
+        creds = service_account.Credentials.from_service_account_info(
+            sa_info, scopes=["https://www.googleapis.com/auth/cloud-platform"]
+        )
+        creds.refresh(Request())
+        os.environ["OPENAI_API_KEY"] = creds.token
+        os.environ["OPENAI_BASE_URL"] = (
+            f"https://aiplatform.googleapis.com/v1/projects/{project}"
+            f"/locations/global/endpoints/openapi"
+        )
+
+    return model
 
 
 # ---------------------------------------------------------------------------

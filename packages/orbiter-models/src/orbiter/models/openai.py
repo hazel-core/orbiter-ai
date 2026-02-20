@@ -220,7 +220,7 @@ class OpenAIProvider(ModelProvider):
     def __init__(self, config: ModelConfig) -> None:
         super().__init__(config)
         self._client = AsyncOpenAI(
-            api_key=config.api_key or "dummy",
+            api_key=config.api_key,
             base_url=config.base_url,
             max_retries=config.max_retries,
             timeout=config.timeout,
