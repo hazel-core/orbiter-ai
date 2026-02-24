@@ -37,6 +37,7 @@ from orbiter.observability.semconv import (  # pyright: ignore[reportMissingImpo
 )
 from orbiter.types import (
     AssistantMessage,
+    ContextEvent,
     ErrorEvent,
     MCPProgressEvent,
     Message,
@@ -299,9 +300,22 @@ async def _stream(
 
     # ---- Context: apply windowing and summarization ----
     _agent_context = getattr(agent, "context", None)
+    _agent_name = getattr(agent, "name", "")
     if _agent_context is not None:
         from orbiter.agent import _apply_context_windowing  # pyright: ignore[reportMissingImports]
-        msg_list = await _apply_context_windowing(msg_list, _agent_context, resolved)
+        msg_list, _ctx_actions = await _apply_context_windowing(
+            msg_list, _agent_context, resolved,
+        )
+        for _ca in _ctx_actions:
+            _ev = ContextEvent(
+                action=_ca.action,
+                agent_name=_agent_name,
+                before_count=_ca.before_count,
+                after_count=_ca.after_count,
+                details=_ca.details,
+            )
+            if _passes_filter(_ev):
+                yield _ev
     # ---- end Context ----
 
     # ---- Long-term memory: inject relevant knowledge into system message ----
@@ -569,8 +583,34 @@ async def _stream(
                         _stream_context_window,
                         agent.name,
                     )
+                    _tb_ev = ContextEvent(
+                        action="token_budget",
+                        agent_name=_agent_name,
+                        before_count=len(msg_list),
+                        after_count=len(msg_list),
+                        details={
+                            "fill_ratio": _fill_ratio,
+                            "input_tokens": step_usage.input_tokens,
+                            "context_window_tokens": _stream_context_window,
+                            "trigger": _trigger,
+                        },
+                    )
+                    if _passes_filter(_tb_ev):
+                        yield _tb_ev
                     from orbiter.agent import _apply_context_windowing as _acw  # pyright: ignore[reportMissingImports]
-                    msg_list = await _acw(msg_list, _agent_context, resolved, force_summarize=True)
+                    msg_list, _budget_actions = await _acw(
+                        msg_list, _agent_context, resolved, force_summarize=True,
+                    )
+                    for _ba in _budget_actions:
+                        _ba_ev = ContextEvent(
+                            action=_ba.action,
+                            agent_name=_agent_name,
+                            before_count=_ba.before_count,
+                            after_count=_ba.after_count,
+                            details=_ba.details,
+                        )
+                        if _passes_filter(_ba_ev):
+                            yield _ba_ev
 
         except Exception as exc:
             _ev = ErrorEvent(

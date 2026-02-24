@@ -193,8 +193,8 @@ class TestAgentFromDict:
         path = f"{search._fn.__module__}.{search._fn.__qualname__}"
         data = {"name": "bot", "tools": [path]}
         agent = Agent.from_dict(data)
-        # search + retrieve_artifact (always auto-registered)
-        assert len(agent.tools) == 2
+        # search + retrieve_artifact + 7 context tools (auto-loaded via default context)
+        assert len(agent.tools) == 9
         assert "search" in agent.tools
 
     def test_with_handoffs(self) -> None:
@@ -546,8 +546,8 @@ class TestMCPToolWrapperSerialization:
 
         # Reconstruct
         restored = Agent.from_dict(data)
-        # mcp search tool + retrieve_artifact (always auto-registered)
-        assert len(restored.tools) == 2
+        # mcp search tool + retrieve_artifact + 7 context tools (auto-loaded)
+        assert len(restored.tools) == 9
         assert any("search" in name for name in restored.tools)
 
     def test_agent_with_mixed_tools_round_trip(self) -> None:
@@ -573,8 +573,8 @@ class TestMCPToolWrapperSerialization:
         assert dict in types
 
         restored = Agent.from_dict(data)
-        # search + mcp_search + retrieve_artifact (always auto-registered)
-        assert len(restored.tools) == 3
+        # search + mcp_search + retrieve_artifact + 7 context tools (auto-loaded)
+        assert len(restored.tools) == 10
 
 
 # ---------------------------------------------------------------------------
@@ -712,8 +712,8 @@ class TestSwarmMCPToolWrapperSerialization:
 
         restored = Swarm.from_dict(data)
         hybrid = restored.agents["hybrid"]
-        # search + MCPToolWrapper + retrieve_artifact (always auto-registered)
-        assert len(hybrid.tools) == 3
+        # search + MCPToolWrapper + retrieve_artifact + 7 context tools (auto-loaded)
+        assert len(hybrid.tools) == 10
 
         mcp_tools = [t for t in hybrid.tools.values() if isinstance(t, MCPToolWrapper)]
         assert len(mcp_tools) == 1
@@ -747,8 +747,8 @@ class TestSwarmMCPToolWrapperSerialization:
         restored = Swarm.from_dict(json.loads(wire))
 
         worker = restored.agents["worker-agent"]
-        # search + 2 MCP tools + retrieve_artifact (always auto-registered)
-        assert len(worker.tools) == 4
+        # search + 2 MCP tools + retrieve_artifact + 7 context tools (auto-loaded)
+        assert len(worker.tools) == 11
 
         mcp_tools = [t for t in worker.tools.values() if isinstance(t, MCPToolWrapper)]
         assert len(mcp_tools) == 2

@@ -437,6 +437,36 @@ class MCPProgressEvent(BaseModel):
     agent_name: str = ""
 
 
+class ContextEvent(BaseModel):
+    """Streaming event emitted when the context engine takes action.
+
+    Fired when the context engine performs summarization, offloading (aggressive
+    trimming), history windowing, or token-budget-triggered compression so that
+    consumers can observe context management in real time.
+
+    Args:
+        type: Discriminator literal, always ``"context"``.
+        action: The context operation that was performed.  One of
+            ``"offload"`` (aggressive trim past offload threshold),
+            ``"summarize"`` (LLM-based conversation summarization),
+            ``"window"`` (history rounds trimming), or
+            ``"token_budget"`` (token fill ratio exceeded trigger).
+        agent_name: Name of the agent whose context was modified.
+        before_count: Number of non-system messages before the action.
+        after_count: Number of non-system messages after the action.
+        details: Action-specific metadata (thresholds, fill ratio, etc.).
+    """
+
+    model_config = {"frozen": True}
+
+    type: Literal["context"] = "context"
+    action: Literal["offload", "summarize", "window", "token_budget"]
+    agent_name: str = ""
+    before_count: int = 0
+    after_count: int = 0
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
 StreamEvent = (
     TextEvent
     | ToolCallEvent
@@ -447,4 +477,5 @@ StreamEvent = (
     | StatusEvent
     | UsageEvent
     | MCPProgressEvent
+    | ContextEvent
 )

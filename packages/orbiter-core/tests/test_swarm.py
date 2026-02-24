@@ -857,8 +857,8 @@ class TestSwarmTeam:
         # Lead should have only its original tool, not delegate tools
         assert "my_tool" in lead.tools
         assert "delegate_to_worker" not in lead.tools
-        # my_tool + retrieve_artifact (always auto-registered)
-        assert len(lead.tools) == 2
+        # my_tool + retrieve_artifact + 7 context tools (auto-loaded)
+        assert len(lead.tools) == 9
 
     async def test_team_tools_restored_on_error(self) -> None:
         """Lead's tools are restored even if run() raises."""
@@ -1344,9 +1344,10 @@ class TestSwarmMemoryDefaults:
 
 class TestSwarmContextMode:
     def test_swarm_propagates_context_mode_to_agents(self) -> None:
-        """Swarm(context_mode='pilot') propagates ContextConfig(mode='pilot') to all agents."""
+        """Swarm(context_mode='pilot') propagates Context(mode='pilot') to all agents."""
         try:
             from orbiter.context.config import AutomationMode, ContextConfig  # pyright: ignore[reportMissingImports]
+            from orbiter.context.context import Context  # pyright: ignore[reportMissingImports]
         except ImportError:
             pytest.skip("orbiter-context not installed")
 
@@ -1354,10 +1355,10 @@ class TestSwarmContextMode:
         worker = Agent(name="worker")
         swarm = Swarm(agents=[lead, worker], context_mode="pilot")
 
-        assert isinstance(swarm.agents["lead"].context, ContextConfig)
-        assert swarm.agents["lead"].context.mode == AutomationMode.PILOT
-        assert isinstance(swarm.agents["worker"].context, ContextConfig)
-        assert swarm.agents["worker"].context.mode == AutomationMode.PILOT
+        assert isinstance(swarm.agents["lead"].context, Context)
+        assert swarm.agents["lead"].context.config.mode == AutomationMode.PILOT
+        assert isinstance(swarm.agents["worker"].context, Context)
+        assert swarm.agents["worker"].context.config.mode == AutomationMode.PILOT
 
     def test_swarm_context_mode_none_disables_context(self) -> None:
         """Swarm(context_mode=None) disables context on all agents."""
@@ -1371,13 +1372,13 @@ class TestSwarmContextMode:
     def test_swarm_without_context_mode_agents_keep_defaults(self) -> None:
         """Swarm without context_mode leaves agent contexts unchanged."""
         try:
-            from orbiter.context.config import ContextConfig  # pyright: ignore[reportMissingImports]
+            from orbiter.context.context import Context  # pyright: ignore[reportMissingImports]
         except ImportError:
             pytest.skip("orbiter-context not installed")
 
         lead = Agent(name="lead")
         worker = Agent(name="worker")
-        # Both agents should retain their auto-created copilot context
+        # Both agents should retain their auto-created Context (wrapping copilot config)
         swarm = Swarm(agents=[lead, worker])
-        assert isinstance(swarm.agents["lead"].context, ContextConfig)
-        assert isinstance(swarm.agents["worker"].context, ContextConfig)
+        assert isinstance(swarm.agents["lead"].context, Context)
+        assert isinstance(swarm.agents["worker"].context, Context)

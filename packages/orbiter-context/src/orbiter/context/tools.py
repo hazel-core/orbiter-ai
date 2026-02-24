@@ -30,7 +30,7 @@ class _ContextTool(Tool):
     by the caller (runner / agent) at execution time.
     """
 
-    __slots__ = ("_ctx", "_fn", "description", "name", "parameters")
+    __slots__ = ("_ctx", "_fn", "_is_context_tool", "description", "name", "parameters")
 
     def __init__(
         self,
@@ -53,6 +53,7 @@ class _ContextTool(Tool):
         schema["properties"] = props
         self.parameters = schema
         self._ctx: Any = None
+        self._is_context_tool: bool = True
 
     def bind(self, ctx: Any) -> _ContextTool:
         """Bind a :class:`Context` instance for subsequent calls."""
@@ -127,8 +128,12 @@ planning_tool_get = _ContextTool(
 
 
 def get_planning_tools() -> list[Tool]:
-    """Return all planning tools."""
-    return [planning_tool_add, planning_tool_complete, planning_tool_get]
+    """Return fresh planning tool instances (safe for per-agent binding)."""
+    return [
+        _ContextTool(_add_todo, name="add_todo", description="Add a todo item to the planning checklist."),
+        _ContextTool(_complete_todo, name="complete_todo", description="Mark a todo item as completed by index."),
+        _ContextTool(_get_todo, name="get_todo", description="Retrieve the current todo checklist."),
+    ]
 
 
 # ── Knowledge tool ──────────────────────────────────────────────────
@@ -211,8 +216,18 @@ knowledge_tool_search = _ContextTool(
 
 
 def get_knowledge_tools() -> list[Tool]:
-    """Return all knowledge tools."""
-    return [knowledge_tool_get, knowledge_tool_grep, knowledge_tool_search]
+    """Return fresh knowledge tool instances (safe for per-agent binding)."""
+    return [
+        _ContextTool(_get_knowledge, name="get_knowledge", description="Retrieve a knowledge artifact by name."),
+        _ContextTool(
+            _grep_knowledge,
+            name="grep_knowledge",
+            description="Search a knowledge artifact for regex matches.",
+        ),
+        _ContextTool(
+            _search_knowledge, name="search_knowledge", description="Search across all knowledge artifacts."
+        ),
+    ]
 
 
 # ── File tool ───────────────────────────────────────────────────────
@@ -249,8 +264,10 @@ file_tool_read = _ContextTool(
 
 
 def get_file_tools() -> list[Tool]:
-    """Return all file tools."""
-    return [file_tool_read]
+    """Return fresh file tool instances (safe for per-agent binding)."""
+    return [
+        _ContextTool(_read_file, name="read_file", description="Read a file from the working directory."),
+    ]
 
 
 # ── All context tools ──────────────────────────────────────────────

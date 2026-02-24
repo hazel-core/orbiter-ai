@@ -52,7 +52,13 @@ class TestAgentCreation:
         assert agent.instructions == ""
         # retrieve_artifact is always auto-registered (needed for threshold-based offloading)
         assert "retrieve_artifact" in agent.tools
-        assert len([k for k in agent.tools if k != "retrieve_artifact"]) == 0
+        # 7 context tools are auto-loaded when context is active (default)
+        _CONTEXT_TOOL_NAMES = {
+            "add_todo", "complete_todo", "get_todo",
+            "get_knowledge", "grep_knowledge", "search_knowledge", "read_file",
+        }
+        non_auto = [k for k in agent.tools if k != "retrieve_artifact" and k not in _CONTEXT_TOOL_NAMES]
+        assert len(non_auto) == 0
         assert agent.handoffs == {}
         assert agent.output_type is None
         assert agent.max_steps == 10
@@ -65,10 +71,13 @@ class TestAgentCreation:
         except ImportError:
             assert agent.memory is None
         assert agent.conversation_id is None
-        # context is auto-created (ContextConfig copilot) when orbiter-context is installed
+        # context is auto-created (Context wrapping ContextConfig copilot)
+        # when orbiter-context is installed
         try:
+            from orbiter.context.context import Context  # pyright: ignore[reportMissingImports]
             from orbiter.context.config import ContextConfig  # pyright: ignore[reportMissingImports]
-            assert isinstance(agent.context, ContextConfig)
+            assert isinstance(agent.context, Context)
+            assert isinstance(agent.context.config, ContextConfig)
         except ImportError:
             assert agent.context is None
 
@@ -93,8 +102,8 @@ class TestAgentCreation:
         assert agent.provider_name == "anthropic"
         assert agent.model_name == "claude-sonnet-4-20250514"
         assert agent.instructions == "Research things."
-        # 2 user tools + retrieve_artifact (always auto-registered)
-        assert len(agent.tools) == 3
+        # 2 user tools + retrieve_artifact + 7 context tools (auto-loaded)
+        assert len(agent.tools) == 10
         assert agent.output_type is ReportOutput
         assert agent.max_steps == 20
         assert agent.temperature == 0.7
@@ -162,8 +171,8 @@ class TestToolRegistration:
     def test_get_tool_schemas(self) -> None:
         agent = Agent(name="bot", tools=[greet])
         schemas = agent.get_tool_schemas()
-        # greet + retrieve_artifact (always auto-registered)
-        assert len(schemas) == 2
+        # greet + retrieve_artifact + 7 context tools (auto-loaded)
+        assert len(schemas) == 9
         names = {s["function"]["name"] for s in schemas}
         assert "greet" in names
         assert schemas[0]["type"] == "function"
@@ -437,8 +446,8 @@ class TestAgentRun:
 
         call_args = provider.complete.call_args
         assert call_args[1]["tools"] is not None
-        # greet + retrieve_artifact (always auto-registered)
-        assert len(call_args[1]["tools"]) == 2
+        # greet + retrieve_artifact + 7 context tools (auto-loaded)
+        assert len(call_args[1]["tools"]) == 9
 
 
 # ---------------------------------------------------------------------------
@@ -863,8 +872,8 @@ class TestAgentEdgeCases:
 
         schemas = agent.get_tool_schemas()
 
-        # greet + retrieve_artifact (always auto-registered); handoff should not appear
-        assert len(schemas) == 2
+        # greet + retrieve_artifact + 7 context tools; handoff should not appear
+        assert len(schemas) == 9
         names = [s["function"]["name"] for s in schemas]
         assert "greet" in names
         assert "helper" not in names
@@ -1374,15 +1383,17 @@ class TestAgentHistoryPersistence:
 
 class TestAgentContextDefaults:
     def test_auto_creates_copilot_context(self) -> None:
-        """Agent with no context params auto-creates ContextConfig(mode='copilot')."""
+        """Agent with no context params auto-creates Context wrapping ContextConfig(mode='copilot')."""
         try:
             from orbiter.context.config import AutomationMode, ContextConfig  # pyright: ignore[reportMissingImports]
+            from orbiter.context.context import Context  # pyright: ignore[reportMissingImports]
         except ImportError:
             pytest.skip("orbiter-context not installed")
 
         agent = Agent(name="bot")
-        assert isinstance(agent.context, ContextConfig)
-        assert agent.context.mode == AutomationMode.COPILOT
+        assert isinstance(agent.context, Context)
+        assert isinstance(agent.context.config, ContextConfig)
+        assert agent.context.config.mode == AutomationMode.COPILOT
         assert agent._context_is_auto is True
 
     def test_context_none_disables_context(self) -> None:
@@ -1398,27 +1409,31 @@ class TestAgentContextDefaults:
         assert agent._context_is_auto is False
 
     def test_context_mode_pilot(self) -> None:
-        """Agent(context_mode='pilot') creates ContextConfig(mode='pilot')."""
+        """Agent(context_mode='pilot') creates Context wrapping ContextConfig(mode='pilot')."""
         try:
             from orbiter.context.config import AutomationMode, ContextConfig  # pyright: ignore[reportMissingImports]
+            from orbiter.context.context import Context  # pyright: ignore[reportMissingImports]
         except ImportError:
             pytest.skip("orbiter-context not installed")
 
         agent = Agent(name="bot", context_mode="pilot")
-        assert isinstance(agent.context, ContextConfig)
-        assert agent.context.mode == AutomationMode.PILOT
+        assert isinstance(agent.context, Context)
+        assert isinstance(agent.context.config, ContextConfig)
+        assert agent.context.config.mode == AutomationMode.PILOT
         assert agent._context_is_auto is False
 
     def test_context_mode_navigator(self) -> None:
-        """Agent(context_mode='navigator') creates ContextConfig(mode='navigator')."""
+        """Agent(context_mode='navigator') creates Context wrapping ContextConfig(mode='navigator')."""
         try:
             from orbiter.context.config import AutomationMode, ContextConfig  # pyright: ignore[reportMissingImports]
+            from orbiter.context.context import Context  # pyright: ignore[reportMissingImports]
         except ImportError:
             pytest.skip("orbiter-context not installed")
 
         agent = Agent(name="bot", context_mode="navigator")
-        assert isinstance(agent.context, ContextConfig)
-        assert agent.context.mode == AutomationMode.NAVIGATOR
+        assert isinstance(agent.context, Context)
+        assert isinstance(agent.context.config, ContextConfig)
+        assert agent.context.config.mode == AutomationMode.NAVIGATOR
 
     def test_explicit_context_takes_precedence_over_context_mode(self) -> None:
         """When context= is given, it takes precedence over context_mode."""

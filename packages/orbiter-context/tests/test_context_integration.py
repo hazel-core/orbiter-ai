@@ -450,13 +450,13 @@ class TestAgentContextWiring:
         assert agent.context is ctx
 
     def test_agent_context_default_auto_created(self) -> None:
-        """Agent without explicit context auto-creates ContextConfig(mode='copilot')."""
+        """Agent without explicit context auto-creates Context with config(mode='copilot')."""
         from orbiter.agent import Agent
-        from orbiter.context.config import AutomationMode, ContextConfig  # pyright: ignore[reportMissingImports]
+        from orbiter.context.config import AutomationMode  # pyright: ignore[reportMissingImports]
 
         agent = Agent(name="test")
-        assert isinstance(agent.context, ContextConfig)
-        assert agent.context.mode == AutomationMode.COPILOT
+        assert isinstance(agent.context, Context)
+        assert agent.context.config.mode == AutomationMode.COPILOT
         assert agent._context_is_auto is True
 
     def test_agent_describe_does_not_include_context(self) -> None:
@@ -651,7 +651,7 @@ class TestAgentContextWindowing:
             msg_list.append(UserMessage(content=f"u-{i}"))
             msg_list.append(AssistantMessage(content=f"a-{i}"))
 
-        result = await _apply_context_windowing(msg_list, context, provider=None)
+        result, _actions = await _apply_context_windowing(msg_list, context, provider=None)
 
         non_system = [m for m in result if not isinstance(m, SystemMessage)]
         # Offload trims to summary_threshold=5
@@ -676,7 +676,7 @@ class TestAgentContextWindowing:
             msg_list.append(UserMessage(content=f"u-{i}"))
             msg_list.append(AssistantMessage(content=f"a-{i}"))
 
-        result = await _apply_context_windowing(msg_list, context, provider=None)
+        result, _actions = await _apply_context_windowing(msg_list, context, provider=None)
 
         # System message preserved
         assert result[0] is sys_msg
@@ -920,13 +920,13 @@ class TestTokenTrackingIntegration:
         ]
 
         # Without force_summarize: no summarization
-        result_normal = await _apply_context_windowing(msg_list, context, provider=None)
+        result_normal, _actions_normal = await _apply_context_windowing(msg_list, context, provider=None)
         non_system_normal = [m for m in result_normal if not isinstance(m, SystemMessage)]
         assert len(non_system_normal) == 3  # unchanged
 
         # With force_summarize=True: summarization fires (provider=None → falls back gracefully)
         # Since provider=None, summarizer returns "" → result may differ from None case
-        result_forced = await _apply_context_windowing(
+        result_forced, _actions_forced = await _apply_context_windowing(
             msg_list, context, provider=None, force_summarize=True
         )
         # The function should run without error (summarization path reached)

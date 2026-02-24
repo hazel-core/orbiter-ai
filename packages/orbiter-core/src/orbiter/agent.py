@@ -138,24 +138,28 @@ async def _inject_long_term_knowledge(
 
 
 def _make_default_context() -> Any:
-    """Try to create a default ContextConfig(mode='copilot'). Returns None if not installed."""
+    """Try to create a default Context(mode='copilot'). Returns None if not installed."""
     try:
         from orbiter.context.config import make_config  # pyright: ignore[reportMissingImports]
+        from orbiter.context.context import Context as CtxClass  # pyright: ignore[reportMissingImports]
 
-        return make_config("copilot")
+        cfg = make_config("copilot")
+        return CtxClass(task_id="__default__", config=cfg)
     except ImportError:
         return None
 
 
 def _make_context_from_mode(mode: Any) -> Any:
-    """Create a ContextConfig from a mode string or AutomationMode enum.
+    """Create a Context from a mode string or AutomationMode enum.
 
     Returns None if orbiter-context is not installed.
     """
     try:
         from orbiter.context.config import make_config  # pyright: ignore[reportMissingImports]
+        from orbiter.context.context import Context as CtxClass  # pyright: ignore[reportMissingImports]
 
-        return make_config(mode)
+        cfg = make_config(mode)
+        return CtxClass(task_id="__default__", config=cfg)
     except ImportError:
         return None
 
@@ -235,13 +239,31 @@ class _ProviderSummarizer:
             return ""
 
 
+class _ContextAction:
+    """Metadata about a context windowing action that was applied."""
+
+    __slots__ = ("action", "before_count", "after_count", "details")
+
+    def __init__(
+        self,
+        action: str,
+        before_count: int,
+        after_count: int,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        self.action = action
+        self.before_count = before_count
+        self.after_count = after_count
+        self.details = details or {}
+
+
 async def _apply_context_windowing(
     msg_list: list[Message],
     context: Any,
     provider: Any,
     *,
     force_summarize: bool = False,
-) -> list[Message]:
+) -> tuple[list[Message], list[_ContextAction]]:
     """Apply ContextConfig windowing and optional summarization to msg_list.
 
     Called before the LLM call when context is set. Applies (in order):
@@ -255,10 +277,18 @@ async def _apply_context_windowing(
     message count threshold (used when token budget is exceeded).
 
     Falls back gracefully when orbiter-memory is not installed.
+
+    Returns:
+        A tuple of (processed message list, list of actions that were applied).
+        Callers can use the actions list to emit streaming ``ContextEvent`` s.
     """
-    history_rounds: int = getattr(context, "history_rounds", 20)
-    summary_threshold: int = getattr(context, "summary_threshold", 10)
-    offload_threshold: int = getattr(context, "offload_threshold", 50)
+    # Resolve config attrs: supports both Context (has .config) and ContextConfig directly
+    _cfg = getattr(context, "config", context)
+    history_rounds: int = getattr(_cfg, "history_rounds", 20)
+    summary_threshold: int = getattr(_cfg, "summary_threshold", 10)
+    offload_threshold: int = getattr(_cfg, "offload_threshold", 50)
+
+    actions: list[_ContextAction] = []
 
     # Separate system messages from conversation history
     system_msgs: list[Message] = [m for m in msg_list if isinstance(m, SystemMessage)]
@@ -267,12 +297,17 @@ async def _apply_context_windowing(
 
     # 1. Offload threshold: aggressive trim when far over limit
     if msg_count > offload_threshold:
+        before = msg_count
         _log.debug(
             "context offload: %d messages > offload_threshold=%d, trimming to %d",
             msg_count, offload_threshold, summary_threshold,
         )
         non_system = non_system[-summary_threshold:]
         msg_count = len(non_system)
+        actions.append(_ContextAction(
+            "offload", before, msg_count,
+            {"offload_threshold": offload_threshold},
+        ))
 
     # 2. Summary threshold: attempt summarization via orbiter-memory.
     # Also fires when force_summarize=True (token budget exceeded) as long as
@@ -318,6 +353,7 @@ async def _apply_context_windowing(
             should_summarize = force_summarize or check_trigger(items, summary_cfg).triggered
 
             if should_summarize and provider is not None:
+                before = msg_count
                 summarizer = _ProviderSummarizer(provider)
                 result = await generate_summary(items, summary_cfg, summarizer)
                 if result.summaries:
@@ -333,18 +369,31 @@ async def _apply_context_windowing(
                         "context summarization applied: %d -> %d messages (summary + %d recent)",
                         len(items), msg_count, keep_count,
                     )
+                    actions.append(_ContextAction(
+                        "summarize", before, msg_count,
+                        {
+                            "summary_threshold": summary_threshold,
+                            "keep_recent": keep_count,
+                            "forced": force_summarize,
+                        },
+                    ))
         except ImportError:
             pass
 
     # 3. History windowing: keep last history_rounds messages
     if msg_count > history_rounds:
+        before = msg_count
         _log.debug(
             "context windowing: trimming %d -> %d messages (history_rounds=%d)",
             msg_count, history_rounds, history_rounds,
         )
         non_system = non_system[-history_rounds:]
+        actions.append(_ContextAction(
+            "window", before, history_rounds,
+            {"history_rounds": history_rounds},
+        ))
 
-    return system_msgs + non_system
+    return system_msgs + non_system, actions
 
 
 class AgentError(OrbiterError):
@@ -452,6 +501,9 @@ class Agent:
         if "retrieve_artifact" not in self.tools:
             self._register_retrieve_artifact()
 
+        # Auto-load context tools (planning, knowledge, file) when context is available
+        self._auto_load_context_tools()
+
         # Handoff targets indexed by name
         self.handoffs: dict[str, Agent] = {}
         if handoffs:
@@ -541,6 +593,31 @@ class Agent:
             retrieve_artifact, name="retrieve_artifact"
         )
 
+    def _auto_load_context_tools(self) -> None:
+        """Auto-load, bind, and register context tools when orbiter-context is installed.
+
+        Called by ``__init__`` after context resolution. Skipped when
+        ``self.context`` is ``None`` or orbiter-context is not installed.
+        Context tools are fresh instances per agent to avoid shared mutable state.
+        """
+        if self.context is None:
+            return
+        try:
+            from orbiter.context.tools import get_context_tools  # pyright: ignore[reportMissingImports]
+
+            for t in get_context_tools():
+                t.bind(self.context)
+                # Skip if user already registered a tool with the same name
+                if t.name not in self.tools:
+                    self.tools[t.name] = t
+            _log.debug(
+                "auto-loaded context tools for agent %r (%d tools)",
+                self.name,
+                len([t for t in self.tools.values() if getattr(t, "_is_context_tool", False)]),
+            )
+        except ImportError:
+            pass
+
     async def _offload_large_result(self, tool_name: str, content: str) -> str:
         """Store a large tool result in the workspace and return a pointer string.
 
@@ -618,9 +695,12 @@ class Agent:
             if provider is None:
                 return "[spawn_self error] No provider available for spawned agent."
 
-            # Build tools list for the child — exclude spawn_self to avoid
-            # accidentally re-registering it (child has allow_self_spawn=False)
-            child_tools = [t for name, t in parent.tools.items() if name != "spawn_self"]
+            # Build tools list for the child — exclude spawn_self and context tools.
+            # Context tools are auto-loaded by the child's __init__ with fresh bindings.
+            child_tools = [
+                t for name, t in parent.tools.items()
+                if name != "spawn_self" and not getattr(t, "_is_context_tool", False)
+            ]
 
             # Build memory: fresh ShortTermMemory + shared LongTermMemory instance
             child_memory: Any = _MEMORY_UNSET  # default: auto-create
@@ -640,8 +720,19 @@ class Agent:
                 except ImportError:
                     child_memory = None
 
+            # Fork context for child: reads inherit from parent, writes isolated.
+            child_name = f"{parent.name}_spawn_{uuid.uuid4().hex[:8]}"
+            child_context: Any = _CONTEXT_UNSET
+            if parent.context is not None:
+                try:
+                    child_context = parent.context.fork(child_name)
+                except Exception:
+                    child_context = parent.context  # fallback: share
+            else:
+                child_context = None
+
             child_agent = Agent(
-                name=f"{parent.name}_spawn_{uuid.uuid4().hex[:8]}",
+                name=child_name,
                 model=parent.model,
                 instructions=parent.instructions,
                 tools=child_tools,
@@ -649,6 +740,7 @@ class Agent:
                 temperature=parent.temperature,
                 max_tokens=parent.max_tokens,
                 memory=child_memory,
+                context=child_context,
                 allow_self_spawn=False,
             )
             child_agent._spawn_depth = parent._spawn_depth + 1
@@ -910,7 +1002,7 @@ class Agent:
 
         # ---- Context: apply windowing and summarization ----
         if self.context is not None:
-            msg_list = await _apply_context_windowing(msg_list, self.context, provider)
+            msg_list, _ = await _apply_context_windowing(msg_list, self.context, provider)
         # ---- end Context ----
 
         # ---- Long-term memory: inject relevant knowledge into system message ----
@@ -969,7 +1061,8 @@ class Agent:
                 and output.usage.input_tokens > 0
             ):
                 _fill_ratio = output.usage.input_tokens / _context_window_tokens
-                _trigger = getattr(self.context, "token_budget_trigger", 0.8)
+                _ctx_cfg = getattr(self.context, "config", self.context)
+                _trigger = getattr(_ctx_cfg, "token_budget_trigger", 0.8)
                 if _fill_ratio > _trigger:
                     _log.info(
                         "token budget trigger: %.0f%% full (%d/%d tokens), forcing summarization on '%s'",
@@ -978,8 +1071,8 @@ class Agent:
                         _context_window_tokens,
                         self.name,
                     )
-                    msg_list = await _apply_context_windowing(
-                        msg_list, self.context, provider, force_summarize=True
+                    msg_list, _ = await _apply_context_windowing(
+                        msg_list, self.context, provider, force_summarize=True,
                     )
 
         # max_steps exhausted — return last output as-is
@@ -1265,8 +1358,11 @@ class Agent:
         }
 
         # Serialize tools as importable dotted paths.
-        # Skip retrieve_artifact — it's always auto-registered on reconstruction.
-        user_tools = [t for name, t in self.tools.items() if name != "retrieve_artifact"]
+        # Skip retrieve_artifact (auto-registered) and context tools (auto-loaded).
+        user_tools = [
+            t for name, t in self.tools.items()
+            if name != "retrieve_artifact" and not getattr(t, "_is_context_tool", False)
+        ]
         if user_tools:
             data["tools"] = [_serialize_tool(t) for t in user_tools]
 
