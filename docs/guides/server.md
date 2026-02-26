@@ -115,6 +115,58 @@ async with httpx.AsyncClient() as client:
                 print(line[6:], end="", flush=True)
 ```
 
+## Message Injection
+
+Inject a message into a running agent's context. The message is picked up before the agent's next LLM call, allowing you to steer or augment a running agent without restarting it.
+
+```
+POST /inject
+```
+
+### Request
+
+```json
+{
+    "message": "Also check the official Python docs",
+    "agent_name": "researcher"
+}
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `message` | `str` | *(required)* | The message to inject |
+| `agent_name` | `str \| None` | `None` | Target agent (uses default if omitted) |
+
+### Response
+
+```json
+{
+    "status": "injected"
+}
+```
+
+### Example
+
+```bash
+# Inject into the default agent
+curl -X POST http://localhost:8000/inject \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Use metric units instead"}'
+
+# Inject into a specific agent
+curl -X POST http://localhost:8000/inject \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Focus on security aspects", "agent_name": "researcher"}'
+```
+
+### Error Responses
+
+| Status | Condition |
+|--------|-----------|
+| 400 | No `agent_name` specified and no default agent |
+| 404 | Named agent not found |
+| 503 | No agents registered |
+
 ## Agent Management
 
 ### List Agents

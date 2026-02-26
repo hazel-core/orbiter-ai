@@ -36,20 +36,21 @@ By default, `run.stream()` only emits `TextEvent` and `ToolCallEvent` for backwa
 | Parameter | Events Emitted |
 |-----------|---------------|
 | `detailed=False` (default) | `TextEvent`, `ToolCallEvent` |
-| `detailed=True` | All 8 event types |
+| `detailed=True` | All event types |
 
-`ErrorEvent` is always emitted on errors, regardless of the `detailed` flag.
+`ErrorEvent` and `MessageInjectedEvent` are always emitted regardless of the `detailed` flag.
 
 ## Event Types
 
 All events are frozen Pydantic `BaseModel` instances. Every event has a `type` field (string literal) that acts as a discriminator, and an `agent_name` field identifying which agent produced the event.
 
-The `StreamEvent` union type includes all 8 event types:
+The `StreamEvent` union type includes all event types:
 
 ```python
 StreamEvent = (
     TextEvent | ToolCallEvent | StepEvent | ToolResultEvent
     | ReasoningEvent | ErrorEvent | StatusEvent | UsageEvent
+    | MCPProgressEvent | ContextEvent | MessageInjectedEvent
 )
 ```
 
@@ -210,12 +211,30 @@ if event.type == "usage":
     print(f"  Model: {event.model}, Step: {event.step_number}")
 ```
 
+### MessageInjectedEvent
+
+Emitted when a message is injected into a running agent via `agent.inject_message()`. This allows external code to push additional context ("Also check X", "Actually use Y instead") into the agent's conversation without cancelling the run. Always emitted (not gated by `detailed`).
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | `Literal["message_injected"]` | Always `"message_injected"` |
+| `content` | `str` | The injected message text |
+| `agent_name` | `str` | Agent name (default `""`) |
+
+```python
+if event.type == "message_injected":
+    print(f"[Injected] {event.content}")
+```
+
+See [Live Message Injection](#live-message-injection) below for full usage examples.
+
 ## Event Emission Order
 
 When `detailed=True`, events are emitted in this order for each step:
 
 ```
 StatusEvent(status="starting")           # Once at start
+├── MessageInjectedEvent(...)            # Per injected message (if any)
 ├── StepEvent(status="started")          # Per step
 ├── TextEvent(text="...")                # Text chunks from LLM
 ├── UsageEvent(...)                      # After LLM stream completes
@@ -260,7 +279,7 @@ async for event in run.stream(
 
 When `event_types` is `None` (default), all events pass through (respecting the `detailed` flag). An empty set `set()` filters out everything.
 
-Available type strings for filtering: `"text"`, `"tool_call"`, `"step"`, `"tool_result"`, `"reasoning"`, `"error"`, `"status"`, `"usage"`.
+Available type strings for filtering: `"text"`, `"tool_call"`, `"step"`, `"tool_result"`, `"reasoning"`, `"error"`, `"status"`, `"usage"`, `"mcp_progress"`, `"context"`, `"message_injected"`.
 
 ## Multi-Agent Streaming (Swarm)
 
@@ -518,3 +537,86 @@ result = await handle.result()
 ```
 
 Events in distributed mode are identical to local streaming — the same `StreamEvent` types are used. The `EventPublisher` on the worker side serializes events to JSON and publishes to both Redis Pub/Sub (for live streaming) and Redis Streams (for replay). See the [distributed architecture docs](distributed/architecture.md) for details.
+
+## Live Message Injection
+
+The `inject_message()` method on `Agent` lets external code push additional user messages into a running agent's context. Injected messages are picked up before the next LLM call, allowing you to steer, correct, or augment the agent mid-run without cancelling and restarting.
+
+### Basic Usage
+
+```python
+import asyncio
+from orbiter import Agent, run, tool
+
+@tool
+def slow_search(query: str) -> str:
+    """A tool that takes time to execute."""
+    return f"Results for {query}"
+
+agent = Agent(name="researcher", tools=[slow_search])
+
+async def main():
+    # Start the agent in a background task
+    task = asyncio.create_task(run(agent, "Search for Python tutorials"))
+
+    # Wait a moment, then inject additional context
+    await asyncio.sleep(0.1)
+    agent.inject_message("Also check the official Python docs")
+    agent.inject_message("Focus on Python 3.12 features")
+
+    result = await task
+    print(result.output)
+```
+
+### Streaming with Injection Events
+
+When using `run.stream()`, each injected message emits a `MessageInjectedEvent`:
+
+```python
+async for event in run.stream(agent, "Search for Python tutorials"):
+    match event.type:
+        case "text":
+            print(event.text, end="", flush=True)
+        case "message_injected":
+            print(f"\n[Injected: {event.content}]")
+```
+
+### HTTP Injection via orbiter-server
+
+The `orbiter-server` provides a `POST /inject` endpoint for pushing messages into a running agent over HTTP:
+
+```bash
+# Inject a message into the default agent
+curl -X POST http://localhost:8000/inject \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Also check the weather"}'
+
+# Inject into a specific agent
+curl -X POST http://localhost:8000/inject \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Use metric units", "agent_name": "weather_bot"}'
+```
+
+### Message Ordering Guarantee
+
+Injected messages are appended as `UserMessage` entries **after** any pending tool results and **before** the next LLM call. This preserves provider message compliance -- injected messages never break the required `AssistantMessage(tool_calls) → ToolResult` adjacency:
+
+```
+[..., AssistantMessage(tool_calls=[...]), ToolResult, ToolResult, UserMessage(injected), ...] → LLM call
+```
+
+Multiple messages injected between steps are drained in FIFO order.
+
+### API Reference
+
+```python
+agent.inject_message(content: str) -> None
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `content` | `str` | The message text to inject. Must be non-empty. |
+
+**Raises:** `ValueError` if `content` is empty.
+
+**Thread-safety:** Uses `asyncio.Queue` internally. Safe to call from any coroutine in the same event loop.

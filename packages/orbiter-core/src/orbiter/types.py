@@ -467,6 +467,16 @@ class ContextEvent(BaseModel):
     details: dict[str, Any] = Field(default_factory=dict)
 
 
+class MessageInjectedEvent(BaseModel):
+    """Streaming event emitted when a message is injected into a running agent."""
+
+    model_config = {"frozen": True}
+
+    type: Literal["message_injected"] = "message_injected"
+    content: str
+    agent_name: str = ""
+
+
 StreamEvent = (
     TextEvent
     | ToolCallEvent
@@ -478,4 +488,5 @@ StreamEvent = (
     | UsageEvent
     | MCPProgressEvent
     | ContextEvent
+    | MessageInjectedEvent
 )

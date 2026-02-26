@@ -41,6 +41,21 @@ Non-streaming response from the `/chat` endpoint.
 
 ---
 
+## InjectRequest
+
+```python
+class InjectRequest(BaseModel)
+```
+
+Request body for the `/inject` endpoint.
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `message` | `str` | *(required)* | The message to inject into the running agent's context |
+| `agent_name` | `str \| None` | `None` | Name of the agent to inject into (uses default if omitted) |
+
+---
+
 ## register_agent
 
 ```python
@@ -76,6 +91,7 @@ def create_app() -> FastAPI
 Create a configured FastAPI application with the following routers:
 
 - `/chat` (POST) -- Run an agent synchronously or stream via SSE
+- `/inject` (POST) -- Inject a message into a running agent's context
 - `/agents` -- Agent management and workspace (from `agent_router`)
 - `/sessions` -- Session CRUD (from `session_router`)
 - `/ws/chat` -- WebSocket streaming (from `stream_router`)
@@ -105,6 +121,24 @@ data: [DONE]
 | 500 | Agent execution failed |
 | 503 | No agents registered |
 
+### `/inject` endpoint
+
+**POST** `/inject`
+
+Inject a message into a running agent's context. The message is added as a `UserMessage` before the agent's next LLM call.
+
+**Request body:** `InjectRequest`
+
+**Response:** `{"status": "injected"}`
+
+**Error responses:**
+
+| Status | Condition |
+|---|---|
+| 400 | No `agent_name` specified and no default agent |
+| 404 | Named agent not found |
+| 503 | No agents registered |
+
 ### Example
 
 ```python
@@ -132,4 +166,9 @@ curl -X POST http://localhost:8000/chat \
 curl -X POST http://localhost:8000/chat \
   -H "Content-Type: application/json" \
   -d '{"message": "Hello", "agent_name": "coder"}'
+
+# Inject a message into a running agent
+curl -X POST http://localhost:8000/inject \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Also check security implications"}'
 ```

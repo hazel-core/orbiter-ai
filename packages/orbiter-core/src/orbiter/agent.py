@@ -513,6 +513,9 @@ class Agent:
         # Lock for asyncio-safe runtime mutations (add_tool, add_mcp_server, add_handoff)
         self._tools_lock: asyncio.Lock = asyncio.Lock()
 
+        # Queue for live message injection into a running agent
+        self._injected_messages: asyncio.Queue[str] = asyncio.Queue()
+
         # Auto-register spawn_self tool when opt-in self-spawn is enabled
         if allow_self_spawn:
             self._register_tool(self._make_spawn_self_tool())
@@ -761,6 +764,21 @@ class Agent:
     # -----------------------------------------------------------------------
     # Runtime mutation API — asyncio-safe via _tools_lock
     # -----------------------------------------------------------------------
+
+    def inject_message(self, content: str) -> None:
+        """Push a user message into the running agent's context.
+
+        Picked up before the next LLM call. Safe to call from any coroutine.
+
+        Args:
+            content: The message text to inject.
+
+        Raises:
+            ValueError: If *content* is empty.
+        """
+        if not content:
+            raise ValueError("inject_message content must be non-empty")
+        self._injected_messages.put_nowait(content)
 
     async def add_tool(self, tool: Tool) -> None:
         """Append a single tool at runtime, asyncio-safe.
@@ -1034,6 +1052,15 @@ class Agent:
                 if _trajectory:
                     _last_input = _trajectory[-1].prompt_tokens
                     msg_list = _update_system_token_info(msg_list, _last_input, _context_window_tokens)
+
+            # ---- Drain injected messages ----
+            while not self._injected_messages.empty():
+                try:
+                    _injected = self._injected_messages.get_nowait()
+                    msg_list.append(UserMessage(content=_injected))
+                    _log.debug("injected message into step %d: %.50s...", _step, _injected)
+                except asyncio.QueueEmpty:
+                    break
 
             output = await self._call_llm(msg_list, tool_schemas, provider, max_retries)
 

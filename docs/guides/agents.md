@@ -170,6 +170,41 @@ config = AgentConfig(
 | `max_tokens` | `int \| None` | `None` |
 | `max_steps` | `int` | `10` (min: 1) |
 
+## Live Message Injection
+
+The `inject_message()` method pushes a user message into a running agent's context. The message is picked up before the next LLM call, letting external code steer or augment the agent mid-run without cancelling.
+
+```python
+import asyncio
+from orbiter import Agent, run, tool
+
+@tool
+def slow_search(query: str) -> str:
+    """Search that takes time."""
+    return f"Results for {query}"
+
+agent = Agent(name="researcher", tools=[slow_search])
+
+async def main():
+    task = asyncio.create_task(run(agent, "Search for Python tutorials"))
+
+    # Inject additional context while the agent is running
+    await asyncio.sleep(0.1)
+    agent.inject_message("Also check the official Python docs")
+
+    result = await task
+    print(result.output)
+```
+
+Key points:
+- Messages are drained in FIFO order before each LLM call
+- Injected messages never break provider message compliance (they appear after tool results, before the next LLM call)
+- Raises `ValueError` if content is empty
+- Safe to call from any coroutine in the same event loop
+- In streaming mode (`run.stream()`), each injection emits a `MessageInjectedEvent`
+
+For full details and streaming examples, see [Streaming Events > Live Message Injection](streaming-events.md#live-message-injection).
+
 ## Error Handling
 
 Agent errors raise `AgentError`, a subclass of `OrbiterError`:

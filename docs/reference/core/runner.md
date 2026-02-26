@@ -136,6 +136,7 @@ When tool calls are detected, tools are executed and the LLM is re-streamed with
 
 - `TextEvent` -- for text chunks (contains `text` and `agent_name` fields).
 - `ToolCallEvent` -- for tool invocations (contains `tool_name`, `tool_call_id`, and `agent_name` fields).
+- `MessageInjectedEvent` -- when a message is injected via `agent.inject_message()` (contains `content` and `agent_name` fields).
 
 ### Example
 

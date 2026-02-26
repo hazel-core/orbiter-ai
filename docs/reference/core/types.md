@@ -416,10 +416,42 @@ event = ToolCallEvent(
 
 ---
 
+## MessageInjectedEvent
+
+```python
+class MessageInjectedEvent(BaseModel)
+```
+
+Streaming event emitted when a message is injected into a running agent via `agent.inject_message()`. Immutable (frozen Pydantic model).
+
+### Fields
+
+| Name | Type | Default | Description |
+|------|------|---------|-------------|
+| `type` | `Literal["message_injected"]` | `"message_injected"` | Discriminator literal. |
+| `content` | `str` | *(required)* | The injected message text. |
+| `agent_name` | `str` | `""` | Name of the agent that received the injection. |
+
+### Example
+
+```python
+from orbiter.types import MessageInjectedEvent
+
+event = MessageInjectedEvent(content="Also check the docs", agent_name="researcher")
+print(event.type)     # "message_injected"
+print(event.content)  # "Also check the docs"
+```
+
+---
+
 ## StreamEvent
 
 ```python
-StreamEvent = TextEvent | ToolCallEvent
+StreamEvent = (
+    TextEvent | ToolCallEvent | StepEvent | ToolResultEvent
+    | ReasoningEvent | ErrorEvent | StatusEvent | UsageEvent
+    | MCPProgressEvent | ContextEvent | MessageInjectedEvent
+)
 ```
 
 Union type alias for all streaming event types. Yielded by `run.stream()`.

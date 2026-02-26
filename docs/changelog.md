@@ -4,6 +4,14 @@ All notable changes to Orbiter are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Live Message Injection** -- `Agent.inject_message(content)` pushes a `UserMessage` into a running agent's context, picked up before the next LLM call. Enables mid-run steering without cancelling. (`orbiter-core`)
+- **`MessageInjectedEvent`** -- New streaming event type emitted by `run.stream()` when an injected message is drained. Always emitted (not gated by `detailed`). (`orbiter-core`)
+- **`POST /inject` endpoint** -- HTTP endpoint on `orbiter-server` for injecting messages into a running agent via the `InjectRequest` model. (`orbiter-server`)
+
 ## [0.1.0] - 2025-02-16
 
 Initial release of Orbiter, a ground-up rewrite of the AWorld multi-agent framework.

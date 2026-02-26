@@ -116,6 +116,24 @@ Execute the agent's LLM-tool loop with retry logic. Builds the message list, cal
 - `AgentError` -- if all retries are exhausted.
 - `AgentError` -- if context length is exceeded.
 
+#### inject_message()
+
+```python
+def inject_message(self, content: str) -> None
+```
+
+Push a user message into the running agent's context. The message is picked up before the next LLM call. Safe to call from any coroutine in the same event loop.
+
+| Name | Type | Default | Description |
+|------|------|---------|-------------|
+| `content` | `str` | *(required)* | The message text to inject. Must be non-empty. |
+
+**Raises:** `ValueError` -- if `content` is empty.
+
+Injected messages are drained in FIFO order at the start of each step, after tool results from the previous step and before the LLM call. This preserves provider message compliance.
+
+In the streaming path (`run.stream()`), each drained message emits a `MessageInjectedEvent`.
+
 #### get_tool_schemas()
 
 ```python

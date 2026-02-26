@@ -50,6 +50,18 @@ class ChatRequest(BaseModel):
     stream: bool = False
 
 
+class InjectRequest(BaseModel):
+    """Request body for the /inject endpoint.
+
+    Attributes:
+        message: The message to inject into the running agent's context.
+        agent_name: Name of the agent to inject into (optional; uses default if omitted).
+    """
+
+    message: str
+    agent_name: str | None = None
+
+
 class ChatResponse(BaseModel):
     """Non-streaming response from the /chat endpoint.
 
@@ -201,5 +213,15 @@ def create_app() -> FastAPI:
             steps=getattr(result, "steps", 0) or 0,
             usage=usage_dict,
         )
+
+    @app.post("/inject")
+    async def inject_message(request: InjectRequest) -> dict[str, str]:
+        """Inject a message into a running agent's context.
+
+        The message is picked up before the agent's next LLM call.
+        """
+        agent = _get_agent(app, request.agent_name)
+        agent.inject_message(request.message)
+        return {"status": "injected"}
 
     return app

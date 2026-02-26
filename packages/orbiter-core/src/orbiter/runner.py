@@ -42,6 +42,7 @@ from orbiter.types import (
     MCPProgressEvent,
     Message,
     MessageContent,
+    MessageInjectedEvent,
     RunResult,
     StatusEvent,
     StepEvent,
@@ -373,6 +374,17 @@ async def _stream(
             if _traj:
                 _last_input = _traj[-1].prompt_tokens
                 msg_list = _update_system_token_info(msg_list, _last_input, _stream_context_window)  # type: ignore[possibly-undefined]
+
+        # ---- Drain injected messages ----
+        while not agent._injected_messages.empty():
+            try:
+                _injected = agent._injected_messages.get_nowait()
+                msg_list.append(UserMessage(content=_injected))
+                _inj_ev = MessageInjectedEvent(content=_injected, agent_name=agent.name)
+                if _passes_filter(_inj_ev):
+                    yield _inj_ev
+            except asyncio.QueueEmpty:
+                break
 
         if detailed:
             _ev = StepEvent(
